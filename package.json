@@ -1,0 +1,47 @@
+{
+  "name": "unicity-cli",
+  "version": "1.0.0",
+  "description": "Command-line tools for interacting with the Unicity Network's offchain token system",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "unicity": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "npm run build",
+    "get-request": "node dist/index.js get-request",
+    "register-request": "node dist/index.js register-request"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unicitynetwork/cli.git"
+  },
+  "keywords": [
+    "unicity",
+    "cli",
+    "token",
+    "blockchain",
+    "offchain"
+  ],
+  "author": "Unicity Network",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/unicitynetwork/cli/issues"
+  },
+  "homepage": "https://github.com/unicitynetwork/cli#readme",
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@unicitylabs/commons": "^2.4.0-rc.912de7c",
+    "@unicitylabs/state-transition-sdk": "^1.4.1",
+    "commander": "^12.1.0"
+  }
+}
