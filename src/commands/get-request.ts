@@ -27,7 +27,8 @@ export function getRequestCommand(program: Command): void {
         console.log(`STATUS: success`);
         console.log(`PATH: ${JSON.stringify(inclusionProof.merkleTreePath.toDto(), null, 4)}`);
       } catch (err) {
-        console.error(`Error getting request: ${err instanceof Error ? err.message : String(err)}`);
+	console.error(JSON.stringify(error));
+        console.error(`Error getting request: ${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
       }
     });
 }

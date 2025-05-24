@@ -42,11 +42,12 @@ export function registerRequestCommand(program: Command): void {
         const result = await client.submitTransaction(requestId, transactionHash, authenticator);
         
         if (result.status === 'SUCCESS') {
-          console.log(`Request successfully registered. Request ID: ${requestId.toString()}`);
+          console.log(`Request successfully registered. Request ID: ${requestId.toDto()}`);
         } else {
           console.error(`Failed to register request: ${result.status}`);
         }
       } catch (error) {
+	console.error(JSON.stringify(error));
         console.error(`Error registering request: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
