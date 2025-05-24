@@ -15,7 +15,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prepare": "npm run build",
     "get-request": "node dist/index.js get-request",
-    "register-request": "node dist/index.js register-request"
+    "register-request": "node dist/index.js register-request",
+    "gen-address": "node dist/index.js gen-address"
   },
   "repository": {
     "type": "git",

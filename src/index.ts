@@ -2,6 +2,7 @@
 import { program } from 'commander';
 import { registerRequestCommand } from './commands/register-request.js';
 import { getRequestCommand } from './commands/get-request.js';
+import { genAddressCommand } from './commands/gen-address.js';
 
 // CLI setup
 program
@@ -12,6 +13,7 @@ program
 // Register commands
 registerRequestCommand(program);
 getRequestCommand(program);
+genAddressCommand(program);
 
 // Parse command line arguments
 program.parse();
