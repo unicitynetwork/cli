@@ -40,8 +40,8 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@unicitylabs/commons": "^2.4.0-rc.912de7c",
-    "@unicitylabs/state-transition-sdk": "^1.4.1",
+    "@unicitylabs/commons": "^2.4.0-rc.ee9b3a5",
+    "@unicitylabs/state-transition-sdk": "^1.4.2",
     "commander": "^12.1.0"
   }
 }

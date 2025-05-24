@@ -25,7 +25,7 @@ export function getRequestCommand(program: Command): void {
         
         // Output the result in the same format as the original CLI
         console.log(`STATUS: success`);
-        console.log(`PATH: ${JSON.stringify(inclusionProof.merkleTreePath, null, 4)}`);
+        console.log(`PATH: ${JSON.stringify(inclusionProof.merkleTreePath.toDto(), null, 4)}`);
       } catch (err) {
         console.error(`Error getting request: ${err instanceof Error ? err.message : String(err)}`);
       }
