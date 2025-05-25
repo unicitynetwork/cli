@@ -139,7 +139,7 @@ export function mintTokenCommand(program: Command): void {
   program
     .command('mint-token')
     .description('Mint a new token on the Unicity Network')
-    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://api.unicity.network/aggregator')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('-n, --nonce <nonce>', 'Nonce value (required for masked addresses, will be randomly generated if not provided)')
     .option('-u, --unmasked', 'Generate an unmasked address (default is masked)')
     .option('-i, --token-id <tokenId>', 'Token ID (optional, will be randomly generated if not provided)')

@@ -10,7 +10,7 @@ export function getRequestCommand(program: Command): void {
   program
     .command('get-request')
     .description('Get inclusion proof for a specific request ID')
-    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://api.unicity.network/aggregator')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .argument('<requestId>', 'Request ID to query')
     .action(async (requestIdStr: string, options) => {
       // Get the endpoint from options

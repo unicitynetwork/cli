@@ -12,7 +12,7 @@ export function registerRequestCommand(program: Command): void {
   program
     .command('register-request')
     .description('Register a new state transition request')
-    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://api.unicity.network/aggregator')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .argument('<secret>', 'Secret key for signing the request')
     .argument('<state>', 'Source state data (will be hashed)')
     .argument('<transition>', 'Transition data (will be hashed)')
