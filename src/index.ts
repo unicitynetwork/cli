@@ -3,6 +3,7 @@ import { program } from 'commander';
 import { registerRequestCommand } from './commands/register-request.js';
 import { getRequestCommand } from './commands/get-request.js';
 import { genAddressCommand } from './commands/gen-address.js';
+import { mintTokenCommand } from './commands/mint-token.js';
 
 // CLI setup
 program
@@ -14,6 +15,7 @@ program
 registerRequestCommand(program);
 getRequestCommand(program);
 genAddressCommand(program);
+mintTokenCommand(program);
 
 // Parse command line arguments
 program.parse();
