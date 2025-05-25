@@ -114,8 +114,13 @@ async function waitInclusionProof(
 ): Promise<any> {
   const startTime = Date.now();
   
+  // Log commitment info for debugging
+  console.error('Waiting for inclusion proof for commitment...');
+  
   while (Date.now() - startTime < timeoutMs) {
     try {
+      // Pass the entire commitment object to StateTransitionClient.getInclusionProof
+      // StateTransitionClient expects a Commitment object, not just the requestId
       const proof = await client.getInclusionProof(commitment);
       if (proof !== null) {
         return proof;
@@ -123,7 +128,9 @@ async function waitInclusionProof(
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
         // Continue polling
+        console.error('Inclusion proof not found yet (404), retrying...');
       } else {
+        console.error('Error getting inclusion proof:', err);
         throw err;
       }
     }
