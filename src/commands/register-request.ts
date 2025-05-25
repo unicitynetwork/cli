@@ -12,11 +12,13 @@ export function registerRequestCommand(program: Command): void {
   program
     .command('register-request')
     .description('Register a new state transition request')
-    .argument('<endpoint>', 'Aggregator endpoint URL')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://api.unicity.network/aggregator')
     .argument('<secret>', 'Secret key for signing the request')
     .argument('<state>', 'Source state data (will be hashed)')
     .argument('<transition>', 'Transition data (will be hashed)')
-    .action(async (endpoint: string, secret: string, state: string, transition: string) => {
+    .action(async (secret: string, state: string, transition: string, options) => {
+      // Get the endpoint from options
+      const endpoint = options.endpoint;
       try {
         // Create AggregatorClient
         const client = new AggregatorClient(endpoint);
