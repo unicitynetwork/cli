@@ -5,11 +5,10 @@ import { DataHasher } from '@unicitylabs/commons/lib/hash/DataHasher.js';
 import { DataHash } from '@unicitylabs/commons/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/MaskedPredicate.js';
-import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
+import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/UnmaskedPredicate.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
 import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
 import * as readline from 'readline';
-import { promisify } from 'util';
 
 // Function to read the secret as a password
 async function readSecret(): Promise<string> {
@@ -61,21 +60,14 @@ export function genAddressCommand(program: Command): void {
   program
     .command('gen-address')
     .description('Generate a new address for the Unicity Network')
-    .option('-n, --nonce <nonce>', 'Nonce value (optional, will be randomly generated if not provided)')
-    .option('-t, --token-id <tokenId>', 'Token ID (optional, will be randomly generated if not provided)')
+    .option('-n, --nonce <nonce>', 'Nonce value (required for masked addresses, will be randomly generated if not provided)')
     .option('-y, --token-type <tokenType>', 'Token type (optional, defaults to hashed "unicity_standard_token_type")')
+    .option('-u, --unmasked', 'Generate an unmasked address (default is masked)')
     .action(async (options) => {
       try {
         // Read the secret (from env var or user input)
         const secretStr = await readSecret();
         const secret = new TextEncoder().encode(secretStr);
-
-        // Process nonce (validate or generate)
-        const nonce = await processHexOrGenerateHash(options.nonce, 'nonce');
-
-        // Process tokenId (validate or generate)
-        const tokenIdBytes = await processHexOrGenerateHash(options.tokenId, 'tokenId');
-        const tokenId = TokenId.create(tokenIdBytes);
 
         // Process tokenType (validate, generate, or use default)
         let tokenTypeBytes: Uint8Array;
@@ -91,30 +83,70 @@ export function genAddressCommand(program: Command): void {
         }
         const tokenType = TokenType.create(tokenTypeBytes);
 
-        // Create a SigningService from the secret
-        const signingService = await SigningService.createFromSecret(secret, nonce);
-
-        // Create a MaskedPredicate (as shown in the reference implementation)
-        const predicate = await MaskedPredicate.create(
-          tokenId,
-          tokenType,
-          signingService,
-          HashAlgorithm.SHA256,
-          nonce
-        );
-
-        // Create a DirectAddress from the predicate's imprint
-        const address = await DirectAddress.create(predicate.reference.imprint);
-
-        // Output the results
-        console.log('\nGenerated Address:');
-        console.log('----------------------------------------');
-        console.log(`Address: ${address.toDto()}`);
-        console.log(`Nonce: ${HexConverter.encode(nonce)}`);
-        console.log(`TokenId: ${tokenId.toDto()}`);
-        console.log(`TokenType: ${tokenType.toDto()}`);
-        console.log('----------------------------------------');
-        console.log('IMPORTANT: Keep your secret and nonce secure - they are required to spend from this address.');
+        // Determine if generating masked or unmasked address
+        const isUnmasked = options.unmasked === true;
+        
+        let address: DirectAddress;
+        let predicateType: string;
+        
+        if (isUnmasked) {
+          // Generate unmasked address (no nonce required)
+          predicateType = "Unmasked";
+          
+          // Create a SigningService from the secret without nonce
+          const signingService = await SigningService.createFromSecret(secret);
+          
+          // Calculate the predicate reference directly
+          const algorithm = signingService.algorithm;
+          const publicKey = signingService.publicKey;
+          const predicateReference = await UnmaskedPredicate.calculateReference(
+            algorithm,
+            publicKey,
+            HashAlgorithm.SHA256
+          );
+          
+          // Create a DirectAddress from the predicate reference's imprint
+          address = await DirectAddress.create(predicateReference.imprint);
+          
+          // Output the results
+          console.log('\nGenerated Unmasked Address:');
+          console.log('----------------------------------------');
+          console.log(`Address: ${address.toDto()}`);
+          console.log(`TokenType: ${tokenType.toDto()}`);
+          console.log('----------------------------------------');
+          console.log('IMPORTANT: Keep your secret secure - it is required to spend from this address.');
+        } else {
+          // Generate masked address (requires nonce)
+          predicateType = "Masked";
+          
+          // Process nonce (validate or generate)
+          const nonce = await processHexOrGenerateHash(options.nonce, 'nonce');
+          
+          // Create a SigningService from the secret with nonce
+          const signingService = await SigningService.createFromSecret(secret, nonce);
+          
+          // Calculate the predicate reference directly
+          const algorithm = signingService.algorithm;
+          const publicKey = signingService.publicKey;
+          const predicateReference = await MaskedPredicate.calculateReference(
+            algorithm,
+            publicKey,
+            HashAlgorithm.SHA256,
+            nonce
+          );
+          
+          // Create a DirectAddress from the predicate reference's imprint
+          address = await DirectAddress.create(predicateReference.imprint);
+          
+          // Output the results
+          console.log('\nGenerated Masked Address:');
+          console.log('----------------------------------------');
+          console.log(`Address: ${address.toDto()}`);
+          console.log(`Nonce: ${HexConverter.encode(nonce)}`);
+          console.log(`TokenType: ${tokenType.toDto()}`);
+          console.log('----------------------------------------');
+          console.log('IMPORTANT: Keep your secret and nonce secure - they are required to spend from this address.');
+        }
       } catch (error) {
         console.error(JSON.stringify(error));
         console.error(`Error generating address: ${error instanceof Error ? error.message : String(error)}`);

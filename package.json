@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "@unicitylabs/commons": "^2.4.0-rc.ee9b3a5",
-    "@unicitylabs/state-transition-sdk": "^1.4.2",
+    "@unicitylabs/state-transition-sdk": "^1.4.4",
     "commander": "^12.1.0"
   }
 }
