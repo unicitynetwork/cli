@@ -139,7 +139,7 @@ export function mintTokenCommand(program: Command): void {
   program
     .command('mint-token')
     .description('Mint a new token on the Unicity Network')
-    .argument('<endpoint>', 'Aggregator endpoint URL')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://api.unicity.network/aggregator')
     .option('-n, --nonce <nonce>', 'Nonce value (required for masked addresses, will be randomly generated if not provided)')
     .option('-u, --unmasked', 'Generate an unmasked address (default is masked)')
     .option('-i, --token-id <tokenId>', 'Token ID (optional, will be randomly generated if not provided)')
@@ -148,7 +148,9 @@ export function mintTokenCommand(program: Command): void {
     .option('-s, --salt <salt>', 'Salt value (optional, will be randomly generated if not provided)')
     .option('-h, --data-hash <dataHash>', 'Data hash (optional)')
     .option('-r, --reason <reason>', 'Reason for minting (optional)')
-    .action(async (endpoint: string, options) => {
+    .action(async (options) => {
+      // Get the endpoint from options
+      const endpoint = options.endpoint;
       try {
         // Create AggregatorClient and StateTransitionClient
         const aggregatorClient = new AggregatorClient(endpoint);
