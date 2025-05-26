@@ -19,15 +19,15 @@ export function getRequestCommand(program: Command): void {
         // Create AggregatorClient with the specified endpoint
         const client = new AggregatorClient(endpoint);
         
-        // Use RequestId.fromDto to parse the hex request ID
-        const requestId = RequestId.fromDto(requestIdStr);
+        // Use RequestId.fromJSON to parse the hex request ID
+        const requestId = RequestId.fromJSON(requestIdStr);
         
         // Get inclusion proof from the aggregator
         const inclusionProof = await client.getInclusionProof(requestId);
         
         // Output the result in the same format as the original CLI
-        console.log(`STATUS: success`);
-        console.log(`PATH: ${JSON.stringify(inclusionProof.merkleTreePath.toDto(), null, 4)}`);
+        console.log(`STATUS: ${await inclusionProof.verify(requestId.toBigInt())}`);
+        console.log(`PATH: ${JSON.stringify(inclusionProof.merkleTreePath.toJSON(), null, 4)}`);
       } catch (err) {
 	console.error(JSON.stringify(err));
         console.error(`Error getting request: ${JSON.stringify(err instanceof Error ? err.message : String(err))}`);

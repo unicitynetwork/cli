@@ -38,8 +38,12 @@ class SimpleTokenData implements ISerializable {
     return this.data;
   }
 
-  toDto(): string {
+  toJSON(): string {
     return HexConverter.encode(this.data);
+  }
+  
+  toCBOR(): Uint8Array {
+    return this.data;
   }
 }
 
@@ -261,7 +265,7 @@ export function mintTokenCommand(program: Command): void {
         const coinData = new TokenCoinData([]);
         
         // Submit mint transaction
-        console.error('Submitting mint transaction...');
+        console.log('Submitting mint transaction...');
         const mintCommitment = await client.submitMintTransaction(
           recipientAddress,
           tokenId,
@@ -273,11 +277,11 @@ export function mintTokenCommand(program: Command): void {
           reason
         );
         
-        console.error('Transaction submitted. Waiting for inclusion proof...');
+        console.log('Transaction submitted. Waiting for inclusion proof '+mintCommitment.requestId.toJSON()+'...');
         
         // Wait for inclusion proof
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
-        console.error('Inclusion proof received. Creating transaction...');
+        console.log('Inclusion proof received. Creating transaction...');
         
         // Create transaction
         const mintTransaction = await client.createTransaction(mintCommitment, inclusionProof);
