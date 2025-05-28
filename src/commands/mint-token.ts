@@ -16,6 +16,10 @@ import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/MaskedPredicate.js';
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/UnmaskedPredicate.js';
+import { Commitment } from '@unicitylabs/state-transition-sdk/lib/transaction/Commitment.js';
+import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
+import { TransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/TransactionData.js';
+import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/commons/lib/api/InclusionProof.js';
 import * as readline from 'readline';
 
 // Simple token data class that implements ISerializable
@@ -112,10 +116,10 @@ async function processTokenType(tokenTypeOption: string | undefined): Promise<To
 // Function to wait for an inclusion proof with timeout
 async function waitInclusionProof(
   client: StateTransitionClient,
-  commitment: any,
+  commitment: Commitment<TransactionData | MintTransactionData<ISerializable | null>>,
   timeoutMs: number = 30000,
   intervalMs: number = 1000
-): Promise<any> {
+): Promise<InclusionProof> {
   const startTime = Date.now();
   
   // Log commitment info for debugging
@@ -126,8 +130,20 @@ async function waitInclusionProof(
       // Pass the entire commitment object to StateTransitionClient.getInclusionProof
       // StateTransitionClient expects a Commitment object, not just the requestId
       const proof = await client.getInclusionProof(commitment);
+      
       if (proof !== null) {
-        return proof;
+        // Verify the inclusion proof status using requestId.toBigInt()
+        const status = await proof.verify(commitment.requestId.toBigInt());
+        
+        if (status === InclusionProofVerificationStatus.OK) {
+          return proof;
+        } else if (status === InclusionProofVerificationStatus.PATH_NOT_INCLUDED) {
+          // If PATH_NOT_INCLUDED (non-inclusion), continue polling
+          console.error(`Inclusion proof status is ${status}, retrying...`);
+        } else {
+          // If status is anything other than OK or PATH_NOT_INCLUDED, throw an error
+          throw new Error(`Inclusion proof verification failed with status: ${status}`);
+        }
       }
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
