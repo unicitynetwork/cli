@@ -28,12 +28,12 @@ npm run build
 Retrieve an inclusion proof for a specific request ID:
 
 ```bash
-npm run get-request -- <endpoint_url> <request_id>
+npm run get-request -- -e <endpoint_url> <request_id>
 ```
 
 Example:
 ```bash
-npm run get-request -- https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
+npm run get-request -- -e https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
 ```
 
 ### Register Request
@@ -41,12 +41,12 @@ npm run get-request -- https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4
 Register a new state transition request:
 
 ```bash
-npm run register-request -- <endpoint_url> <secret> <state> <transition>
+npm run register-request -- -e <endpoint_url> <secret> <state> <transition>
 ```
 
 Example:
 ```bash
-npm run register-request -- https://gateway-test1.unicity.network:443 mySecretKey "initial state" "new transition"
+npm run register-request -- -e https://gateway-test1.unicity.network:443 mySecretKey "initial state" "new transition"
 ```
 
 ## Development
@@ -59,5 +59,5 @@ npm run dev -- <command> <args>
 
 For example:
 ```bash
-npm run dev -- get-request https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
+npm run dev -- get-request -e https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
 ```
