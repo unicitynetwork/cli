@@ -21,6 +21,8 @@ import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/trans
 import { TransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/TransactionData.js';
 import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/commons/lib/api/InclusionProof.js';
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Simple token data class that implements ISerializable
 class SimpleTokenData implements ISerializable {
@@ -172,9 +174,11 @@ export function mintTokenCommand(program: Command): void {
     .option('-i, --token-id <tokenId>', 'Token ID (optional, will be randomly generated if not provided)')
     .option('-y, --token-type <tokenType>', 'Token type (optional, defaults to hashed "unicity_standard_token_type")')
     .option('-d, --token-data <tokenData>', 'Token data (optional, will be empty if not provided)')
-    .option('-s, --salt <salt>', 'Salt value (optional, will be randomly generated if not provided)')
+    .option('--salt <salt>', 'Salt value (optional, will be randomly generated if not provided)')
     .option('-h, --data-hash <dataHash>', 'Data hash (optional)')
     .option('-r, --reason <reason>', 'Reason for minting (optional)')
+    .option('-o, --output <file>', 'Output file for the token')
+    .option('-s, --save', 'Save token to file with auto-generated name (tokenId.txf)')
     .action(async (options) => {
       // Get the endpoint from options
       const endpoint = options.endpoint;
@@ -239,8 +243,8 @@ export function mintTokenCommand(program: Command): void {
         }
         
         // Create recipient address from predicate
-        recipientAddress = await DirectAddress.create(predicate.reference.imprint);
-        console.error(`Minting token to address: ${recipientAddress.toDto()}`);
+        recipientAddress = await DirectAddress.create(predicate.reference);
+        console.error(`Minting token to address: ${recipientAddress.toJSON()}`);
         
         
         // Process tokenId (validate or generate)
@@ -316,8 +320,21 @@ export function mintTokenCommand(program: Command): void {
           [mintTransaction]
         );
         
+        const tokenJson = JSON.stringify(token.toJSON(), null, 2);
+        
+        // Save token to file if output option is provided
+        if (options.output) {
+          fs.writeFileSync(options.output, tokenJson);
+          console.log(`Token saved to ${options.output}`);
+        } else if (options.save) {
+          // Auto-generate filename based on tokenId
+          const filename = `${tokenId.toJSON()}.txf`;
+          fs.writeFileSync(filename, tokenJson);
+          console.log(`Token saved to ${filename}`);
+        }
+        
         // Output the token as JSON
-        console.log(JSON.stringify(token.toDto(), null, 2));
+        console.log(tokenJson);
       } catch (error) {
         console.error(`Error minting token: ${error instanceof Error ? error.message : String(error)}`);
         if (error instanceof Error && error.stack) {
