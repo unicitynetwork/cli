@@ -100,19 +100,20 @@ export function genAddressCommand(program: Command): void {
           const algorithm = signingService.algorithm;
           const publicKey = signingService.publicKey;
           const predicateReference = await UnmaskedPredicate.calculateReference(
+            tokenType,
             algorithm,
             publicKey,
             HashAlgorithm.SHA256
           );
           
-          // Create a DirectAddress from the predicate reference's imprint
-          address = await DirectAddress.create(predicateReference.imprint);
+          // Create a DirectAddress from the predicate reference
+          address = await DirectAddress.create(predicateReference);
           
           // Output the results
           console.log('\nGenerated Unmasked Address:');
           console.log('----------------------------------------');
-          console.log(`Address: ${address.toDto()}`);
-          console.log(`TokenType: ${tokenType.toDto()}`);
+          console.log(`Address: ${address.toJSON()}`);
+          console.log(`TokenType: ${tokenType.toJSON()}`);
           console.log('----------------------------------------');
           console.log('IMPORTANT: Keep your secret secure - it is required to spend from this address.');
         } else {
@@ -129,21 +130,22 @@ export function genAddressCommand(program: Command): void {
           const algorithm = signingService.algorithm;
           const publicKey = signingService.publicKey;
           const predicateReference = await MaskedPredicate.calculateReference(
+            tokenType,
             algorithm,
             publicKey,
             HashAlgorithm.SHA256,
             nonce
           );
           
-          // Create a DirectAddress from the predicate reference's imprint
-          address = await DirectAddress.create(predicateReference.imprint);
+          // Create a DirectAddress from the predicate reference
+          address = await DirectAddress.create(predicateReference);
           
           // Output the results
           console.log('\nGenerated Masked Address:');
           console.log('----------------------------------------');
-          console.log(`Address: ${address.toDto()}`);
+          console.log(`Address: ${address.toJSON()}`);
           console.log(`Nonce: ${HexConverter.encode(nonce)}`);
-          console.log(`TokenType: ${tokenType.toDto()}`);
+          console.log(`TokenType: ${tokenType.toJSON()}`);
           console.log('----------------------------------------');
           console.log('IMPORTANT: Keep your secret and nonce secure - they are required to spend from this address.');
         }

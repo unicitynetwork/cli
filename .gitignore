@@ -138,3 +138,6 @@ dist
 # Reference materials directory (contains symlinks to other projects)
 ref_materials/
 .idea
+
+# Skip transaction flow (TXF) files
+*.txf
