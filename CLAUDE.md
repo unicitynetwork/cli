@@ -10,6 +10,7 @@
   - `npm run register-request -- <endpoint_url> <secret> <state> <transition>`
   - `npm run gen-address`
   - `npm run mint-token -- <args>`
+  - `npm run verify-token -- -f <token_file> [--secret]`
 
 ## Code Style Guidelines
 - **Formatting**: 2 spaces indentation, consistent spacing

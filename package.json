@@ -17,7 +17,8 @@
     "get-request": "node dist/index.js get-request",
     "register-request": "node dist/index.js register-request",
     "gen-address": "node dist/index.js gen-address",
-    "mint-token": "node dist/index.js mint-token"
+    "mint-token": "node dist/index.js mint-token",
+    "verify-token": "node dist/index.js verify-token"
   },
   "repository": {
     "type": "git",
