@@ -1,30 +1,21 @@
 import { Command } from 'commander';
-import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
-import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
+import { AddressFactory } from '@unicitylabs/state-transition-sdk/lib/address/AddressFactory.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
-import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializable.js';
 import { TokenCoinData } from '@unicitylabs/state-transition-sdk/lib/token/fungible/TokenCoinData.js';
-import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
-import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
-import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { MintCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/MintCommitment.js';
 import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
-import { InclusionProofResponse } from '@unicitylabs/state-transition-sdk/lib/api/InclusionProofResponse.js';
 import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/state-transition-sdk/lib/transaction/InclusionProof.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import { IMintTransactionReason } from '@unicitylabs/state-transition-sdk/lib/transaction/IMintTransactionReason.js';
-import * as readline from 'readline';
 import * as fs from 'fs';
-import * as path from 'path';
 
 // Simple token data class that implements ISerializable
 class SimpleTokenData implements ISerializable {
@@ -53,30 +44,6 @@ class SimpleTokenData implements ISerializable {
   toCBOR(): Uint8Array {
     return this.data;
   }
-}
-
-// Function to read the secret as a password
-async function readSecret(): Promise<string> {
-  // Check if SECRET environment variable is set
-  if (process.env.SECRET) {
-    const secret = process.env.SECRET;
-    // Clear the environment variable for security
-    process.env.SECRET = '';
-    return secret;
-  }
-
-  // If SECRET is not provided, prompt the user
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise<string>((resolve) => {
-    rl.question('Enter secret (password): ', (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
 }
 
 // Function to validate or generate bytes
@@ -187,154 +154,111 @@ export function mintTokenCommand(program: Command): void {
   program
     .command('mint-token')
     .description('Mint a new token on the Unicity Network')
+    .argument('<address>', 'Destination address of the first token owner')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('-n, --nonce <nonce>', 'Nonce value (required for masked addresses, will be randomly generated if not provided)')
-    .option('-u, --unmasked', 'Generate an unmasked address (default is masked)')
-    .option('-i, --token-id <tokenId>', 'Token ID (optional, will be randomly generated if not provided)')
-    .option('-y, --token-type <tokenType>', 'Token type (optional, defaults to hashed "unicity_standard_token_type")')
-    .option('-d, --token-data <tokenData>', 'Token data (optional, will be empty if not provided)')
-    .option('--salt <salt>', 'Salt value (optional, will be randomly generated if not provided)')
-    .option('-h, --data-hash <dataHash>', 'Data hash (optional)')
-    .option('-r, --reason <reason>', 'Reason for minting (optional)')
-    .option('-o, --output <file>', 'Output file for the token')
-    .option('-s, --save', 'Save token to file with auto-generated name (tokenId.txf)')
-    .action(async (options) => {
-      // Get the endpoint from options
-      const endpoint = options.endpoint;
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
+    .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
+    .option('-r, --reason <reason>', 'Reason for minting (optional description)')
+    .option('-c, --coins <coins>', 'Comma-separated list of coin amounts (e.g., "100,200,300")')
+    .option('-m, --metadata <metadata>', 'Initial metadata (JSON string or plain text)')
+    .option('-s, --state <state>', 'Initial state data (hex string or text to be hashed)')
+    .option('-i, --token-id <tokenId>', 'Token ID (hex string or text to be hashed, randomly generated if not provided)')
+    .option('-y, --token-type <tokenType>', 'Token type (hex string or text to be hashed, defaults to "unicity_standard_token_type")')
+    .option('-o, --output <file>', 'Output TXF file path (use "-" for STDOUT)')
+    .option('--stdout', 'Output to STDOUT instead of file')
+    .action(async (address: string, options) => {
+      // Determine endpoint
+      let endpoint = options.endpoint;
+      if (options.local) {
+        endpoint = 'http://localhost:3000';
+      } else if (options.production) {
+        endpoint = 'https://gateway.unicity.network';
+      }
+
       try {
         // Create AggregatorClient and StateTransitionClient
         const aggregatorClient = new AggregatorClient(endpoint);
         const client = new StateTransitionClient(aggregatorClient);
-        
-        // Read the secret (from env var or user input)
-        const secretStr = await readSecret();
-        const secret = new TextEncoder().encode(secretStr);
-        
-        // Determine if generating masked or unmasked address
-        const isUnmasked = options.unmasked === true;
-        
-        // Create predicate and recipient address
-        let predicate;
-        let recipientAddress;
-        
-        if (isUnmasked) {
-          // For unmasked predicate, we don't need a nonce
-          const signingService = await SigningService.createFromSecret(secret);
-          
-          // Process salt (validate or generate) for unmasked predicate
-          const salt = await processHexOrGenerateHash(options.salt, 'salt');
-          
-          // Process tokenType
-          const tokenType = await processTokenType(options.tokenType);
-          
-          // Create a temporary tokenId for predicate creation (will be replaced later)
-          const tempTokenId = new TokenId(crypto.getRandomValues(new Uint8Array(32)));
-          
-          // Create unmasked predicate
-          predicate = await UnmaskedPredicate.create(
-            tempTokenId,
-            tokenType,
-            signingService,
-            HashAlgorithm.SHA256,
-            salt
-          );
-        } else {
-          // For masked predicate, we need a nonce
-          const nonce = await processHexOrGenerateHash(options.nonce, 'nonce');
-          
-          // Process tokenType
-          const tokenType = await processTokenType(options.tokenType);
-          
-          // Create a SigningService with nonce
-          const signingService = await SigningService.createFromSecret(secret, nonce);
-          
-          // Create a temporary tokenId for predicate creation (will be replaced later)
-          const tempTokenId = new TokenId(crypto.getRandomValues(new Uint8Array(32)));
-          
-          // Create masked predicate
-          predicate = await MaskedPredicate.create(
-            tempTokenId,
-            tokenType,
-            signingService,
-            HashAlgorithm.SHA256,
-            nonce
-          );
-        }
-        
-        // Create recipient address from predicate
-        const predicateReference = await predicate.getReference();
-        recipientAddress = await DirectAddress.create(predicateReference.hash);
-        console.error(`Minting token to address: ${recipientAddress.address}`);
-        
-        
+
+        // Parse the recipient address using AddressFactory
+        const recipientAddress = await AddressFactory.createAddress(address);
+        console.error(`Minting token to address: ${address}`);
+
         // Process tokenId (validate or generate)
         const tokenIdBytes = await processHexOrGenerateHash(options.tokenId, 'tokenId');
         const tokenId = new TokenId(tokenIdBytes);
-        
-        // Process tokenType again here for consistency with the token
+
+        // Process tokenType
         const tokenType = await processTokenType(options.tokenType);
-        
-        // Process token data
-        let tokenData: SimpleTokenData;
-        let dataBytes: Uint8Array;
-        if (options.tokenData) {
-          dataBytes = await processHexOrGenerateHash(options.tokenData, 'tokenData');
-          tokenData = new SimpleTokenData(dataBytes);
-        } else {
-          // Use empty data if not provided
-          dataBytes = new Uint8Array(0);
-          tokenData = new SimpleTokenData(dataBytes);
-          console.error('Using empty token data');
-        }
-        
-        // Process salt (validate or generate)
-        const salt = await processHexOrGenerateHash(options.salt, 'salt');
-        
-        // Process data hash (if provided)
-        let dataHash: DataHash | null = null;
-        if (options.dataHash) {
-          const dataHashBytes = await processHexOrGenerateHash(options.dataHash, 'dataHash');
+
+        // Process state data (metadata)
+        let stateBytes: Uint8Array;
+        if (options.state) {
+          stateBytes = await processHexOrGenerateHash(options.state, 'state data');
+        } else if (options.metadata) {
+          // If metadata is provided but not state, use metadata as state
+          const metadataStr = options.metadata;
           const hasher = new DataHasher(HashAlgorithm.SHA256);
-          dataHash = await hasher.update(dataHashBytes).digest();
+          const hash = await hasher.update(new TextEncoder().encode(metadataStr)).digest();
+          stateBytes = hash.data;
+          console.error(`Using metadata as state data: ${HexConverter.encode(stateBytes)}`);
+        } else {
+          // Use empty state if neither provided
+          stateBytes = new Uint8Array(0);
+          console.error('Using empty state data');
         }
-        
+
+        // Process coins
+        let coinData: TokenCoinData;
+        if (options.coins) {
+          const coinAmounts = options.coins.split(',').map((s: string) => BigInt(s.trim()));
+          coinData = TokenCoinData.create(coinAmounts);
+          console.error(`Creating token with ${coinAmounts.length} coins: ${coinAmounts.join(', ')}`);
+        } else {
+          // Create empty coin data (non-fungible token)
+          coinData = TokenCoinData.create([]);
+          console.error('Creating non-fungible token (no coins)');
+        }
+
         // Process reason (if provided)
         const reason = options.reason ? options.reason : null;
-        
-        // Create empty coin data (non-fungible token)
-        const coinData = TokenCoinData.create([]);
+        if (reason) {
+          console.error(`Mint reason: ${reason}`);
+        }
+
+        // Process salt (always generate for mint)
+        const salt = await processHexOrGenerateHash(undefined, 'salt');
+
+        // Create token data wrapper (use state data as custom token data)
+        const tokenData = new SimpleTokenData(stateBytes);
 
         // Create mint transaction data
         const mintTransactionData = await MintTransactionData.create(
           tokenId,
           tokenType,
-          tokenData.encode(),
+          tokenData.encode(),  // Custom token data
           coinData,
           recipientAddress,
           salt,
-          dataHash,
-          reason
+          null,  // Nametag tokens
+          null   // Owner reference (reason is deprecated in favor of owner reference)
         );
 
         // Create mint commitment
         const mintCommitment = await MintCommitment.create(mintTransactionData);
 
         // Submit mint commitment
-        console.log('Submitting mint transaction...');
+        console.error('Submitting mint transaction...');
         const submitResponse = await client.submitMintCommitment(mintCommitment);
-        
-        console.log('Transaction submitted. Waiting for inclusion proof '+mintCommitment.requestId.toJSON()+'...');
-        
+
+        console.error(`Transaction submitted. Waiting for inclusion proof ${mintCommitment.requestId.toJSON()}...`);
+
         // Wait for inclusion proof
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
-        console.log('Inclusion proof received. Creating transaction...');
+        console.error('Inclusion proof received. Creating token...');
 
         // Create mint transaction from commitment
         const mintTransaction = mintCommitment.toTransaction(inclusionProof);
-
-        // Create a token state from the predicate and data
-        // We can now use our predicate directly
-        const tokenState = new TokenState(predicate, dataBytes);
 
         // Create a trust base for token creation
         const trustBase = RootTrustBase.fromJSON({
@@ -350,29 +274,79 @@ export function mintTokenCommand(program: Command): void {
           signatures: {}
         });
 
-        // Create token with Token.mint static method
-        const token = await Token.mint(
-          trustBase,
-          tokenState,
-          mintTransaction,
-          []  // no nametags
-        );
-        
-        const tokenJson = JSON.stringify(token.toJSON(), null, 2);
-        
-        // Save token to file if output option is provided
+        // For TXF file, we just need to save the transaction data
+        // The token structure for TXF doesn't require a full Token object
+        // We'll create a TXF-compatible JSON structure
+        const txfToken = {
+          version: "2.0",
+          id: tokenId.toJSON(),
+          type: coinData.coins.length > 0 ? "fungible" : "nft",
+          state: {
+            data: stateBytes.length > 0 ? HexConverter.encode(stateBytes) : null,
+            unlockPredicate: null  // Will be set by recipient when they claim
+          },
+          genesis: {
+            data: {
+              tokenId: tokenId.toJSON(),
+              tokenType: tokenType.toJSON(),
+              tokenData: stateBytes.length > 0 ? HexConverter.encode(stateBytes) : null,
+              recipient: address
+            }
+          },
+          transactions: [
+            {
+              type: "mint",
+              data: mintTransaction.toJSON(),
+              inclusionProof: inclusionProof.toJSON()
+            }
+          ],
+          status: "CONFIRMED",
+          ...(coinData.coins.length > 0 && {
+            amount: coinData.coins.reduce((sum, coin) => sum + coin[1], BigInt(0)).toString(),
+            coins: coinData.coins.map(([coinId, amount]) => ({
+              id: HexConverter.encode(coinId.bytes),
+              amount: amount.toString()
+            }))
+          }),
+          ...(reason && { reason }),
+          ...(options.metadata && { metadata: options.metadata })
+        };
+
+        const tokenJson = JSON.stringify(txfToken, null, 2);
+
+        // Generate default filename if needed
+        let outputFile: string | null = null;
         if (options.output) {
-          fs.writeFileSync(options.output, tokenJson);
-          console.log(`Token saved to ${options.output}`);
-        } else if (options.save) {
-          // Auto-generate filename based on tokenId
-          const filename = `${tokenId.toJSON()}.txf`;
-          fs.writeFileSync(filename, tokenJson);
-          console.log(`Token saved to ${filename}`);
+          outputFile = options.output;
+        } else if (!options.stdout) {
+          // Auto-generate filename based on date, time, and address
+          const now = new Date();
+          const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+          const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
+          const timestamp = Date.now();
+
+          // Extract first 10 chars of address (without SCHEME prefix)
+          const addressParts = address.split(':');
+          const addressBody = addressParts.length > 1 ? addressParts[1] : addressParts[0];
+          const addressPrefix = addressBody.substring(0, 10);
+
+          outputFile = `${dateStr}_${timeStr}_${timestamp}_${addressPrefix}.txf`;
         }
-        
-        // Output the token as JSON
-        console.log(tokenJson);
+
+        // Output to file or stdout
+        if (options.output === '-' || options.stdout) {
+          // Output to STDOUT
+          console.log(tokenJson);
+        } else if (outputFile) {
+          // Save to file
+          fs.writeFileSync(outputFile, tokenJson);
+          console.error(`Token saved to ${outputFile}`);
+          // Also output to stdout for pipeline use
+          console.log(tokenJson);
+        } else {
+          // Just output to stdout
+          console.log(tokenJson);
+        }
       } catch (error) {
         console.error(`Error minting token: ${error instanceof Error ? error.message : String(error)}`);
         if (error instanceof Error && error.stack) {
