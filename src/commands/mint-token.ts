@@ -9,6 +9,7 @@ import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/Sta
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializable.js';
 import { TokenCoinData } from '@unicitylabs/state-transition-sdk/lib/token/fungible/TokenCoinData.js';
+import { CoinId } from '@unicitylabs/state-transition-sdk/lib/token/fungible/CoinId.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
 import { MintCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/MintCommitment.js';
 import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
@@ -136,19 +137,50 @@ async function processInput(
   return textBytes;
 }
 
-// Function to process token type with default
-async function processTokenType(tokenTypeOption: string | undefined): Promise<TokenType> {
+// Function to process token type with preset or custom input
+async function processTokenType(
+  tokenTypeOption: string | undefined,
+  preset: string | undefined
+): Promise<{ tokenType: TokenType; presetInfo?: any }> {
+  // If preset is specified, use it
+  if (preset) {
+    const presetKey = preset.toLowerCase();
+    const presetType = UNICITY_TOKEN_TYPES[presetKey as keyof typeof UNICITY_TOKEN_TYPES];
+
+    if (!presetType) {
+      throw new Error(`Unknown preset "${preset}". Available: nft, alpha, uct, usdu, euru`);
+    }
+
+    const tokenTypeBytes = HexConverter.decode(presetType.id);
+    console.error(`Using preset token type "${preset}" (${presetType.name})`);
+    console.error(`  TokenType ID: ${presetType.id}`);
+    console.error(`  Asset kind: ${presetType.assetKind}`);
+    if ('symbol' in presetType) {
+      console.error(`  Symbol: ${presetType.symbol}`);
+    }
+
+    return {
+      tokenType: new TokenType(tokenTypeBytes),
+      presetInfo: presetType
+    };
+  }
+
+  // If custom token type is provided
   if (tokenTypeOption) {
     const tokenTypeBytes = await processInput(tokenTypeOption, 'tokenType', { requireHash: true });
-    return new TokenType(tokenTypeBytes);
-  } else {
-    // Default to hash of "unicity_standard_token_type"
-    const defaultTypeStr = "unicity_standard_token_type";
-    const hasher = new DataHasher(HashAlgorithm.SHA256);
-    const hash = await hasher.update(new TextEncoder().encode(defaultTypeStr)).digest();
-    console.error(`Using default token type (hash of "${defaultTypeStr}"): ${HexConverter.encode(hash.data)}`);
-    return new TokenType(hash.data);
+    return { tokenType: new TokenType(tokenTypeBytes) };
   }
+
+  // Default to Unicity NFT type
+  const defaultPreset = UNICITY_TOKEN_TYPES.nft;
+  const tokenTypeBytes = HexConverter.decode(defaultPreset.id);
+  console.error(`Using default NFT token type (${defaultPreset.name})`);
+  console.error(`  TokenType ID: ${defaultPreset.id}`);
+
+  return {
+    tokenType: new TokenType(tokenTypeBytes),
+    presetInfo: defaultPreset
+  };
 }
 
 // Function to wait for an inclusion proof with timeout
@@ -217,6 +249,50 @@ async function waitInclusionProof(
   throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
 }
 
+// Unicity standard token types from https://github.com/unicitynetwork/unicity-ids
+const UNICITY_TOKEN_TYPES = {
+  // Non-fungible (NFT)
+  'nft': {
+    id: 'f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509',
+    name: 'unicity',
+    description: 'Unicity testnet NFT token type',
+    assetKind: 'non-fungible'
+  },
+  // Fungible coins
+  'alpha': {
+    id: '455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89',
+    name: 'unicity',
+    symbol: 'UCT',
+    decimals: 18,
+    description: 'Unicity testnet native coin',
+    assetKind: 'fungible'
+  },
+  'uct': {
+    id: '455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89',
+    name: 'unicity',
+    symbol: 'UCT',
+    decimals: 18,
+    description: 'Unicity testnet native coin',
+    assetKind: 'fungible'
+  },
+  'usdu': {
+    id: '8f0f3d7a5e7297be0ee98c63b81bcebb2740f43f616566fc290f9823a54f52d7',
+    name: 'unicity-usd',
+    symbol: 'USDU',
+    decimals: 6,
+    description: 'Unicity testnet USD stablecoin',
+    assetKind: 'fungible'
+  },
+  'euru': {
+    id: '5e160d5e9fdbb03b553fb9c3f6e6c30efa41fa807be39fb4f18e43776e492925',
+    name: 'unicity-eur',
+    symbol: 'EURU',
+    decimals: 6,
+    description: 'Unicity testnet EUR stablecoin',
+    assetKind: 'fungible'
+  }
+};
+
 export function mintTokenCommand(program: Command): void {
   program
     .command('mint-token')
@@ -225,12 +301,13 @@ export function mintTokenCommand(program: Command): void {
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
+    .option('--preset <type>', 'Use preset token type: nft, alpha/uct, usdu, euru')
     .option('-r, --reason <reason>', 'Reason for minting (optional description)')
     .option('-c, --coins <coins>', 'Comma-separated list of coin amounts (e.g., "100,200,300")')
     .option('-m, --metadata <metadata>', 'Initial metadata (JSON string or plain text)')
     .option('-s, --state <state>', 'Initial state data (hex string or text to be hashed)')
     .option('-i, --token-id <tokenId>', 'Token ID (hex string or text to be hashed, randomly generated if not provided)')
-    .option('-y, --token-type <tokenType>', 'Token type (hex string or text to be hashed, defaults to "unicity_standard_token_type")')
+    .option('-y, --token-type <tokenType>', 'Token type (hex string or text to be hashed, defaults to unicity NFT type)')
     .option('-o, --output <file>', 'Output TXF file path (use "-" for STDOUT)')
     .option('--stdout', 'Output to STDOUT instead of file')
     .action(async (address: string, options) => {
@@ -255,8 +332,8 @@ export function mintTokenCommand(program: Command): void {
         const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true });
         const tokenId = new TokenId(tokenIdBytes);
 
-        // Process tokenType - must be 256-bit (64 hex chars) or will be hashed
-        const tokenType = await processTokenType(options.tokenType);
+        // Process tokenType with preset support
+        const { tokenType, presetInfo } = await processTokenType(options.tokenType, options.preset);
 
         // Process state data (metadata) - accepts any format
         let stateBytes: Uint8Array;
@@ -273,16 +350,30 @@ export function mintTokenCommand(program: Command): void {
           console.error('Using empty state data');
         }
 
-        // Process coins
+        // Process coins - handle preset fungible tokens
         let coinData: TokenCoinData;
         if (options.coins) {
+          // Manual coin specification - each amount creates a coin with auto-generated ID
           const coinAmounts = options.coins.split(',').map((s: string) => BigInt(s.trim()));
-          coinData = TokenCoinData.create(coinAmounts);
+          const coinsWithIds: [CoinId, bigint][] = coinAmounts.map((amount: bigint, index: number) => {
+            // Generate a unique CoinId for each coin
+            const coinIdBytes = crypto.getRandomValues(new Uint8Array(32));
+            return [new CoinId(coinIdBytes), amount];
+          });
+          coinData = TokenCoinData.create(coinsWithIds);
           console.error(`Creating token with ${coinAmounts.length} coins: ${coinAmounts.join(', ')}`);
+        } else if (presetInfo && presetInfo.assetKind === 'fungible') {
+          // Preset fungible token without explicit coins - create single coin with amount 0
+          // This follows the convention that fungible tokens need at least one coin
+          const defaultCoinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
+          coinData = TokenCoinData.create([[defaultCoinId, BigInt(0)]]);
+          const symbol = 'symbol' in presetInfo ? presetInfo.symbol : presetInfo.name;
+          console.error(`Creating fungible ${symbol} token with default coin (amount: 0)`);
+          console.error(`  Note: Use -c option to specify coin amounts (e.g., -c "1000000000000000000" for 1 ${symbol})`);
         } else {
-          // Create empty coin data (non-fungible token)
+          // Non-fungible token (NFT)
           coinData = TokenCoinData.create([]);
-          console.error('Creating non-fungible token (no coins)');
+          console.error('Creating non-fungible token (NFT)');
         }
 
         // Process reason (if provided)
@@ -374,6 +465,15 @@ export function mintTokenCommand(program: Command): void {
               id: HexConverter.encode(coinId.bytes),
               amount: amount.toString()
             }))
+          }),
+          ...(presetInfo && {
+            tokenInfo: {
+              name: presetInfo.name,
+              ...(presetInfo.symbol && { symbol: presetInfo.symbol }),
+              ...(presetInfo.decimals !== undefined && { decimals: presetInfo.decimals }),
+              description: presetInfo.description,
+              assetKind: presetInfo.assetKind
+            }
           }),
           ...(reason && { reason }),
           ...(options.metadata && { metadata: options.metadata })
