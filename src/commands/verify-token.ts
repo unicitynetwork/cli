@@ -2,11 +2,12 @@ import { Command } from 'commander';
 import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
-import { TokenFactory } from '@unicitylabs/state-transition-sdk/lib/token/TokenFactory.js';
-import { PredicateFactory } from '@unicitylabs/state-transition-sdk/lib/predicate/PredicateFactory.js';
+import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializable.js';
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
+import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
+import { EncodedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/EncodedPredicate.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import * as readline from 'readline';
 import * as fs from 'fs';
@@ -91,53 +92,78 @@ export function verifyTokenCommand(program: Command): void {
         const tokenData = JSON.parse(tokenFileContent);
         
         try {
-          // Create a token object using TokenFactory and PredicateFactory
-          const tokenFactory = new TokenFactory(new PredicateFactory());
-          const token = await tokenFactory.create(tokenData, SimpleTokenData.fromJSON);
-          
+          // Create a token object from JSON
+          const token = await Token.fromJSON(tokenData);
+
           // Display token information
           console.log('=== Token Information ===');
           console.log(`Token ID: ${token.id.toJSON()}`);
           console.log(`Token Type: ${token.type.toJSON()}`);
           console.log(`Version: ${token.version}`);
-          
+
           // Display coin data
           if (token.coins) {
             console.log('\n=== Coin Data ===');
-            // Assuming there's a way to access coin values
-            console.log(JSON.stringify(token.coins, null, 2));
+            console.log(JSON.stringify(token.coins.toJSON(), null, 2));
           } else {
             console.log('\n=== Coin Data ===');
             console.log('No coin data (Non-fungible token)');
           }
-          
+
           // Display immutable data
           console.log('\n=== Immutable Data ===');
           if (token.data) {
-            console.log(`Data: ${token.data.toJSON()}`);
+            console.log(`Data: ${HexConverter.encode(token.data)}`);
           } else {
             console.log('No immutable data');
           }
-          
+
           // Display current state
           console.log('\n=== Current State ===');
-          console.log(`Predicate Type: ${token.state.unlockPredicate.type}`);
-          console.log(`Address: ${(await DirectAddress.create(token.state.unlockPredicate.reference)).toJSON()}`);
-          
+          // Get predicate from state and check its type
+          const predicate = token.state.predicate;
+          if (predicate instanceof EncodedPredicate) {
+            console.log(`Predicate Type: encoded`);
+            console.log(`Predicate Engine: ${predicate.engine}`);
+            // EncodedPredicate doesn't have getReference method
+            console.log(`Note: Address calculation not available for encoded predicates`);
+          } else {
+            console.log(`Predicate Type: ${predicate.constructor.name}`);
+            // Try to get reference if the predicate supports it
+            try {
+              if ('getReference' in predicate && typeof predicate.getReference === 'function') {
+                const predicateRef = await predicate.getReference();
+                if ('getHash' in predicateRef && typeof predicateRef.getHash === 'function') {
+                  const hash = predicateRef.getHash();
+                  console.log(`Predicate Reference: ${HexConverter.encode(hash.data)}`);
+                  // Create address from predicate reference
+                  const address = await DirectAddress.create(hash);
+                  console.log(`Address: ${address.address}`);
+                } else {
+                  console.log(`Note: Unable to calculate address for this predicate type`);
+                }
+              } else {
+                console.log(`Note: This predicate type doesn't support address calculation`);
+              }
+            } catch (err) {
+              console.log(`Note: Unable to calculate address - ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           // Display state data
           if (token.state.data) {
             console.log(`State Data: ${HexConverter.encode(token.state.data)}`);
           } else {
             console.log('No state data');
           }
-          
+
           // Display transaction history
           console.log('\n=== Transaction History ===');
-          console.log(`Number of transactions: ${token.transactions.length}`);
+          console.log(`Genesis transaction exists: yes`);
+          console.log(`Number of transfer transactions: ${token.transactions.length}`);
           token.transactions.forEach((tx, index) => {
             console.log(`\nTransaction ${index + 1}:`);
-            console.log(`  Type: ${tx.data.constructor.name}`);
-            console.log(`  Request ID: ${tx.commitment.requestId.toJSON()}`);
+            console.log(`  Type: transfer`);
           });
           
           // Handle secret verification if needed

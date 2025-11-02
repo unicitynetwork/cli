@@ -1,13 +1,14 @@
 import { Command } from 'commander';
-import { SigningService } from '@unicitylabs/commons/lib/signing/SigningService.js';
-import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
-import { DataHasher } from '@unicitylabs/commons/lib/hash/DataHasher.js';
-import { DataHash } from '@unicitylabs/commons/lib/hash/DataHash.js';
+import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
+import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
+import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
+import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/MaskedPredicate.js';
-import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/UnmaskedPredicate.js';
+import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
+import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
 import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
+import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import * as readline from 'readline';
 
 // Function to read the secret as a password
@@ -81,7 +82,7 @@ export function genAddressCommand(program: Command): void {
           tokenTypeBytes = hash.data;
           console.log(`Using default token type (hash of "${defaultTypeStr}"): ${HexConverter.encode(tokenTypeBytes)}`);
         }
-        const tokenType = TokenType.create(tokenTypeBytes);
+        const tokenType = new TokenType(tokenTypeBytes);
 
         // Determine if generating masked or unmasked address
         const isUnmasked = options.unmasked === true;
@@ -95,24 +96,29 @@ export function genAddressCommand(program: Command): void {
           
           // Create a SigningService from the secret without nonce
           const signingService = await SigningService.createFromSecret(secret);
-          
-          // Calculate the predicate reference directly
-          const algorithm = signingService.algorithm;
-          const publicKey = signingService.publicKey;
-          const predicateReference = await UnmaskedPredicate.calculateReference(
+
+          // Create a dummy tokenId for address generation
+          const dummyTokenId = new TokenId(new Uint8Array(32));
+
+          // Create unmasked predicate
+          const predicate = await UnmaskedPredicate.create(
+            dummyTokenId,
             tokenType,
-            algorithm,
-            publicKey,
-            HashAlgorithm.SHA256
+            signingService,
+            HashAlgorithm.SHA256,
+            new Uint8Array(32)  // salt
           );
-          
+
+          // Get the predicate reference
+          const predicateReference = await predicate.getReference();
+
           // Create a DirectAddress from the predicate reference
-          address = await DirectAddress.create(predicateReference);
+          address = await DirectAddress.create(predicateReference.hash);
           
           // Output the results
           console.log('\nGenerated Unmasked Address:');
           console.log('----------------------------------------');
-          console.log(`Address: ${address.toJSON()}`);
+          console.log(`Address: ${address.address}`);
           console.log(`TokenType: ${tokenType.toJSON()}`);
           console.log('----------------------------------------');
           console.log('IMPORTANT: Keep your secret secure - it is required to spend from this address.');
@@ -125,25 +131,29 @@ export function genAddressCommand(program: Command): void {
           
           // Create a SigningService from the secret with nonce
           const signingService = await SigningService.createFromSecret(secret, nonce);
-          
-          // Calculate the predicate reference directly
-          const algorithm = signingService.algorithm;
-          const publicKey = signingService.publicKey;
-          const predicateReference = await MaskedPredicate.calculateReference(
+
+          // Create a dummy tokenId for address generation
+          const dummyTokenId = new TokenId(new Uint8Array(32));
+
+          // Create masked predicate
+          const predicate = MaskedPredicate.create(
+            dummyTokenId,
             tokenType,
-            algorithm,
-            publicKey,
+            signingService,
             HashAlgorithm.SHA256,
             nonce
           );
-          
+
+          // Get the predicate reference
+          const predicateReference = await predicate.getReference();
+
           // Create a DirectAddress from the predicate reference
-          address = await DirectAddress.create(predicateReference);
+          address = await DirectAddress.create(predicateReference.hash);
           
           // Output the results
           console.log('\nGenerated Masked Address:');
           console.log('----------------------------------------');
-          console.log(`Address: ${address.toJSON()}`);
+          console.log(`Address: ${address.address}`);
           console.log(`Nonce: ${HexConverter.encode(nonce)}`);
           console.log(`TokenType: ${tokenType.toJSON()}`);
           console.log('----------------------------------------');

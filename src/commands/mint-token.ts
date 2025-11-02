@@ -1,8 +1,8 @@
 import { Command } from 'commander';
-import { SigningService } from '@unicitylabs/commons/lib/signing/SigningService.js';
-import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
-import { DataHasher } from '@unicitylabs/commons/lib/hash/DataHasher.js';
-import { DataHash } from '@unicitylabs/commons/lib/hash/DataHash.js';
+import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
+import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
+import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
+import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
@@ -14,12 +14,14 @@ import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializab
 import { TokenCoinData } from '@unicitylabs/state-transition-sdk/lib/token/fungible/TokenCoinData.js';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
-import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/MaskedPredicate.js';
-import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/UnmaskedPredicate.js';
-import { Commitment } from '@unicitylabs/state-transition-sdk/lib/transaction/Commitment.js';
+import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
+import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
+import { MintCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/MintCommitment.js';
 import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
-import { TransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/TransactionData.js';
-import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/commons/lib/api/InclusionProof.js';
+import { InclusionProofResponse } from '@unicitylabs/state-transition-sdk/lib/api/InclusionProofResponse.js';
+import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/state-transition-sdk/lib/transaction/InclusionProof.js';
+import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
+import { IMintTransactionReason } from '@unicitylabs/state-transition-sdk/lib/transaction/IMintTransactionReason.js';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -112,13 +114,13 @@ async function processTokenType(tokenTypeOption: string | undefined): Promise<To
     tokenTypeBytes = hash.data;
     console.error(`Using default token type (hash of "${defaultTypeStr}"): ${HexConverter.encode(tokenTypeBytes)}`);
   }
-  return TokenType.create(tokenTypeBytes);
+  return new TokenType(tokenTypeBytes);
 }
 
 // Function to wait for an inclusion proof with timeout
 async function waitInclusionProof(
   client: StateTransitionClient,
-  commitment: Commitment<TransactionData | MintTransactionData<ISerializable | null>>,
+  commitment: MintCommitment<IMintTransactionReason>,
   timeoutMs: number = 30000,
   intervalMs: number = 1000
 ): Promise<InclusionProof> {
@@ -130,13 +132,30 @@ async function waitInclusionProof(
   while (Date.now() - startTime < timeoutMs) {
     try {
       // Pass the entire commitment object to StateTransitionClient.getInclusionProof
-      // StateTransitionClient expects a Commitment object, not just the requestId
-      const proof = await client.getInclusionProof(commitment);
-      
-      if (proof !== null) {
-        // Verify the inclusion proof status using requestId.toBigInt()
-        const status = await proof.verify(commitment.requestId.toBigInt());
-        
+      // StateTransitionClient expects a Commitment object
+      const proofResponse = await client.getInclusionProof(commitment);
+
+      if (proofResponse !== null && proofResponse.inclusionProof) {
+        // Create InclusionProof from the response
+        const proof = InclusionProof.fromJSON(proofResponse);
+
+        // Create a trust base for verification (using minimal trust base for now)
+        const trustBase = RootTrustBase.fromJSON({
+          version: "1",
+          networkId: 1,
+          epoch: "0",
+          epochStartRound: "0",
+          rootNodes: [],
+          quorumThreshold: "0",
+          stateHash: HexConverter.encode(new Uint8Array(32)),
+          changeRecordHash: null,
+          previousEntryHash: null,
+          signatures: {}
+        });
+
+        // Verify the inclusion proof status
+        const status = await proof.verify(trustBase, commitment.requestId);
+
         if (status === InclusionProofVerificationStatus.OK) {
           return proof;
         } else if (status === InclusionProofVerificationStatus.PATH_NOT_INCLUDED) {
@@ -156,7 +175,7 @@ async function waitInclusionProof(
         throw err;
       }
     }
-    
+
     // Wait for the next interval
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
@@ -209,7 +228,7 @@ export function mintTokenCommand(program: Command): void {
           const tokenType = await processTokenType(options.tokenType);
           
           // Create a temporary tokenId for predicate creation (will be replaced later)
-          const tempTokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+          const tempTokenId = new TokenId(crypto.getRandomValues(new Uint8Array(32)));
           
           // Create unmasked predicate
           predicate = await UnmaskedPredicate.create(
@@ -230,7 +249,7 @@ export function mintTokenCommand(program: Command): void {
           const signingService = await SigningService.createFromSecret(secret, nonce);
           
           // Create a temporary tokenId for predicate creation (will be replaced later)
-          const tempTokenId = TokenId.create(crypto.getRandomValues(new Uint8Array(32)));
+          const tempTokenId = new TokenId(crypto.getRandomValues(new Uint8Array(32)));
           
           // Create masked predicate
           predicate = await MaskedPredicate.create(
@@ -243,13 +262,14 @@ export function mintTokenCommand(program: Command): void {
         }
         
         // Create recipient address from predicate
-        recipientAddress = await DirectAddress.create(predicate.reference);
-        console.error(`Minting token to address: ${recipientAddress.toJSON()}`);
+        const predicateReference = await predicate.getReference();
+        recipientAddress = await DirectAddress.create(predicateReference.hash);
+        console.error(`Minting token to address: ${recipientAddress.address}`);
         
         
         // Process tokenId (validate or generate)
         const tokenIdBytes = await processHexOrGenerateHash(options.tokenId, 'tokenId');
-        const tokenId = TokenId.create(tokenIdBytes);
+        const tokenId = new TokenId(tokenIdBytes);
         
         // Process tokenType again here for consistency with the token
         const tokenType = await processTokenType(options.tokenType);
@@ -282,42 +302,60 @@ export function mintTokenCommand(program: Command): void {
         const reason = options.reason ? options.reason : null;
         
         // Create empty coin data (non-fungible token)
-        const coinData = new TokenCoinData([]);
-        
-        // Submit mint transaction
-        console.log('Submitting mint transaction...');
-        const mintCommitment = await client.submitMintTransaction(
-          recipientAddress,
+        const coinData = TokenCoinData.create([]);
+
+        // Create mint transaction data
+        const mintTransactionData = await MintTransactionData.create(
           tokenId,
           tokenType,
-          tokenData,
+          tokenData.encode(),
           coinData,
+          recipientAddress,
           salt,
           dataHash,
           reason
         );
+
+        // Create mint commitment
+        const mintCommitment = await MintCommitment.create(mintTransactionData);
+
+        // Submit mint commitment
+        console.log('Submitting mint transaction...');
+        const submitResponse = await client.submitMintCommitment(mintCommitment);
         
         console.log('Transaction submitted. Waiting for inclusion proof '+mintCommitment.requestId.toJSON()+'...');
         
         // Wait for inclusion proof
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
         console.log('Inclusion proof received. Creating transaction...');
-        
-        // Create transaction
-        const mintTransaction = await client.createTransaction(mintCommitment, inclusionProof);
-        
+
+        // Create mint transaction from commitment
+        const mintTransaction = mintCommitment.toTransaction(inclusionProof);
+
         // Create a token state from the predicate and data
         // We can now use our predicate directly
-        const tokenState = await TokenState.create(predicate, dataBytes);
-        
-        // Create token with the token state
-        const token = new Token(
-          tokenId,
-          tokenType,
-          tokenData,
-          coinData,
+        const tokenState = new TokenState(predicate, dataBytes);
+
+        // Create a trust base for token creation
+        const trustBase = RootTrustBase.fromJSON({
+          version: "1",
+          networkId: 1,
+          epoch: "0",
+          epochStartRound: "0",
+          rootNodes: [],
+          quorumThreshold: "0",
+          stateHash: HexConverter.encode(new Uint8Array(32)),
+          changeRecordHash: null,
+          previousEntryHash: null,
+          signatures: {}
+        });
+
+        // Create token with Token.mint static method
+        const token = await Token.mint(
+          trustBase,
           tokenState,
-          [mintTransaction]
+          mintTransaction,
+          []  // no nametags
         );
         
         const tokenJson = JSON.stringify(token.toJSON(), null, 2);

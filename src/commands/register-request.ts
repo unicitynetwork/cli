@@ -1,10 +1,10 @@
 import { Command } from 'commander';
-import { DataHasher } from '@unicitylabs/commons/lib/hash/DataHasher.js';
-import { HashAlgorithm } from '@unicitylabs/commons/lib/hash/HashAlgorithm.js';
-import { SigningService } from '@unicitylabs/commons/lib/signing/SigningService.js';
-import { RequestId } from '@unicitylabs/commons/lib/api/RequestId.js';
-import { Authenticator } from '@unicitylabs/commons/lib/api/Authenticator.js';
-import { DataHash } from '@unicitylabs/commons/lib/hash/DataHash.js';
+import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
+import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
+import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
+import { RequestId } from '@unicitylabs/state-transition-sdk/lib/api/RequestId.js';
+import { Authenticator } from '@unicitylabs/state-transition-sdk/lib/api/Authenticator.js';
+import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { TextEncoder } from 'util';
 
@@ -40,8 +40,8 @@ export function registerRequestCommand(program: Command): void {
         // Create authenticator
         const authenticator = await Authenticator.create(signingService, transactionHash, stateHash);
         
-        // Submit the transaction
-        const result = await client.submitTransaction(requestId, transactionHash, authenticator);
+        // Submit the commitment
+        const result = await client.submitCommitment(requestId, transactionHash, authenticator);
         
         if (result.status === 'SUCCESS') {
           console.log(`Request successfully registered. Request ID: ${requestId.toJSON()}`);
