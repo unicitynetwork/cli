@@ -2,34 +2,55 @@
 
 ## Overview
 
-The `mint-token` command creates new tokens on the Unicity Network with intelligent data serialization and flexible input formats.
+The `mint-token` command creates new tokens on the Unicity Network using a **self-mint pattern** where tokens are minted directly to your own address derived from your secret key. This ensures you maintain ownership and control of newly minted tokens.
 
 ## Basic Usage
 
 ```bash
-npm run mint-token -- <address> [options]
+SECRET="your-secret" npm run mint-token -- [options]
+# OR
+npm run mint-token -- [options]  # Will prompt for secret interactively
 ```
 
-### Required Argument
+### Authentication
 
-- **`<address>`** - Destination address of the first token owner
-  - Example: `unicity:direct:a1b2c3d4e5f6...`
+The command requires a secret (password/private key) to:
+1. Derive your public key and address
+2. Create ownership predicate (masked or unmasked)
+3. Sign the token for secure ownership
+
+**Two ways to provide the secret:**
+
+1. **Environment Variable** (recommended for scripts):
+   ```bash
+   SECRET="my-secret-password" npm run mint-token -- [options]
+   ```
+
+2. **Interactive Prompt** (recommended for manual use):
+   ```bash
+   npm run mint-token -- [options]
+   # Enter secret (password): ****
+   ```
+
+### No Address Argument Required
+
+Unlike older versions, you **do NOT** provide a destination address. The token is automatically minted to your address derived from your secret.
 
 ### Common Options
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| `--preset <type>` | Use official token type | `nft`, `alpha`, `uct`, `usdu`, `euru` |
+| `-n, --nonce <nonce>` | Nonce for masked predicate | `"unique-nonce-001"` or random if not provided |
+| `-u, --unmasked` | Use unmasked predicate (reusable address) | - |
 | `-i, --token-id <id>` | Token identifier | `"my-nft-001"` or 64-char hex |
 | `-y, --token-type <type>` | Token type | `"MyTokenType"` or 64-char hex |
-| `-m, --metadata <data>` | Initial metadata | `'{"name":"My NFT"}'` |
-| `-s, --state <data>` | Initial state data | `"State description"` |
-| `-r, --reason <text>` | Minting reason | `"Airdrop campaign"` |
-| `-c, --coins <amounts>` | Coin amounts (fungible) | `"100,200,300"` |
+| `-d, --token-data <data>` | Token data (metadata/state) | `'{"name":"My NFT"}'` |
+| `--salt <salt>` | Salt for token creation | `"custom-salt"` or random if not provided |
+| `-h, --data-hash <hash>` | Hash of token data | 64-char hex |
+| `-r, --reason <text>` | Minting reason | `"Initial mint"` |
 | `-o, --output <file>` | Output file path | `token.txf` or `-` for stdout |
-| `--stdout` | Output to stdout | - |
-| `--local` | Use local aggregator | - |
-| `--production` | Use production aggregator | - |
+| `-s, --save` | Auto-save to timestamped file | - |
+| `-e, --endpoint <url>` | Custom aggregator endpoint | `https://gateway.unicity.network` |
 
 ## Smart Serialization
 
@@ -63,240 +84,208 @@ These fields accept **any format** and preserve structure:
 
 **Key Point**: JSON is NOT hashed - it's preserved as UTF-8 bytes for later parsing.
 
-## Preset Token Types
+## Predicate Types
 
-The command includes official Unicity token types from the [unicity-ids repository](https://github.com/unicitynetwork/unicity-ids). Use the `--preset` option for quick minting of standard tokens.
+### Masked Predicate (Default - One-Time Address)
 
-### Available Presets
+- **Default behavior** when `-u` flag is NOT used
+- Creates a unique, **one-time-use address** for this specific token
+- More private - each token has a different address
+- Requires nonce (random if not specified with `-n`)
 
-| Preset | Token Name | Symbol | Decimals | Asset Kind | Token Type ID |
-|--------|------------|--------|----------|------------|---------------|
-| `nft` | Unicity NFT | - | - | non-fungible | `f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509` |
-| `alpha` or `uct` | Unicity Coin | UCT | 18 | fungible | `455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89` |
-| `usdu` | Unicity USD | USDU | 6 | fungible | `8f0f3d7a5e7297be0ee98c63b81bcebb2740f43f616566fc290f9823a54f52d7` |
-| `euru` | Unicity EUR | EURU | 6 | fungible | `5e160d5e9fdbb03b553fb9c3f6e6c30efa41fa807be39fb4f18e43776e492925` |
-
-### Preset Behavior
-
-**Non-Fungible (NFT)**:
-- Creates a unique token with no coin amounts
-- Ideal for collectibles, certificates, and unique assets
-
-**Fungible (UCT, USDU, EURU)**:
-- If `--coins` is specified: Creates token with specified coin amounts
-- If `--coins` is NOT specified: Automatically creates ONE coin with amount `1000000000000000000` (1.0 in base units)
-- Token metadata includes symbol and decimals information
-
-### Preset vs Manual Mode
-
-**Using Presets** (recommended for standard tokens):
 ```bash
---preset nft              # Official Unicity NFT type
---preset alpha            # Official Unicity native coin (UCT)
+SECRET="my-secret" npm run mint-token -- [options]
+# Uses masked predicate (default)
 ```
 
-**Manual Mode** (for custom tokens):
+### Unmasked Predicate (Reusable Address)
+
+- **Enabled with `-u` flag**
+- Creates a **reusable address** that's the same for all tokens from your secret
+- More convenient for receiving multiple tokens
+- Address can be shared publicly
+
 ```bash
--y "MyCustomType"         # Custom token type (will be hashed)
--y a1b2c3d4...            # Explicit 256-bit token type ID
+SECRET="my-secret" npm run mint-token -- -u [options]
+# Uses unmasked predicate (reusable address)
 ```
 
 ## Examples
 
-### Preset Examples
+### Basic Examples
 
-#### Example 1: Mint Official Unicity NFT
+#### Example 1: Mint Simple NFT to Your Address
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 --preset nft \
-  -m '{"name":"Genesis Collection #1","rarity":"legendary"}'
+SECRET="my-secret-password" npm run mint-token -- \
+  -d '{"name":"My First NFT","description":"A test NFT"}'
 ```
 
-- Uses official Unicity NFT token type
-- TokenId automatically generated (random)
-- Metadata includes NFT properties
-- Creates non-fungible token
+- Mints to your address (derived from secret)
+- Uses masked predicate (one-time address)
+- TokenId and nonce automatically generated
+- Token data includes name and description
+- Auto-saves to timestamped .txf file
 
-#### Example 2: Mint Alpha/UCT Tokens
+#### Example 2: Mint with Reusable Address
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 --preset alpha \
-  -c "1000000000000000000,2000000000000000000"
+SECRET="my-secret-password" npm run mint-token -- -u \
+  -d '{"name":"SDK Test","version":1}'
 ```
 
-- Uses official Unicity native coin (UCT) token type
-- Creates 2 coins: 1.0 UCT and 2.0 UCT (18 decimals)
-- Token metadata includes symbol "UCT" and decimals info
-- Total: 3.0 UCT
+- Uses **unmasked predicate** (reusable address with `-u` flag)
+- Same address for all tokens minted with this secret
+- Useful for creating a public receiving address
+- Token data stored as JSON
 
-#### Example 3: Mint USDU Stablecoin
+#### Example 3: Mint with Custom Token ID
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 --preset usdu \
-  -c "1000000,5000000"
+SECRET="my-secret" npm run mint-token -- \
+  -i "my-unique-token-id-001" \
+  -y "MyTokenType" \
+  -d '{"name":"Custom Token","edition":1}'
 ```
 
-- Uses official USDU stablecoin token type
-- Creates 2 coins: 1.0 USDU and 5.0 USDU (6 decimals)
-- Total: 6.0 USDU
+- Custom TokenId: hashed from "my-unique-token-id-001"
+- Custom TokenType: hashed from "MyTokenType"
+- Deterministic - same inputs always produce same IDs
+- Token data as JSON
 
-#### Example 4: Mint Fungible Token with Default Amount
+#### Example 4: Mint with Explicit Nonce
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 --preset uct
+SECRET="my-secret" npm run mint-token -- \
+  -n "my-unique-nonce-001" \
+  -d '{"name":"Nonce Test"}'
 ```
 
-- Uses UCT token type
-- No `--coins` specified, so creates ONE coin with default amount: 1000000000000000000 (1.0 UCT)
-- Useful for quick testing or single-coin airdrops
+- Explicit nonce for masked predicate
+- Useful for deterministic address generation
+- Different nonce = different address
 
-### Manual Mode Examples
-
-#### Example 5: Minimal NFT (Default)
+#### Example 5: Save to Custom File
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456
+SECRET="my-secret" npm run mint-token -- \
+  -d '{"name":"My Token"}' \
+  -o my-token.txf
 ```
 
-- Generates random TokenId and uses default NFT TokenType
-- Empty metadata and state
-- Creates non-fungible token (NFT)
-- Auto-generates filename: `20251102_143022_1730570722456_abc123def4.txf`
+- Saves to specified file: `my-token.txf`
+- Instead of auto-generated filename
 
-#### Example 6: NFT with Metadata
+### Advanced Examples
 
-```bash
-npm run mint-token -- unicity:direct:abc123def456 \
-  -m '{"name":"Rare Collectible","edition":1,"rarity":"legendary"}' \
-  -r "Limited edition launch"
-```
-
-- Metadata stored as JSON (preserves structure)
-- Reason saved in TXF metadata
-- Recipient can parse JSON from state data
-
-#### Example 7: Custom TokenId and Type
+#### Example 6: Using Exact 256-bit Hex for Token ID
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 \
-  -i "genesis-token-001" \
-  -y "MyCollectionType"
-```
-
-- TokenId hashed: `"genesis-token-001"` → 256-bit hash
-- TokenType hashed: `"MyCollectionType"` → 256-bit hash
-- Same text input always produces same hash (deterministic)
-
-#### Example 8: Custom Fungible Token with Coins
-
-```bash
-npm run mint-token -- unicity:direct:abc123def456 \
-  -c "1000,2000,5000" \
-  -m '{"symbol":"MTK","decimals":18}'
-```
-
-- Creates custom fungible token with 3 coins (amounts: 1000, 2000, 5000)
-- Total supply: 8000 units
-- Metadata describes token properties
-
-#### Example 9: Using Exact 256-bit Hex
-
-```bash
-npm run mint-token -- unicity:direct:abc123def456 \
+SECRET="my-secret" npm run mint-token -- \
   -i a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890 \
-  -y b2c3d4e5f6789012345678901234567890123456789012345678901234567890ab
+  -y b2c3d4e5f6789012345678901234567890123456789012345678901234567890ab \
+  -d '{"name":"Hex Token"}'
 ```
 
 - TokenId used directly (64 hex chars = 256 bits)
 - TokenType used directly (64 hex chars = 256 bits)
 - No hashing applied
 
-#### Example 10: State as Hex Data
+#### Example 7: Binary Data as Hex
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 \
-  -s 0xdeadbeefcafe1234
+SECRET="my-secret" npm run mint-token -- \
+  -d 0xdeadbeefcafe1234
 ```
 
-- State decoded from hex: `0xdeadbeefcafe1234` → bytes `[de ad be ef ca fe 12 34]`
+- Token data decoded from hex: `0xdeadbeefcafe1234` → bytes `[de ad be ef ca fe 12 34]`
 - Useful for binary state data
 
-### Advanced Examples
-
-#### Example 11: Pipeline Usage
+#### Example 8: Interactive Secret Entry
 
 ```bash
-# Output to stdout for processing
-npm run mint-token -- unicity:direct:abc123def456 \
-  -m '{"name":"NFT"}' \
-  --stdout | jq .
-
-# Save to specific file
-npm run mint-token -- unicity:direct:abc123def456 \
-  -o my-token.txf
-
-# Output to stdout via -o flag
-npm run mint-token -- unicity:direct:abc123def456 \
-  -o - > token.txf
+npm run mint-token -- -d '{"name":"My NFT"}'
+# Prompts: Enter secret (password): ****
 ```
 
-#### Example 12: Local Testing
+- More secure than environment variable
+- Secret not visible in process list
+- Good for manual/interactive use
+
+#### Example 9: Custom Endpoint
 
 ```bash
-npm run mint-token -- unicity:direct:abc123def456 \
-  --local \
-  -m "Test token for local aggregator"
+SECRET="my-secret" npm run mint-token -- \
+  -e "http://localhost:3000" \
+  -d '{"test":true}'
 ```
 
-- Uses `http://localhost:3000` endpoint
-- Requires local aggregator running
+- Uses custom aggregator endpoint
+- Useful for local testing or different networks
 
 ## Output Format
 
 ### TXF File Structure (v2.0)
 
+The command generates **SDK-compliant TXF files** using `tokenState.toJSON()` to ensure proper CBOR predicate encoding.
+
 ```json
 {
   "version": "2.0",
-  "id": "0000a1b2c3d4...",
-  "type": "nft",
-  "state": {
-    "data": "7b226e616d65...",
-    "unlockPredicate": null
-  },
   "genesis": {
     "data": {
-      "tokenId": "0000a1b2c3d4...",
-      "tokenType": "0000b2c3d4e5...",
-      "tokenData": "7b226e616d65...",
-      "recipient": "unicity:direct:abc123..."
+      "tokenId": "eaf0f2acbc090fcfef0d08ad1ddbd0016d2777a1b68e2d101824cdcf3738ff86",
+      "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
+      "recipient": "DIRECT://00005812b0...",
+      "tokenData": "7b226e616d65223a2253444b2054657374222c2276657273696f6e223a317d",
+      "salt": "c845a590c905922e1f03c0e621e02fcdcad1738146a925ad6a7c0f8238b36f3e",
+      "coinData": [],
+      "reason": null,
+      "recipientDataHash": null
+    },
+    "inclusionProof": {
+      "merkleTreePath": {
+        "root": "000090344643f1623e8b63011da7e062aca9cec173935bc98293638b7479535e3cd4",
+        "steps": [...]
+      },
+      "unicityCertificate": "d903ef8701d903f08a011a00021dab00...",
+      "transactionHash": null,
+      "authenticator": null
     }
   },
-  "transactions": [
-    {
-      "type": "mint",
-      "data": {...},
-      "inclusionProof": {...}
-    }
-  ],
-  "status": "CONFIRMED",
-  "reason": "Limited edition launch",
-  "metadata": "{\"name\":\"Rare Collectible\"}"
+  "state": {
+    "data": "7b226e616d65223a2253444b2054657374222c2276657273696f6e223a317d",
+    "predicate": "8300410058b5865820eaf0f2acbc090fcfef0d08ad1ddbd0016d2777a1b68e2d101824cdcf3738ff865820f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe39786750958210364d7f0d4c1c7a3ac3aaca74a860c7e9fd421b244016de642caf57d638fdd8fc669736563703235366b310058400a60dc84699975e45c3c08d7e9707ea3e6d0876dd84b263c2433a2b9840d668d125a397b71dcb5067dac0ee21e8293d2c36a0321b418b2f7dfa854ff3407825a"
+  },
+  "transactions": [],
+  "nametags": []
 }
 ```
 
+### Key Fields Explained
+
+- **`state.predicate`**: CBOR-encoded array `[engine_id, template, params]` (187 bytes)
+  - `engine_id`: 0 (UnmaskedPredicate) or 1 (MaskedPredicate)
+  - `template`: 0x00 (1 byte)
+  - `params`: 181 bytes containing tokenId, tokenType, publicKey, algorithm, signatureScheme, signature
+- **`state.data`**: Hex-encoded token data (can be decoded as UTF-8/JSON)
+- **`genesis.inclusionProof`**: Proof that token was included in blockchain
+- **`genesis.data.recipient`**: Your address (derived from secret)
+
 ### Auto-Generated Filename Format
+
+When using `-s` flag or when no output is specified:
 
 ```
 {date}_{time}_{timestamp}_{address_prefix}.txf
 ```
 
-Example: `20251102_143022_1730570722456_abc123def4.txf`
+Example: `20251102_205623_1762113383329_00005812b0.txf`
 
 - **date**: YYYYMMDD format
 - **time**: HHMMSS format (24-hour)
 - **timestamp**: Unix timestamp in milliseconds
-- **address_prefix**: First 10 chars of address (without scheme)
+- **address_prefix**: First 10 chars of your address (derived from secret)
 
 ## Detection Logic
 
@@ -349,106 +338,92 @@ Plain text
 
 ## Best Practices
 
-### 1. Use Presets for Standard Tokens
+### 1. Secure Secret Management
 
 ```bash
-# Good - uses official Unicity token types
---preset nft              # For NFTs
---preset alpha            # For UCT native coin
---preset usdu             # For USDU stablecoin
+# Good - environment variable (for scripts)
+SECRET="my-secret" npm run mint-token -- [options]
 
-# Avoid - custom types when official ones exist
--y "my-nft-type"          # Unless you need a custom collection
+# Better - interactive prompt (for manual use)
+npm run mint-token -- [options]  # Prompts for secret securely
+
+# Avoid - hardcoding secrets in files
 ```
 
-### 2. Use Descriptive TokenIds
+### 2. Choose the Right Predicate Type
+
+```bash
+# Use masked (default) for privacy - different address per token
+SECRET="my-secret" npm run mint-token -- -d '{"name":"NFT"}'
+
+# Use unmasked (-u) for convenience - same address for all tokens
+SECRET="my-secret" npm run mint-token -- -u -d '{"name":"NFT"}'
+```
+
+### 3. Structure Token Data as JSON
+
+```bash
+# Good - structured and parseable
+-d '{"name":"Dragon","type":"Legendary","power":9500}'
+
+# Avoid - hard to parse later
+-d "Dragon Legendary 9500"
+```
+
+### 4. Use Descriptive TokenIds
 
 ```bash
 # Good - descriptive and deterministic
 -i "collection-mythical-beasts-001"
 
-# Also good - explicit hex
+# Also good - explicit hex (if you need specific ID)
 -i a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890
 ```
 
-### 2. Structure Metadata as JSON
+### 5. Verify Tokens After Minting
 
 ```bash
-# Good - structured and parseable
--m '{"name":"Dragon","type":"Legendary","power":9500}'
+# Mint and immediately verify
+SECRET="my-secret" npm run mint-token -- \
+  -d '{"name":"Test"}' \
+  -o token.txf
 
-# Avoid - hard to parse later
--m "Dragon Legendary 9500"
+npm run verify-token -- -f token.txf
 ```
 
-### 3. Specify Coin Amounts for Fungible Tokens
+### 6. Use SDK-Compliant Format
 
-```bash
-# Good - explicit coin amounts for fungible tokens
---preset alpha -c "1000000000000000000,2000000000000000000"  # 1.0 UCT and 2.0 UCT
-
-# Acceptable - single default coin created automatically
---preset uct  # Creates ONE coin with 1.0 UCT (default amount)
-
-# Avoid - forgetting about decimals
---preset alpha -c "1"  # Only 0.000000000000000001 UCT (very small!)
-```
-
-### 4. Use Reason for Audit Trail
-
-```bash
--r "Q4 2024 community airdrop - wallet #1234"
-```
-
-### 5. Understand Decimal Precision
-
-The preset token types have different decimal precisions:
-
-- **UCT (alpha)**: 18 decimals - `1000000000000000000` = 1.0 UCT
-- **USDU/EURU**: 6 decimals - `1000000` = 1.0 USDU/EURU
-
-Always specify amounts in the smallest unit (wei-like):
-
-```bash
-# Correct - 100 USDU (6 decimals)
---preset usdu -c "100000000"
-
-# Correct - 100 UCT (18 decimals)
---preset alpha -c "100000000000000000000"
-```
-
-### 6. Test Locally First
-
-```bash
-# Test with local aggregator
-npm run mint-token -- <address> --local -m "Test"
-
-# Then deploy to production
-npm run mint-token -- <address> --production -m "Production NFT"
-```
+The command automatically generates SDK-compliant TXF files:
+- Proper CBOR predicate encoding using `tokenState.toJSON()`
+- Public key and signature embedded in predicate
+- Can be reloaded with `Token.fromJSON()`
 
 ### 7. Save Important Tokens
 
 ```bash
-# Auto-save to file
-npm run mint-token -- <address> -m '{"important":true}'
+# Auto-save with timestamp
+SECRET="my-secret" npm run mint-token -- \
+  -d '{"important":true}' \
+  -s
 
 # Custom filename
-npm run mint-token -- <address> -o genesis-token.txf
+SECRET="my-secret" npm run mint-token -- \
+  -d '{"name":"Genesis"}' \
+  -o genesis-token.txf
 ```
 
 ## Troubleshooting
 
-### "Cannot parse address"
+### "Secret is required"
 
-- Check address format: must be valid Unicity address
-- Should start with scheme like `unicity:direct:`
+- Provide secret via `SECRET` environment variable OR
+- Run without SECRET to be prompted interactively
 
 ### "Timeout waiting for inclusion proof"
 
-- Local aggregator may not be running
+- Aggregator may not be running (if using local endpoint)
 - Network connectivity issues
-- Try increasing timeout (requires code change)
+- Default timeout is 30 seconds (adjustable in code)
 
 ### "Hex string has wrong length"
 
@@ -456,89 +431,95 @@ npm run mint-token -- <address> -o genesis-token.txf
 - Shorter hex will be hashed automatically
 - Check for typos in hex string
 
-### "Invalid JSON in metadata"
+### "Invalid JSON in token data"
 
 - Ensure proper JSON formatting
 - Use single quotes around JSON string in bash
-- Example: `-m '{"valid":"json"}'`
+- Example: `-d '{"valid":"json"}'`
+
+### "Token cannot be reloaded with SDK"
+
+- This should NOT happen with the updated implementation
+- All tokens now use `tokenState.toJSON()` for SDK compliance
+- If it does, please report as a bug
 
 ## Advanced Usage
 
-### Combining Presets with Custom Options
-
-You can combine `--preset` with other options for more control:
-
-```bash
-# NFT with custom TokenId and metadata
-npm run mint-token -- unicity:direct:abc123 \
-  --preset nft \
-  -i "my-collection-genesis-001" \
-  -m '{"name":"Genesis NFT","edition":1}' \
-  -r "Genesis collection launch"
-
-# UCT with specific coin amounts and metadata
-npm run mint-token -- unicity:direct:abc123 \
-  --preset alpha \
-  -c "5000000000000000000,10000000000000000000" \
-  -m '{"purpose":"Community reward"}' \
-  -r "Q1 2025 airdrop"
-
-# USDU with custom output file
-npm run mint-token -- unicity:direct:abc123 \
-  --preset usdu \
-  -c "1000000000" \
-  -o usdu-airdrop-batch-1.txf
-```
-
 ### Deterministic Token Generation
 
-Same input always produces same TokenId:
+Same inputs always produce same TokenId (useful for reproducibility):
 
 ```bash
 # Run 1
-npm run mint-token -- addr -i "my-token" --stdout | jq .id
+SECRET="my-secret" npm run mint-token -- \
+  -i "my-unique-token-id" \
+  -d '{"name":"Test"}' \
+  -o - | jq '.genesis.data.tokenId'
 
 # Run 2 (same TokenId as Run 1)
-npm run mint-token -- addr -i "my-token" --stdout | jq .id
+SECRET="my-secret" npm run mint-token -- \
+  -i "my-unique-token-id" \
+  -d '{"name":"Test"}' \
+  -o - | jq '.genesis.data.tokenId'
+```
+
+### Deterministic Address Generation
+
+Same secret + nonce = same address (useful for predictable addresses):
+
+```bash
+# Always produces same address with same secret and nonce
+SECRET="my-secret" npm run mint-token -- \
+  -n "fixed-nonce-001" \
+  -d '{"name":"Token 1"}' \
+  -o token1.txf
+
+SECRET="my-secret" npm run mint-token -- \
+  -n "fixed-nonce-001" \
+  -d '{"name":"Token 2"}' \
+  -o token2.txf
+
+# Both tokens have the SAME address (but different tokenIds)
 ```
 
 ### Batch Minting
 
 ```bash
-# Batch mint NFTs with preset
+# Batch mint NFTs with different nonces
 for i in {1..10}; do
-  npm run mint-token -- unicity:direct:abc123 \
-    --preset nft \
-    -i "collection-$i" \
-    -m "{\"edition\":$i,\"name\":\"NFT #$i\"}" \
+  SECRET="my-secret" npm run mint-token -- \
+    -n "nonce-$i" \
+    -i "collection-token-$i" \
+    -d "{\"edition\":$i,\"name\":\"NFT #$i\"}" \
     -o "nft-$i.txf"
-done
-
-# Batch mint USDU tokens for multiple addresses
-addresses=(
-  "unicity:direct:addr1..."
-  "unicity:direct:addr2..."
-  "unicity:direct:addr3..."
-)
-for addr in "${addresses[@]}"; do
-  npm run mint-token -- "$addr" \
-    --preset usdu \
-    -c "1000000000" \
-    -r "Airdrop batch $(date +%Y%m%d)"
 done
 ```
 
 ### Integration with Other Tools
 
 ```bash
-# Generate and verify in pipeline
-npm run mint-token -- <addr> -m '{"test":true}' -o token.txf && \
+# Mint and verify in pipeline
+SECRET="my-secret" npm run mint-token -- \
+  -d '{"test":true}' \
+  -o token.txf && \
 npm run verify-token -- -f token.txf
 ```
 
+## SDK Compliance
+
+The mint-token command now generates **fully SDK-compliant TXF files**:
+
+1. Uses `tokenState.toJSON()` for proper state serialization
+2. Predicates are CBOR-encoded arrays: `[engine_id, template, params]`
+3. Public key and signature embedded in predicate parameters
+4. Tokens can be reloaded with `Token.fromJSON()` without errors
+5. Ready for transfer and other SDK operations
+
+**Critical Fix (2024-11-02)**: Previous versions generated broken predicates that only contained parameters (181 bytes) instead of the full CBOR array structure (187 bytes). This caused SDK loading failures. The fix uses SDK methods instead of manual serialization.
+
 ## See Also
 
-- `verify-token` - Verify token file validity
-- `gen-address` - Generate new addresses
-- `register-request` - Low-level commitment registration
-- `get-request` - Query inclusion proofs
+- **`verify-token`** - Verify and inspect token files (with full predicate deserialization)
+- **`gen-address`** - Generate addresses from secrets (preview your address before minting)
+- **`register-request`** - Low-level state transition registration
+- **`get-request`** - Query inclusion proofs

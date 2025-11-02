@@ -23,7 +23,45 @@ npm run build
 
 ## Usage
 
-### Get Inclusion Proof
+### Quick Start: Mint Your First Token
+
+Mint a token to your own address using the self-mint pattern:
+
+```bash
+# Mint with interactive secret entry
+npm run mint-token -- -d '{"name":"My First NFT"}'
+
+# Or with environment variable
+SECRET="my-secret-password" npm run mint-token -- -d '{"name":"My NFT"}'
+```
+
+This creates a token owned by you and saves it to a `.txf` file.
+
+### Verify a Token
+
+Inspect and validate a token file:
+
+```bash
+npm run verify-token -- -f token.txf
+```
+
+Shows comprehensive information including:
+- Token data (decoded as JSON/UTF-8)
+- Public key and signature (from predicate)
+- Inclusion proof
+- SDK compatibility
+
+### Generate an Address
+
+Generate an address from your secret to receive tokens:
+
+```bash
+SECRET="my-secret" npm run gen-address
+```
+
+### Low-Level Commands
+
+#### Get Inclusion Proof
 
 Retrieve an inclusion proof for a specific request ID:
 
@@ -33,10 +71,10 @@ npm run get-request -- -e <endpoint_url> <request_id>
 
 Example:
 ```bash
-npm run get-request -- -e https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
+npm run get-request -- -e https://gateway.unicity.network 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
 ```
 
-### Register Request
+#### Register Request
 
 Register a new state transition request:
 
@@ -46,8 +84,41 @@ npm run register-request -- -e <endpoint_url> <secret> <state> <transition>
 
 Example:
 ```bash
-npm run register-request -- -e https://gateway-test1.unicity.network:443 mySecretKey "initial state" "new transition"
+npm run register-request -- -e https://gateway.unicity.network mySecretKey "initial state" "new transition"
 ```
+
+## Available Commands
+
+| Command | Description | Guide |
+|---------|-------------|-------|
+| `mint-token` | Create new tokens (self-mint to your address) | [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) |
+| `verify-token` | Verify and inspect token files | [VERIFY_TOKEN_GUIDE.md](VERIFY_TOKEN_GUIDE.md) |
+| `gen-address` | Generate addresses from secrets | [GEN_ADDRESS_GUIDE.md](GEN_ADDRESS_GUIDE.md) |
+| `get-request` | Get inclusion proofs | - |
+| `register-request` | Register state transitions | - |
+
+## Key Features
+
+### Self-Mint Pattern
+
+The mint-token command uses a **self-mint pattern** where:
+- You provide a secret (password/private key)
+- Command derives your public key and address
+- Token is minted directly to your address
+- You have immediate ownership with full control
+
+### SDK-Compliant TXF Files
+
+All generated tokens use:
+- Proper CBOR predicate encoding (187 bytes)
+- Full SDK compatibility with `Token.fromJSON()`
+- Public key and signature embedded in predicate
+- Ready for transfer and other SDK operations
+
+### Masked vs Unmasked Predicates
+
+- **Masked** (default): One-time-use address, more private
+- **Unmasked** (`-u` flag): Reusable address, more convenient
 
 ## Development
 
