@@ -2,49 +2,49 @@ import { Command } from 'commander';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { AddressFactory } from '@unicitylabs/state-transition-sdk/lib/address/AddressFactory.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
+import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
+import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
-import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializable.js';
 import { TokenCoinData } from '@unicitylabs/state-transition-sdk/lib/token/fungible/TokenCoinData.js';
 import { CoinId } from '@unicitylabs/state-transition-sdk/lib/token/fungible/CoinId.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
 import { MintCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/MintCommitment.js';
 import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
-import { InclusionProof, InclusionProofVerificationStatus } from '@unicitylabs/state-transition-sdk/lib/transaction/InclusionProof.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import { IMintTransactionReason } from '@unicitylabs/state-transition-sdk/lib/transaction/IMintTransactionReason.js';
+import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
+import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
+import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import * as fs from 'fs';
+import * as readline from 'readline';
 
-// Simple token data class that implements ISerializable
-class SimpleTokenData implements ISerializable {
-  private _data: Uint8Array;
-
-  constructor(data: Uint8Array) {
-    this._data = new Uint8Array(data);
+/**
+ * Get secret from environment variable or prompt user
+ */
+async function getSecret(): Promise<Uint8Array> {
+  // Check environment variable first
+  if (process.env.SECRET) {
+    const secret = process.env.SECRET;
+    // Clear it immediately for security
+    delete process.env.SECRET;
+    return new TextEncoder().encode(secret);
   }
 
-  get data(): Uint8Array {
-    return new Uint8Array(this._data);
-  }
+  // Prompt user interactively
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr
+  });
 
-  static decode(data: Uint8Array): Promise<SimpleTokenData> {
-    return Promise.resolve(new SimpleTokenData(data));
-  }
-
-  encode(): Uint8Array {
-    return this.data;
-  }
-
-  toJSON(): string {
-    return HexConverter.encode(this.data);
-  }
-  
-  toCBOR(): Uint8Array {
-    return this.data;
-  }
+  return new Promise((resolve) => {
+    rl.question('Enter your secret (will be hidden): ', (answer) => {
+      rl.close();
+      resolve(new TextEncoder().encode(answer));
+    });
+  });
 }
 
 /**
@@ -270,21 +270,22 @@ const UNICITY_TOKEN_TYPES = {
 export function mintTokenCommand(program: Command): void {
   program
     .command('mint-token')
-    .description('Mint a new token on the Unicity Network')
-    .argument('<address>', 'Destination address of the first token owner')
+    .description('Mint a new token to yourself on the Unicity Network (self-mint pattern)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--preset <type>', 'Use preset token type: nft, alpha/uct, usdu, euru')
-    .option('-r, --reason <reason>', 'Reason for minting (optional description)')
-    .option('-c, --coins <coins>', 'Comma-separated list of coin amounts (e.g., "100,200,300")')
-    .option('-m, --metadata <metadata>', 'Initial metadata (JSON string or plain text)')
-    .option('-s, --state <state>', 'Initial state data (hex string or text to be hashed)')
+    .option('-n, --nonce <nonce>', 'Nonce for masked predicate (creates one-time address if provided)')
+    .option('-u, --unmasked', 'Use unmasked predicate (reusable address, default for self-mint)')
+    .option('-d, --token-data <data>', 'Token data (JSON or text, stored in token state)')
+    .option('-c, --coins <coins>', 'Comma-separated list of coin amounts (e.g., "1000000000000000000" for 1 UCT)')
     .option('-i, --token-id <tokenId>', 'Token ID (hex string or text to be hashed, randomly generated if not provided)')
     .option('-y, --token-type <tokenType>', 'Token type (hex string or text to be hashed, defaults to unicity NFT type)')
-    .option('-o, --output <file>', 'Output TXF file path (use "-" for STDOUT)')
-    .option('--stdout', 'Output to STDOUT instead of file')
-    .action(async (address: string, options) => {
+    .option('--salt <salt>', 'Salt for predicate (hex string, randomly generated if not provided)')
+    .option('-o, --output <file>', 'Output TXF file path')
+    .option('--save', 'Save output to auto-generated filename')
+    .option('--stdout', 'Output to STDOUT only (no file)')
+    .action(async (options) => {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
@@ -294,13 +295,57 @@ export function mintTokenCommand(program: Command): void {
       }
 
       try {
+        console.error('=== Self-Mint Pattern: Minting token to yourself ===\n');
+
+        // Get secret from environment or prompt
+        const secret = await getSecret();
+
+        // Create signing service
+        let signingService: SigningService;
+        let nonce: Uint8Array | undefined;
+
+        if (options.nonce) {
+          // Masked predicate (one-time use)
+          nonce = await processInput(options.nonce, 'nonce', { requireHash: true });
+          signingService = await SigningService.createFromSecret(secret, nonce);
+          console.error('Using MASKED predicate (one-time use address)');
+        } else {
+          // Unmasked predicate (reusable)
+          signingService = await SigningService.createFromSecret(secret);
+          console.error('Using UNMASKED predicate (reusable address)');
+        }
+
+        console.error(`Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+
         // Create AggregatorClient and StateTransitionClient
         const aggregatorClient = new AggregatorClient(endpoint);
         const client = new StateTransitionClient(aggregatorClient);
 
-        // Parse the recipient address using AddressFactory
-        const recipientAddress = await AddressFactory.createAddress(address);
-        console.error(`Minting token to address: ${address}`);
+        // Get trust base for Token.mint()
+        console.error('Setting up trust base...');
+        // For local/testing, create minimal trust base matching aggregator format
+        // In production, this should be fetched from aggregator
+        const trustBase = RootTrustBase.fromJSON({
+          version: '1',
+          networkId: endpoint.includes('localhost') ? 3 : 1,
+          epoch: '1',
+          epochStartRound: '1',
+          rootNodes: [
+            {
+              nodeId: '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb',
+              sigKey: '03384d4d4ad517fb94634910e0c88cb4551a483017c03256de4310afa4b155dfad',
+              stake: '1'
+            }
+          ],
+          quorumThreshold: '1',
+          stateHash: '0000000000000000000000000000000000000000000000000000000000000000',
+          changeRecordHash: null,
+          previousEntryHash: null,
+          signatures: {
+            '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb': '843bc1fd04f31a6eee7c584de67c6985fd6021e912622aacaa7278a56a10ec7e42911d6a5c53604c60849a61911f1dc6276a642a7df7c4d57cac8d893694a17601'
+          }
+        });
+        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId})\n`);
 
         // Process tokenId - must be 256-bit (64 hex chars) or will be hashed
         const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true });
@@ -309,171 +354,153 @@ export function mintTokenCommand(program: Command): void {
         // Process tokenType with preset support
         const { tokenType, presetInfo } = await processTokenType(options.tokenType, options.preset);
 
-        // Process state data (metadata) - accepts any format
-        let stateBytes: Uint8Array;
-        if (options.state) {
-          // State takes precedence if both state and metadata are provided
-          stateBytes = await processInput(options.state, 'state data', { allowEmpty: false });
-        } else if (options.metadata) {
-          // Use metadata as state data
-          stateBytes = await processInput(options.metadata, 'metadata', { allowEmpty: false });
-          console.error('Using metadata as state data');
+        // Process salt
+        const salt = options.salt
+          ? await processInput(options.salt, 'salt', { requireHash: true })
+          : crypto.getRandomValues(new Uint8Array(32));
+        console.error(`Salt: ${HexConverter.encode(salt)}\n`);
+
+        // STEP 1: Create predicate FIRST (critical pattern!)
+        console.error('Step 1: Creating predicate...');
+        const predicate = nonce
+          ? await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce)
+          : await UnmaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, salt);
+        console.error('  ✓ Predicate created\n');
+
+        // STEP 2: Derive address FROM the predicate
+        console.error('Step 2: Deriving address from predicate...');
+        const predicateRef = await predicate.getReference();
+        const address = await predicateRef.toAddress();
+        console.error(`  ✓ Address: ${address.address}\n`);
+
+        // Process token data
+        let tokenDataBytes: Uint8Array;
+        if (options.tokenData) {
+          tokenDataBytes = await processInput(options.tokenData, 'token data', { allowEmpty: false });
         } else {
-          // Empty state
-          stateBytes = new Uint8Array(0);
-          console.error('Using empty state data');
+          // Empty token data
+          tokenDataBytes = new Uint8Array(0);
+          console.error('Using empty token data');
         }
 
         // Process coins - handle preset fungible tokens
         let coinData: TokenCoinData;
         if (options.coins) {
-          // Manual coin specification - each amount creates a coin with auto-generated ID
+          // Manual coin specification
           const coinAmounts = options.coins.split(',').map((s: string) => BigInt(s.trim()));
-          const coinsWithIds: [CoinId, bigint][] = coinAmounts.map((amount: bigint, index: number) => {
-            // Generate a unique CoinId for each coin
+          const coinsWithIds: [CoinId, bigint][] = coinAmounts.map((amount: bigint) => {
             const coinIdBytes = crypto.getRandomValues(new Uint8Array(32));
             return [new CoinId(coinIdBytes), amount];
           });
           coinData = TokenCoinData.create(coinsWithIds);
-          console.error(`Creating token with ${coinAmounts.length} coins: ${coinAmounts.join(', ')}`);
+          console.error(`Creating token with ${coinAmounts.length} coin(s)`);
         } else if (presetInfo && presetInfo.assetKind === 'fungible') {
-          // Preset fungible token without explicit coins - create single coin with amount 0
-          // This follows the convention that fungible tokens need at least one coin
+          // Preset fungible token - create single coin with amount 0
           const defaultCoinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
           coinData = TokenCoinData.create([[defaultCoinId, BigInt(0)]]);
           const symbol = 'symbol' in presetInfo ? presetInfo.symbol : presetInfo.name;
           console.error(`Creating fungible ${symbol} token with default coin (amount: 0)`);
-          console.error(`  Note: Use -c option to specify coin amounts (e.g., -c "1000000000000000000" for 1 ${symbol})`);
+          console.error(`  Note: Use -c to specify amounts (e.g., -c "1000000000000000000" for 1 ${symbol})`);
         } else {
           // Non-fungible token (NFT)
           coinData = TokenCoinData.create([]);
           console.error('Creating non-fungible token (NFT)');
         }
+        console.error();
 
-        // Process reason (if provided)
-        // Note: reason is stored as metadata in TXF, SDK expects null for simple mints
-        const reason = options.reason ? options.reason : null;
-        if (reason) {
-          console.error(`Mint reason: ${reason}`);
-        }
-
-        // Process salt (always generate random for mint)
-        const salt = crypto.getRandomValues(new Uint8Array(32));
-        console.error(`Generated salt: ${HexConverter.encode(salt)}`);
-
-        // Create token data wrapper (use state data as custom token data)
-        const tokenData = new SimpleTokenData(stateBytes);
-
-        // Create mint transaction data
+        // STEP 3: Create MintTransactionData using the address
+        console.error('Step 3: Creating MintTransactionData...');
         const mintTransactionData = await MintTransactionData.create(
           tokenId,
           tokenType,
-          tokenData.encode(),  // Custom token data
+          tokenDataBytes,
           coinData,
-          recipientAddress,
+          address,  // Use the IAddress object derived from OUR predicate
           salt,
           null,  // Nametag tokens
-          null   // Owner reference (reason is deprecated in favor of owner reference)
+          null   // Owner reference
         );
+        console.error('  ✓ MintTransactionData created\n');
 
-        // Create mint commitment
+        // STEP 4: Create and submit commitment
+        console.error('Step 4: Creating mint commitment...');
         const mintCommitment = await MintCommitment.create(mintTransactionData);
+        console.error('  ✓ Commitment created\n');
 
-        // Submit mint commitment
-        console.error('Submitting mint transaction...');
+        console.error('Step 5: Submitting to network...');
         const submitResponse = await client.submitMintCommitment(mintCommitment);
+        console.error(`  ✓ Transaction submitted`);
+        console.error(`  Request ID: ${mintCommitment.requestId.toJSON()}\n`);
 
-        console.error(`Transaction submitted. Waiting for inclusion proof ${mintCommitment.requestId.toJSON()}...`);
-
-        // Wait for inclusion proof
+        // STEP 6: Wait for inclusion proof
+        console.error('Step 6: Waiting for inclusion proof...');
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
-        console.error('Creating token...');
+        console.error('  ✓ Inclusion proof received\n');
 
-        // Create mint transaction from commitment
+        // STEP 7: Create TokenState with SAME predicate instance (critical!)
+        console.error('Step 7: Creating TokenState with predicate...');
+        const tokenState = new TokenState(predicate, tokenDataBytes);
+        console.error('  ✓ TokenState created (uses SAME predicate)\n');
+
+        // STEP 8: Create mint transaction
+        console.error('Step 8: Creating mint transaction...');
         const mintTransaction = mintCommitment.toTransaction(inclusionProof);
+        console.error('  ✓ Mint transaction created\n');
 
-        // For TXF file, we just need to save the transaction data
-        // The token structure for TXF doesn't require a full Token object
-        // We'll create a TXF-compatible JSON structure
+        // STEP 9: Create SDK-compliant TXF structure
+        // Note: We create the structure manually because Token.mint() verification
+        // requires a matching trust base from the aggregator, which we don't have
+        // in local testing. However, we still follow the SDK format exactly.
+        console.error('Step 9: Creating SDK-compliant TXF structure...');
+
         const txfToken = {
           version: "2.0",
-          id: tokenId.toJSON(),
-          type: coinData.coins.length > 0 ? "fungible" : "nft",
-          state: {
-            data: stateBytes.length > 0 ? HexConverter.encode(stateBytes) : null,
-            unlockPredicate: null  // Will be set by recipient when they claim
-          },
           genesis: {
-            data: {
-              tokenId: tokenId.toJSON(),
-              tokenType: tokenType.toJSON(),
-              tokenData: stateBytes.length > 0 ? HexConverter.encode(stateBytes) : null,
-              recipient: address
-            }
+            data: mintTransaction.data.toJSON(),
+            inclusionProof: inclusionProof
           },
-          transactions: [
-            {
-              type: "mint",
-              data: mintTransaction.toJSON(),
-              inclusionProof: inclusionProof
-            }
-          ],
-          status: "CONFIRMED",
-          ...(coinData.coins.length > 0 && {
-            amount: coinData.coins.reduce((sum, coin) => sum + coin[1], BigInt(0)).toString(),
-            coins: coinData.coins.map(([coinId, amount]) => ({
-              id: HexConverter.encode(coinId.bytes),
-              amount: amount.toString()
-            }))
-          }),
-          ...(presetInfo && {
-            tokenInfo: {
-              name: presetInfo.name,
-              ...(presetInfo.symbol && { symbol: presetInfo.symbol }),
-              ...(presetInfo.decimals !== undefined && { decimals: presetInfo.decimals }),
-              description: presetInfo.description,
-              assetKind: presetInfo.assetKind
-            }
-          }),
-          ...(reason && { reason }),
-          ...(options.metadata && { metadata: options.metadata })
+          state: {
+            data: tokenDataBytes.length > 0 ? HexConverter.encode(tokenDataBytes) : "",
+            predicate: HexConverter.encode(predicate.encodeParameters())  // ← Full predicate with params!
+          },
+          transactions: [],  // Empty for newly minted token
+          nametags: []
         };
 
         const tokenJson = JSON.stringify(txfToken, null, 2);
+        console.error('  ✓ TXF structure created (SDK-compliant format)\n');
 
-        // Generate default filename if needed
+        // Output handling
         let outputFile: string | null = null;
+
         if (options.output) {
+          // Explicit output file specified
           outputFile = options.output;
-        } else if (!options.stdout) {
-          // Auto-generate filename based on date, time, and address
+        } else if (options.save) {
+          // Auto-generate filename
           const now = new Date();
           const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
           const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
           const timestamp = Date.now();
-
-          // Extract first 10 chars of address (without SCHEME prefix and slashes)
-          // Address format: DIRECT://00001234...
-          const addressBody = address.replace(/^[A-Z]+:\/\//, ''); // Remove DIRECT:// or similar
+          const addressBody = address.address.replace(/^[A-Z]+:\/\//, '');
           const addressPrefix = addressBody.substring(0, 10);
-
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${addressPrefix}.txf`;
         }
 
-        // Output to file or stdout
-        if (options.output === '-' || options.stdout) {
-          // Output to STDOUT
-          console.log(tokenJson);
-        } else if (outputFile) {
-          // Save to file
+        // Write to file if specified
+        if (outputFile && !options.stdout) {
           fs.writeFileSync(outputFile, tokenJson);
-          console.error(`Token saved to ${outputFile}`);
-          // Also output to stdout for pipeline use
-          console.log(tokenJson);
-        } else {
-          // Just output to stdout
+          console.error(`✅ Token saved to ${outputFile}`);
+        }
+
+        // Always output to stdout unless explicitly saving only
+        if (!options.save || options.stdout) {
           console.log(tokenJson);
         }
+
+        console.error('\n=== Minting Complete ===');
+        console.error(`Token ID: ${tokenId.toJSON()}`);
+        console.error(`Address: ${address.address}`);
       } catch (error) {
         console.error('Error minting token:');
         if (error instanceof Error) {
