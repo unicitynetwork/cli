@@ -139,5 +139,8 @@ dist
 ref_materials/
 .idea
 
+# Claude Code intermediary materials (debug scripts, reports, analysis)
+claude/
+
 # Skip transaction flow (TXF) files
 *.txf
