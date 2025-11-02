@@ -447,10 +447,9 @@ export function mintTokenCommand(program: Command): void {
         const mintTransaction = mintCommitment.toTransaction(inclusionProof);
         console.error('  ✓ Mint transaction created\n');
 
-        // STEP 9: Create SDK-compliant TXF structure
-        // Note: We create the structure manually because Token.mint() verification
-        // requires a matching trust base from the aggregator, which we don't have
-        // in local testing. However, we still follow the SDK format exactly.
+        // STEP 9: Create SDK-compliant TXF structure using SDK methods
+        // Use tokenState.toJSON() to ensure proper predicate encoding
+        // The predicate must be a CBOR array: [engine_id, template, params]
         console.error('Step 9: Creating SDK-compliant TXF structure...');
 
         const txfToken = {
@@ -459,16 +458,13 @@ export function mintTokenCommand(program: Command): void {
             data: mintTransaction.data.toJSON(),
             inclusionProof: inclusionProof
           },
-          state: {
-            data: tokenDataBytes.length > 0 ? HexConverter.encode(tokenDataBytes) : "",
-            predicate: HexConverter.encode(predicate.encodeParameters())  // ← Full predicate with params!
-          },
+          state: tokenState.toJSON(),  // ✅ Use SDK method for proper encoding!
           transactions: [],  // Empty for newly minted token
           nametags: []
         };
 
         const tokenJson = JSON.stringify(txfToken, null, 2);
-        console.error('  ✓ TXF structure created (SDK-compliant format)\n');
+        console.error('  ✓ TXF structure created with SDK method\n');
 
         // Output handling
         let outputFile: string | null = null;
