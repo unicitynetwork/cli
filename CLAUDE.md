@@ -22,6 +22,17 @@ npm run mint-token -- -e <endpoint> [options]
 # Verify a token file
 npm run verify-token -- -f <token_file> [--secret]
 
+# Send a token to a recipient
+npm run send-token -- -f <token_file> -r <recipient_address> [options]
+# Options: -m/--message, -e/--endpoint, --submit-now, -o/--output, --save
+# Pattern A (default): Creates offline transfer package for recipient
+# Pattern B (--submit-now): Submits to network immediately
+
+# Receive a token sent via offline transfer
+npm run receive-token -- -f <token_file> [options]
+# Options: -e/--endpoint, --local, --production, -o/--output, --save
+# Validates offline transfer package, verifies recipient, submits to network
+
 # Register a state transition request
 npm run register-request -- -e <endpoint> <secret> <state> <transition>
 
@@ -75,6 +86,41 @@ Input parameters can be:
 5. Wait for inclusion proof (polls with 1-second intervals, 30-second timeout)
 6. Create final token with state and transaction history
 7. Output as JSON or save to file
+
+#### Token Transfer Flow
+**Pattern A (Offline Transfer - Default)**:
+1. Load token from TXF file
+2. Get sender's secret and create signing service
+3. Parse recipient address string
+4. Generate random salt for transfer
+5. Create transfer commitment with optional message
+6. Build offline transfer package with sender info, recipient, commitment data
+7. Create extended TXF with `offlineTransfer` section and PENDING status
+8. Output sanitized file (never includes private keys)
+
+**Pattern B (Submit Now - with `--submit-now` flag)**:
+1. Steps 1-5 same as Pattern A
+2. Submit transfer commitment to network
+3. Wait for inclusion proof
+4. Create transfer transaction from commitment and proof
+5. Update TXF with new transaction and TRANSFERRED status
+6. Output final TXF file
+
+#### Token Receive Flow (Offline Transfer)
+1. Load extended TXF file with offline transfer package
+2. Validate offline transfer structure and required fields
+3. Get recipient's secret and create signing service
+4. Parse transfer commitment from `offlineTransfer.commitmentData`
+5. Load token to extract token ID and type
+6. Create recipient's UnmaskedPredicate using salt from offline package
+7. Verify recipient address matches (ensure we're the intended recipient)
+8. Submit transfer commitment to network
+9. Wait for inclusion proof (30-second timeout with polling)
+10. Create transfer transaction from commitment and proof
+11. Create new TokenState with recipient's predicate
+12. Update token using `token.update(trustBase, newState, transferTx)`
+13. Create final TXF with CONFIRMED status (remove offlineTransfer section)
+14. Output sanitized file
 
 ## TypeScript Configuration
 - Target: ES2020

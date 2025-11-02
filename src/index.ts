@@ -5,6 +5,8 @@ import { getRequestCommand } from './commands/get-request.js';
 import { genAddressCommand } from './commands/gen-address.js';
 import { mintTokenCommand } from './commands/mint-token.js';
 import { verifyTokenCommand } from './commands/verify-token.js';
+import { sendTokenCommand } from './commands/send-token.js';
+import { receiveTokenCommand } from './commands/receive-token.js';
 
 // CLI setup
 program
@@ -18,6 +20,8 @@ getRequestCommand(program);
 genAddressCommand(program);
 mintTokenCommand(program);
 verifyTokenCommand(program);
+sendTokenCommand(program);
+receiveTokenCommand(program);
 
 // Parse command line arguments
 program.parse();

@@ -93,9 +93,13 @@ npm run register-request -- -e https://gateway.unicity.network mySecretKey "init
 |---------|-------------|-------|
 | `mint-token` | Create new tokens (self-mint to your address) | [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) |
 | `verify-token` | Verify and inspect token files | [VERIFY_TOKEN_GUIDE.md](VERIFY_TOKEN_GUIDE.md) |
+| `send-token` | Send tokens to recipients (offline or immediate) | [SEND_TOKEN_GUIDE.md](SEND_TOKEN_GUIDE.md) |
+| `receive-token` | Complete offline token transfers | [RECEIVE_TOKEN_GUIDE.md](RECEIVE_TOKEN_GUIDE.md) |
 | `gen-address` | Generate addresses from secrets | [GEN_ADDRESS_GUIDE.md](GEN_ADDRESS_GUIDE.md) |
 | `get-request` | Get inclusion proofs | - |
 | `register-request` | Register state transitions | - |
+
+**Transfer Commands** - See [TRANSFER_GUIDE.md](TRANSFER_GUIDE.md) for complete workflow
 
 ## Key Features
 
