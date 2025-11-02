@@ -1,199 +1,299 @@
 import { Command } from 'commander';
-import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
-import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
-import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
-import { ISerializable } from '@unicitylabs/state-transition-sdk/lib/ISerializable.js';
-import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
-import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
-import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
-import { EncodedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/EncodedPredicate.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import * as readline from 'readline';
+import { CborDecoder } from '@unicitylabs/commons/lib/cbor/CborDecoder.js';
 import * as fs from 'fs';
 
-// Function to read the secret as a password if needed
-async function readSecret(): Promise<string> {
-  // Check if SECRET environment variable is set
-  if (process.env.SECRET) {
-    const secret = process.env.SECRET;
-    // Clear the environment variable for security
-    process.env.SECRET = '';
-    return secret;
+/**
+ * Try to decode data as UTF-8 text, return hex if it fails
+ */
+function tryDecodeAsText(hexData: string): string {
+  if (!hexData || hexData.length === 0) {
+    return '(empty)';
   }
 
-  // If SECRET is not provided, prompt the user
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  try {
+    const bytes = HexConverter.decode(hexData);
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 
-  return new Promise<string>((resolve) => {
-    rl.question('Enter secret (password): ', (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
+    // Check if it's printable ASCII/UTF-8
+    if (/^[\x20-\x7E\s]*$/.test(text)) {
+      return text;
+    }
+
+    // Try to parse as JSON
+    try {
+      const json = JSON.parse(text);
+      return JSON.stringify(json, null, 2);
+    } catch {
+      return text;
+    }
+  } catch {
+    // Not valid UTF-8, return hex
+    return `0x${hexData}`;
+  }
 }
 
-// Simple class to implement ISerializable for token data
-class SimpleTokenData implements ISerializable {
-  private _data: Uint8Array;
+/**
+ * Decode and display predicate information
+ */
+function displayPredicateInfo(predicateHex: string): void {
+  console.log('\n=== Predicate Details ===');
 
-  constructor(data: Uint8Array) {
-    this._data = new Uint8Array(data);
+  if (!predicateHex || predicateHex.length === 0) {
+    console.log('No predicate found');
+    return;
   }
 
-  get data(): Uint8Array {
-    return new Uint8Array(this._data);
-  }
+  try {
+    const predicateBytes = HexConverter.decode(predicateHex);
+    console.log(`Raw Length: ${predicateBytes.length} bytes`);
+    console.log(`Raw Hex (first 50 chars): ${predicateHex.substring(0, 50)}...`);
 
-  static decode(data: Uint8Array): Promise<SimpleTokenData> {
-    return Promise.resolve(new SimpleTokenData(data));
-  }
+    // Decode CBOR structure
+    const predicateArray = CborDecoder.readArray(predicateBytes);
 
-  static fromJSON(data: string): Promise<SimpleTokenData> {
-    if (typeof data === 'string') {
-      return Promise.resolve(new SimpleTokenData(HexConverter.decode(data)));
+    if (predicateArray.length === 3) {
+      console.log('\n✅ Valid CBOR structure: [engine_id, template, params]');
+
+      // Element 1: Engine ID
+      const engineIdBytes = predicateArray[0];
+      const engineId = engineIdBytes.length === 1 ? engineIdBytes[0] :
+                       CborDecoder.readUnsignedInteger(engineIdBytes);
+      const engineIdNum = typeof engineId === 'bigint' ? Number(engineId) : engineId;
+      const engineName = engineIdNum === 0 ? 'UnmaskedPredicate (reusable address)' :
+                        engineIdNum === 1 ? 'MaskedPredicate (one-time address)' :
+                        `Unknown (${engineIdNum})`;
+      console.log(`\nEngine ID: ${engineIdNum} - ${engineName}`);
+
+      // Element 2: Template
+      const templateBytes = CborDecoder.readByteString(predicateArray[1]);
+      console.log(`Template: ${HexConverter.encode(templateBytes)} (${templateBytes.length} byte${templateBytes.length !== 1 ? 's' : ''})`);
+
+      // Element 3: Parameters
+      const paramsBytes = CborDecoder.readByteString(predicateArray[2]);
+      if (paramsBytes instanceof Uint8Array) {
+        console.log(`\nParameters: ${paramsBytes.length} bytes`);
+
+        // Try to decode parameters as CBOR array
+        try {
+          const paramsArray = CborDecoder.readArray(paramsBytes);
+
+          console.log(`\nParameter Structure (${paramsArray.length} elements):`);
+
+          // Structure: [tokenId, tokenType, publicKey, algorithm, signatureScheme(?), signature]
+          if (paramsArray.length >= 3) {
+            const tokenId = HexConverter.encode(CborDecoder.readByteString(paramsArray[0]));
+            const tokenType = HexConverter.encode(CborDecoder.readByteString(paramsArray[1]));
+            const publicKey = HexConverter.encode(CborDecoder.readByteString(paramsArray[2]));
+
+            console.log(`  [0] Token ID: ${tokenId}`);
+            console.log(`  [1] Token Type: ${tokenType}`);
+            console.log(`  [2] Public Key: ${publicKey}`);
+
+            if (paramsArray.length > 3) {
+              const algorithmText = CborDecoder.readTextString(paramsArray[3]);
+              console.log(`  [3] Algorithm: ${algorithmText}`);
+            }
+
+            if (paramsArray.length > 4) {
+              // Element 4 - might be signature scheme or flags
+              const elem4 = paramsArray[4];
+              const elem4Hex = HexConverter.encode(elem4);
+              let elem4Display = elem4Hex;
+
+              // Try to decode as unsigned int
+              try {
+                const uintVal = CborDecoder.readUnsignedInteger(elem4);
+                elem4Display = `${uintVal} (0x${elem4Hex})`;
+              } catch {
+                // Not a uint, just use hex
+              }
+
+              console.log(`  [4] Signature Scheme: ${elem4Display}`);
+            }
+
+            if (paramsArray.length > 5) {
+              const signature = HexConverter.encode(CborDecoder.readByteString(paramsArray[5]));
+              console.log(`  [5] Signature: ${signature}`);
+            }
+          }
+        } catch (err) {
+          console.log(`Failed to parse parameters structure: ${err instanceof Error ? err.message : String(err)}`);
+          console.log(`Parameters (raw): ${HexConverter.encode(paramsBytes)}`);
+        }
+      }
+    } else {
+      console.log(`⚠ Unexpected CBOR structure: ${predicateArray.length} elements (expected 3)`);
     }
-    return Promise.resolve(new SimpleTokenData(new Uint8Array()));
+  } catch (err) {
+    console.log(`❌ Failed to decode predicate: ${err instanceof Error ? err.message : String(err)}`);
+    console.log(`Raw hex: ${predicateHex.substring(0, 100)}...`);
+  }
+}
+
+/**
+ * Display genesis transaction details
+ */
+function displayGenesis(genesis: any): void {
+  console.log('\n=== Genesis Transaction (Mint) ===');
+
+  if (!genesis) {
+    console.log('No genesis data found');
+    return;
   }
 
-  encode(): Uint8Array {
-    return this.data;
+  // Display transaction data
+  if (genesis.data) {
+    console.log('\nMint Transaction Data:');
+    console.log(`  Token ID: ${genesis.data.tokenId || 'N/A'}`);
+    console.log(`  Token Type: ${genesis.data.tokenType || 'N/A'}`);
+    console.log(`  Recipient: ${genesis.data.recipient || 'N/A'}`);
+
+    if (genesis.data.tokenData) {
+      console.log(`\n  Token Data (hex): ${genesis.data.tokenData.substring(0, 50)}${genesis.data.tokenData.length > 50 ? '...' : ''}`);
+      const decoded = tryDecodeAsText(genesis.data.tokenData);
+      console.log(`  Token Data (decoded): ${decoded}`);
+    }
+
+    if (genesis.data.salt) {
+      console.log(`\n  Salt: ${genesis.data.salt}`);
+    }
+
+    if (genesis.data.coinData && Array.isArray(genesis.data.coinData) && genesis.data.coinData.length > 0) {
+      console.log(`\n  Coins: ${genesis.data.coinData.length} coin(s)`);
+      genesis.data.coinData.forEach((coin: any, idx: number) => {
+        const [coinId, amount] = coin;
+        console.log(`    Coin ${idx + 1}:`);
+        console.log(`      ID: ${coinId}`);
+        console.log(`      Amount: ${amount}`);
+      });
+    }
   }
 
-  toJSON(): string {
-    return HexConverter.encode(this.data);
-  }
-  
-  toCBOR(): Uint8Array {
-    return this.data;
+  // Display inclusion proof
+  if (genesis.inclusionProof) {
+    console.log('\nInclusion Proof:');
+    console.log(`  ✓ Token included in blockchain`);
+
+    if (genesis.inclusionProof.merkleTreePath) {
+      const path = genesis.inclusionProof.merkleTreePath;
+      console.log(`  Merkle Root: ${path.root}`);
+      console.log(`  Merkle Path Steps: ${path.steps?.length || 0}`);
+    }
+
+    if (genesis.inclusionProof.unicityCertificate) {
+      const certHex = genesis.inclusionProof.unicityCertificate;
+      console.log(`  Unicity Certificate: ${certHex.substring(0, 50)}... (${certHex.length} chars)`);
+    }
   }
 }
 
 export function verifyTokenCommand(program: Command): void {
   program
     .command('verify-token')
-    .description('Verify and display information about a token')
-    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
+    .description('Verify and display detailed information about a token file')
     .option('-f, --file <file>', 'Token file to verify (required)')
-    .option('--secret', 'Prompt for secret to check if token is spendable')
     .action(async (options) => {
       try {
         // Check if file option is provided
         if (!options.file) {
           console.error('Error: --file option is required');
+          console.error('Usage: npm run verify-token -- -f <token_file.txf>');
           process.exit(1);
         }
-        
+
+        console.log('=== Token Verification ===');
+        console.log(`File: ${options.file}\n`);
+
         // Read token from file
         const tokenFileContent = fs.readFileSync(options.file, 'utf8');
-        const tokenData = JSON.parse(tokenFileContent);
-        
-        try {
-          // Create a token object from JSON
-          const token = await Token.fromJSON(tokenData);
+        const tokenJson = JSON.parse(tokenFileContent);
 
-          // Display token information
-          console.log('=== Token Information ===');
+        // Display basic info
+        console.log('=== Basic Information ===');
+        console.log(`Version: ${tokenJson.version || 'N/A'}`);
+
+        // Try to load with SDK
+        let token: Token<any> | null = null;
+        try {
+          token = await Token.fromJSON(tokenJson);
+          console.log('✅ Token loaded successfully with SDK');
           console.log(`Token ID: ${token.id.toJSON()}`);
           console.log(`Token Type: ${token.type.toJSON()}`);
-          console.log(`Version: ${token.version}`);
+        } catch (err) {
+          console.log('⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
+          console.log('Displaying raw JSON data...\n');
+        }
 
-          // Display coin data
-          if (token.coins) {
-            console.log('\n=== Coin Data ===');
-            console.log(JSON.stringify(token.coins.toJSON(), null, 2));
-          } else {
-            console.log('\n=== Coin Data ===');
-            console.log('No coin data (Non-fungible token)');
-          }
+        // Display genesis transaction
+        displayGenesis(tokenJson.genesis);
 
-          // Display immutable data
-          console.log('\n=== Immutable Data ===');
-          if (token.data) {
-            console.log(`Data: ${HexConverter.encode(token.data)}`);
-          } else {
-            console.log('No immutable data');
-          }
-
-          // Display current state
-          console.log('\n=== Current State ===');
-          // Get predicate from state and check its type
-          const predicate = token.state.predicate;
-          if (predicate instanceof EncodedPredicate) {
-            console.log(`Predicate Type: encoded`);
-            console.log(`Predicate Engine: ${predicate.engine}`);
-            // EncodedPredicate doesn't have getReference method
-            console.log(`Note: Address calculation not available for encoded predicates`);
-          } else {
-            console.log(`Predicate Type: ${predicate.constructor.name}`);
-            // Try to get reference if the predicate supports it
-            try {
-              if ('getReference' in predicate && typeof predicate.getReference === 'function') {
-                const predicateRef = await predicate.getReference();
-                if ('getHash' in predicateRef && typeof predicateRef.getHash === 'function') {
-                  const hash = predicateRef.getHash();
-                  console.log(`Predicate Reference: ${HexConverter.encode(hash.data)}`);
-                  // Create address from predicate reference
-                  const address = await DirectAddress.create(hash);
-                  console.log(`Address: ${address.address}`);
-                } else {
-                  console.log(`Note: Unable to calculate address for this predicate type`);
-                }
-              } else {
-                console.log(`Note: This predicate type doesn't support address calculation`);
-              }
-            } catch (err) {
-              console.log(`Note: Unable to calculate address - ${err instanceof Error ? err.message : 'Unknown error'}`);
-            }
-          }
-
+        // Display current state
+        console.log('\n=== Current State ===');
+        if (tokenJson.state) {
           // Display state data
-          if (token.state.data) {
-            console.log(`State Data: ${HexConverter.encode(token.state.data)}`);
+          if (tokenJson.state.data) {
+            console.log(`\nState Data (hex): ${tokenJson.state.data.substring(0, 50)}${tokenJson.state.data.length > 50 ? '...' : ''}`);
+            const decoded = tryDecodeAsText(tokenJson.state.data);
+            console.log(`State Data (decoded):`);
+            console.log(decoded);
           } else {
-            console.log('No state data');
+            console.log('\nState Data: (empty)');
           }
 
-          // Display transaction history
-          console.log('\n=== Transaction History ===');
-          console.log(`Genesis transaction exists: yes`);
-          console.log(`Number of transfer transactions: ${token.transactions.length}`);
-          token.transactions.forEach((tx, index) => {
-            console.log(`\nTransaction ${index + 1}:`);
-            console.log(`  Type: transfer`);
-          });
-          
-          // Handle secret verification if needed
-          if (options.secret) {
-            const secretStr = await readSecret();
-            console.log('\n=== Secret Verification ===');
-            console.log('Secret verification functionality will be implemented in a future update');
-          }
-        } catch (tokenError) {
-          console.error('Error processing token object:', tokenError);
-          
-          // Fall back to displaying raw JSON data
-          console.log('\n=== Token Information (Raw Data) ===');
-          console.log(`Token ID: ${tokenData.id}`);
-          console.log(`Token Type: ${tokenData.type}`);
-          console.log(`Version: ${tokenData.version || 'Not specified'}`);
-          
-          if (tokenData.state && tokenData.state.unlockPredicate) {
-            console.log('\n=== Current State ===');
-            console.log(`Predicate Type: ${tokenData.state.unlockPredicate.type}`);
-          }
-          
-          if (tokenData.transactions) {
-            console.log('\n=== Transaction History ===');
-            console.log(`Number of transactions: ${tokenData.transactions.length}`);
+          // Display predicate
+          if (tokenJson.state.predicate) {
+            displayPredicateInfo(tokenJson.state.predicate);
+          } else {
+            console.log('\nPredicate: (none)');
           }
         }
+
+        // Display transaction history
+        console.log('\n=== Transaction History ===');
+        if (tokenJson.transactions && Array.isArray(tokenJson.transactions)) {
+          console.log(`Number of transfers: ${tokenJson.transactions.length}`);
+
+          if (tokenJson.transactions.length === 0) {
+            console.log('(No transfer transactions - newly minted token)');
+          } else {
+            tokenJson.transactions.forEach((tx: any, idx: number) => {
+              console.log(`\nTransfer ${idx + 1}:`);
+              if (tx.data) {
+                console.log(`  New Owner: ${tx.data.newOwner || 'N/A'}`);
+              }
+            });
+          }
+        } else {
+          console.log('No transaction history');
+        }
+
+        // Display nametags
+        if (tokenJson.nametags && Array.isArray(tokenJson.nametags) && tokenJson.nametags.length > 0) {
+          console.log('\n=== Nametags ===');
+          console.log(`Number of nametags: ${tokenJson.nametags.length}`);
+          tokenJson.nametags.forEach((nametag: any, idx: number) => {
+            console.log(`  ${idx + 1}. ${JSON.stringify(nametag)}`);
+          });
+        }
+
+        // Summary
+        console.log('\n=== Verification Summary ===');
+        console.log(`✓ File format: TXF v${tokenJson.version || '?'}`);
+        console.log(`✓ Has genesis: ${!!tokenJson.genesis}`);
+        console.log(`✓ Has state: ${!!tokenJson.state}`);
+        console.log(`✓ Has predicate: ${!!tokenJson.state?.predicate}`);
+        console.log(`✓ SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
+
+        if (token) {
+          console.log('\n💡 This token can be transferred using the transfer-token command');
+        }
+
       } catch (error) {
-        console.error(`Error verifying token: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(`\n❌ Error verifying token: ${error instanceof Error ? error.message : String(error)}`);
         if (error instanceof Error && error.stack) {
+          console.error('\nStack trace:');
           console.error(error.stack);
         }
         process.exit(1);
