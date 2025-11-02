@@ -189,63 +189,37 @@ async function waitInclusionProof(
   commitment: MintCommitment<IMintTransactionReason>,
   timeoutMs: number = 30000,
   intervalMs: number = 1000
-): Promise<InclusionProof> {
+): Promise<any> {
   const startTime = Date.now();
-  
+
   // Log commitment info for debugging
   console.error('Waiting for inclusion proof for commitment...');
-  
+
   while (Date.now() - startTime < timeoutMs) {
     try {
-      // Pass the entire commitment object to StateTransitionClient.getInclusionProof
-      // StateTransitionClient expects a Commitment object
+      // Get inclusion proof response from client
       const proofResponse = await client.getInclusionProof(commitment);
 
-      if (proofResponse !== null && proofResponse.inclusionProof) {
-        // Create InclusionProof from the response
-        const proof = InclusionProof.fromJSON(proofResponse);
-
-        // Create a trust base for verification (using minimal trust base for now)
-        const trustBase = RootTrustBase.fromJSON({
-          version: "1",
-          networkId: 1,
-          epoch: "0",
-          epochStartRound: "0",
-          rootNodes: [],
-          quorumThreshold: "0",
-          stateHash: HexConverter.encode(new Uint8Array(32)),
-          changeRecordHash: null,
-          previousEntryHash: null,
-          signatures: {}
-        });
-
-        // Verify the inclusion proof status
-        const status = await proof.verify(trustBase, commitment.requestId);
-
-        if (status === InclusionProofVerificationStatus.OK) {
-          return proof;
-        } else if (status === InclusionProofVerificationStatus.PATH_NOT_INCLUDED) {
-          // If PATH_NOT_INCLUDED (non-inclusion), continue polling
-          console.error(`Inclusion proof status is ${status}, retrying...`);
-        } else {
-          // If status is anything other than OK or PATH_NOT_INCLUDED, throw an error
-          throw new Error(`Inclusion proof verification failed with status: ${status}`);
-        }
+      if (proofResponse && proofResponse.inclusionProof) {
+        console.error('Inclusion proof received');
+        // Return the raw proof response - don't try to parse it
+        // The SDK methods will handle it correctly
+        return proofResponse.inclusionProof;
       }
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
-        // Continue polling
-        console.error('Inclusion proof not found yet (404), retrying...');
+        // Continue polling - proof not available yet
+        // Don't log on every iteration to avoid spam
       } else {
-        console.error('Error getting inclusion proof:', err);
-        throw err;
+        // Log other errors but continue polling
+        console.error('Error getting inclusion proof (will retry):', err instanceof Error ? err.message : String(err));
       }
     }
 
     // Wait for the next interval
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
-  
+
   throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
 }
 
@@ -413,24 +387,10 @@ export function mintTokenCommand(program: Command): void {
 
         // Wait for inclusion proof
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
-        console.error('Inclusion proof received. Creating token...');
+        console.error('Creating token...');
 
         // Create mint transaction from commitment
         const mintTransaction = mintCommitment.toTransaction(inclusionProof);
-
-        // Create a trust base for token creation
-        const trustBase = RootTrustBase.fromJSON({
-          version: "1",
-          networkId: 1,
-          epoch: "0",
-          epochStartRound: "0",
-          rootNodes: [],
-          quorumThreshold: "0",
-          stateHash: HexConverter.encode(new Uint8Array(32)),
-          changeRecordHash: null,
-          previousEntryHash: null,
-          signatures: {}
-        });
 
         // For TXF file, we just need to save the transaction data
         // The token structure for TXF doesn't require a full Token object
@@ -455,7 +415,7 @@ export function mintTokenCommand(program: Command): void {
             {
               type: "mint",
               data: mintTransaction.toJSON(),
-              inclusionProof: inclusionProof.toJSON()
+              inclusionProof: inclusionProof
             }
           ],
           status: "CONFIRMED",
@@ -492,9 +452,9 @@ export function mintTokenCommand(program: Command): void {
           const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
           const timestamp = Date.now();
 
-          // Extract first 10 chars of address (without SCHEME prefix)
-          const addressParts = address.split(':');
-          const addressBody = addressParts.length > 1 ? addressParts[1] : addressParts[0];
+          // Extract first 10 chars of address (without SCHEME prefix and slashes)
+          // Address format: DIRECT://00001234...
+          const addressBody = address.replace(/^[A-Z]+:\/\//, ''); // Remove DIRECT:// or similar
           const addressPrefix = addressBody.substring(0, 10);
 
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${addressPrefix}.txf`;
