@@ -46,42 +46,109 @@ class SimpleTokenData implements ISerializable {
   }
 }
 
-// Function to validate or generate bytes
-async function processHexOrGenerateHash(input: string | undefined, label: string): Promise<Uint8Array> {
-  // If not provided, generate random 32 bytes
+/**
+ * Smart detection and serialization of input data
+ *
+ * Detects whether input is:
+ * 1. Already a valid hex string (even length, valid hex chars)
+ * 2. JSON data (starts with { or [)
+ * 3. Plain text that needs hashing
+ *
+ * For TokenId/TokenType: expects 256-bit (64 hex chars) or will hash
+ * For other data: accepts any valid hex or serializes text/JSON
+ */
+async function processInput(
+  input: string | undefined,
+  label: string,
+  options: {
+    requireHash?: boolean;  // Force hash to 32 bytes (for TokenId/TokenType)
+    allowEmpty?: boolean;   // Allow undefined/empty input
+  } = {}
+): Promise<Uint8Array> {
+  // Handle undefined/empty input
   if (!input) {
+    if (options.allowEmpty) {
+      return new Uint8Array(0);
+    }
+    // Generate random 32 bytes
     const randomBytes = crypto.getRandomValues(new Uint8Array(32));
     console.error(`Generated random ${label}: ${HexConverter.encode(randomBytes)}`);
     return randomBytes;
   }
 
-  // If it's a valid 32-byte hex string, convert it to bytes
-  if (/^[0-9a-fA-F]{64}$/.test(input)) {
-    return HexConverter.decode(input);
+  // Check if it's a valid hex string (even length, only hex chars)
+  const hexPattern = /^(0x)?[0-9a-fA-F]+$/;
+  if (hexPattern.test(input) && input.replace('0x', '').length % 2 === 0) {
+    const hexStr = input.replace('0x', '');
+
+    // For TokenId/TokenType, must be exactly 256 bits (64 hex chars)
+    if (options.requireHash && hexStr.length !== 64) {
+      console.error(`${label} hex string is ${hexStr.length} chars (expected 64), hashing...`);
+      const hasher = new DataHasher(HashAlgorithm.SHA256);
+      const hash = await hasher.update(HexConverter.decode(hexStr)).digest();
+      console.error(`Hashed ${label}: ${HexConverter.encode(hash.data)}`);
+      return hash.data;
+    }
+
+    // Valid hex string, decode directly
+    const bytes = HexConverter.decode(hexStr);
+    console.error(`Using hex ${label}: ${HexConverter.encode(bytes)}`);
+    return bytes;
   }
 
-  // Otherwise, hash the input to get 32 bytes
-  const hasher = new DataHasher(HashAlgorithm.SHA256);
-  const hash = await hasher.update(new TextEncoder().encode(input)).digest();
-  const hashBytes = hash.data;
-  console.error(`Hashed ${label} input: ${HexConverter.encode(hashBytes)}`);
-  return hashBytes;
+  // Check if it's JSON data
+  const trimmed = input.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      // Validate JSON
+      JSON.parse(trimmed);
+      // Serialize JSON as UTF-8 bytes
+      const jsonBytes = new TextEncoder().encode(trimmed);
+
+      if (options.requireHash) {
+        // Hash JSON for TokenId/TokenType
+        const hasher = new DataHasher(HashAlgorithm.SHA256);
+        const hash = await hasher.update(jsonBytes).digest();
+        console.error(`Hashed JSON ${label}: ${HexConverter.encode(hash.data)}`);
+        return hash.data;
+      }
+
+      console.error(`Serialized JSON ${label} (${jsonBytes.length} bytes)`);
+      return jsonBytes;
+    } catch (e) {
+      // Not valid JSON, treat as plain text
+    }
+  }
+
+  // Plain text - serialize or hash
+  const textBytes = new TextEncoder().encode(input);
+
+  if (options.requireHash) {
+    // Hash to 32 bytes for TokenId/TokenType
+    const hasher = new DataHasher(HashAlgorithm.SHA256);
+    const hash = await hasher.update(textBytes).digest();
+    console.error(`Hashed text ${label} "${input}": ${HexConverter.encode(hash.data)}`);
+    return hash.data;
+  }
+
+  console.error(`Serialized text ${label} "${input}" (${textBytes.length} bytes)`);
+  return textBytes;
 }
 
-// Function to process token type
+// Function to process token type with default
 async function processTokenType(tokenTypeOption: string | undefined): Promise<TokenType> {
-  let tokenTypeBytes: Uint8Array;
   if (tokenTypeOption) {
-    tokenTypeBytes = await processHexOrGenerateHash(tokenTypeOption, 'tokenType');
+    const tokenTypeBytes = await processInput(tokenTypeOption, 'tokenType', { requireHash: true });
+    return new TokenType(tokenTypeBytes);
   } else {
     // Default to hash of "unicity_standard_token_type"
     const defaultTypeStr = "unicity_standard_token_type";
     const hasher = new DataHasher(HashAlgorithm.SHA256);
     const hash = await hasher.update(new TextEncoder().encode(defaultTypeStr)).digest();
-    tokenTypeBytes = hash.data;
-    console.error(`Using default token type (hash of "${defaultTypeStr}"): ${HexConverter.encode(tokenTypeBytes)}`);
+    console.error(`Using default token type (hash of "${defaultTypeStr}"): ${HexConverter.encode(hash.data)}`);
+    return new TokenType(hash.data);
   }
-  return new TokenType(tokenTypeBytes);
 }
 
 // Function to wait for an inclusion proof with timeout
@@ -184,26 +251,24 @@ export function mintTokenCommand(program: Command): void {
         const recipientAddress = await AddressFactory.createAddress(address);
         console.error(`Minting token to address: ${address}`);
 
-        // Process tokenId (validate or generate)
-        const tokenIdBytes = await processHexOrGenerateHash(options.tokenId, 'tokenId');
+        // Process tokenId - must be 256-bit (64 hex chars) or will be hashed
+        const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true });
         const tokenId = new TokenId(tokenIdBytes);
 
-        // Process tokenType
+        // Process tokenType - must be 256-bit (64 hex chars) or will be hashed
         const tokenType = await processTokenType(options.tokenType);
 
-        // Process state data (metadata)
+        // Process state data (metadata) - accepts any format
         let stateBytes: Uint8Array;
         if (options.state) {
-          stateBytes = await processHexOrGenerateHash(options.state, 'state data');
+          // State takes precedence if both state and metadata are provided
+          stateBytes = await processInput(options.state, 'state data', { allowEmpty: false });
         } else if (options.metadata) {
-          // If metadata is provided but not state, use metadata as state
-          const metadataStr = options.metadata;
-          const hasher = new DataHasher(HashAlgorithm.SHA256);
-          const hash = await hasher.update(new TextEncoder().encode(metadataStr)).digest();
-          stateBytes = hash.data;
-          console.error(`Using metadata as state data: ${HexConverter.encode(stateBytes)}`);
+          // Use metadata as state data
+          stateBytes = await processInput(options.metadata, 'metadata', { allowEmpty: false });
+          console.error('Using metadata as state data');
         } else {
-          // Use empty state if neither provided
+          // Empty state
           stateBytes = new Uint8Array(0);
           console.error('Using empty state data');
         }
@@ -221,13 +286,15 @@ export function mintTokenCommand(program: Command): void {
         }
 
         // Process reason (if provided)
+        // Note: reason is stored as metadata in TXF, SDK expects null for simple mints
         const reason = options.reason ? options.reason : null;
         if (reason) {
           console.error(`Mint reason: ${reason}`);
         }
 
-        // Process salt (always generate for mint)
-        const salt = await processHexOrGenerateHash(undefined, 'salt');
+        // Process salt (always generate random for mint)
+        const salt = crypto.getRandomValues(new Uint8Array(32));
+        console.error(`Generated salt: ${HexConverter.encode(salt)}`);
 
         // Create token data wrapper (use state data as custom token data)
         const tokenData = new SimpleTokenData(stateBytes);
