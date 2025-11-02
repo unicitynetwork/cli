@@ -515,9 +515,14 @@ export function mintTokenCommand(program: Command): void {
           console.log(tokenJson);
         }
       } catch (error) {
-        console.error(`Error minting token: ${error instanceof Error ? error.message : String(error)}`);
-        if (error instanceof Error && error.stack) {
-          console.error(error.stack);
+        console.error('Error minting token:');
+        if (error instanceof Error) {
+          console.error(`  Message: ${error.message}`);
+          if (error.stack) {
+            console.error(`  Stack trace:\n${error.stack}`);
+          }
+        } else {
+          console.error(`  Error details: ${JSON.stringify(error, null, 2)}`);
         }
         process.exit(1);
       }
