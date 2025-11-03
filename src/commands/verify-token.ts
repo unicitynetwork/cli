@@ -313,7 +313,10 @@ export function verifyTokenCommand(program: Command): void {
             tokenJson.transactions.forEach((tx: any, idx: number) => {
               console.log(`\nTransfer ${idx + 1}:`);
               if (tx.data) {
-                console.log(`  New Owner: ${tx.data.newOwner || 'N/A'}`);
+                console.log(`  New Owner: ${tx.data.recipient || 'N/A'}`);
+                if (tx.data.salt) {
+                  console.log(`  Salt: ${tx.data.salt}`);
+                }
               }
             });
           }
