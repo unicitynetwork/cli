@@ -27,10 +27,6 @@ export function getRequestCommand(program: Command): void {
       }
 
       try {
-        console.log(`\n=== Fetching Inclusion Proof ===`);
-        console.log(`Endpoint: ${endpoint}`);
-        console.log(`Request ID: ${requestIdStr}\n`);
-
         // Use SDK to fetch inclusion proof
         const aggregatorClient = new AggregatorClient(endpoint);
         const requestId = RequestId.fromJSON(requestIdStr);
@@ -39,8 +35,18 @@ export function getRequestCommand(program: Command): void {
         const proofResponse = await aggregatorClient.getInclusionProof(requestId);
 
         if (!proofResponse || !proofResponse.inclusionProof) {
-          console.log('STATUS: NOT_FOUND');
-          console.log('No proof available for this request ID');
+          if (options.json) {
+            // Output structured JSON for pipeline processing
+            console.log(JSON.stringify({
+              status: 'NOT_FOUND',
+              requestId: requestIdStr,
+              endpoint: endpoint,
+              proof: null
+            }, null, 2));
+          } else {
+            console.log('STATUS: NOT_FOUND');
+            console.log('No proof available for this request ID');
+          }
           return;
         }
 
@@ -48,9 +54,29 @@ export function getRequestCommand(program: Command): void {
 
         // If --json flag is set, output raw JSON and exit
         if (options.json) {
-          console.log(JSON.stringify(inclusionProof.toJSON(), null, 2));
+          const proofJson: any = inclusionProof.toJSON();
+
+          // Preserve authenticator if present (SDK may strip it)
+          if (inclusionProof.authenticator && proofJson.authenticator === null) {
+            proofJson.authenticator = inclusionProof.authenticator.toJSON();
+          }
+
+          // Output complete JSON structure for pipeline processing
+          const output = {
+            status: inclusionProof.authenticator !== null ? 'INCLUSION' : 'EXCLUSION',
+            requestId: requestIdStr,
+            endpoint: endpoint,
+            proof: proofJson
+          };
+
+          console.log(JSON.stringify(output, null, 2));
           return;
         }
+
+        // Human-readable output
+        console.log(`\n=== Fetching Inclusion Proof ===`);
+        console.log(`Endpoint: ${endpoint}`);
+        console.log(`Request ID: ${requestIdStr}\n`);
 
         // Check if this is an exclusion proof
         const isExclusionProof = inclusionProof.authenticator === null && inclusionProof.transactionHash === null;
