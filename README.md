@@ -1,4 +1,5 @@
 # Unicity CLI
+
 Command-line tools for interacting with the Unicity Network's offchain token system, including:
 
 - **Aggregator Layer**: Tools for interacting with the Unicity gateway and commitment aggregation
@@ -6,6 +7,14 @@ Command-line tools for interacting with the Unicity Network's offchain token sys
 - **Agent Layer**: Tools for automated token management and processing
 
 This CLI provides a convenient interface to the transaction flow engine, allowing users to mint tokens, create pointers for reception, send tokens to other users, and receive tokens securely while leveraging Unicity's blockchain-based single-spend proof system.
+
+## Documentation
+
+- **[Getting Started Guide](GETTING_STARTED.md)** - New users start here (15-minute tutorial)
+- **[API Reference](API_REFERENCE.md)** - Complete command-line API documentation
+- **[Documentation Index](DOCUMENTATION_INDEX.md)** - Full documentation navigation
+- **[Tutorial Series](TUTORIALS_INDEX.md)** - Progressive learning path (beginner to expert)
+- **[Glossary](GLOSSARY.md)** - Key terms and concepts
 
 ## Installation
 
