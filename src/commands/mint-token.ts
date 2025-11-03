@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
-import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
 import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
@@ -10,7 +10,7 @@ import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/Sta
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { TokenCoinData } from '@unicitylabs/state-transition-sdk/lib/token/fungible/TokenCoinData.js';
 import { CoinId } from '@unicitylabs/state-transition-sdk/lib/token/fungible/CoinId.js';
-import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
+import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { MintCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/MintCommitment.js';
 import { MintTransactionData } from '@unicitylabs/state-transition-sdk/lib/transaction/MintTransactionData.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';

@@ -3,7 +3,7 @@ import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/Signi
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
 import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
-import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';

@@ -4,6 +4,7 @@
  */
 
 import { InclusionProof } from '@unicitylabs/state-transition-sdk/lib/transaction/InclusionProof.js';
+import { InclusionProofVerificationStatus } from '@unicitylabs/commons/lib/api/InclusionProof.js';
 import { RequestId } from '@unicitylabs/state-transition-sdk/lib/api/RequestId.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
@@ -74,10 +75,7 @@ export async function validateInclusionProof(
     errors.push('Unicity certificate is missing');
   }
 
-  // 5. Verify authenticator signature directly (without UnicityCertificate validation)
-  // Note: Full proof.verify() includes UnicityCertificate validation which won't work
-  // with local/test aggregators. For development/testing, we verify the authenticator
-  // signature directly which proves the transaction was signed by the aggregator.
+  // 5. Verify authenticator signature directly
   if (errors.length === 0 && proof.authenticator && proof.transactionHash) {
     try {
       const isValid = await proof.authenticator.verify(proof.transactionHash);
@@ -91,9 +89,19 @@ export async function validateInclusionProof(
     warnings.push('Cannot verify signature - authenticator or transaction hash missing');
   }
 
-  // Note: We skip UnicityCertificate validation which is part of proof.verify()
-  // This is appropriate for local/development testing where the aggregator's
-  // certificate doesn't match production trust base configuration.
+  // 6. ALSO call the full SDK proof.verify() to see what it returns
+  // This tests the complete validation including UnicityCertificate
+  if (errors.length === 0 && trustBase) {
+    try {
+      const sdkStatus = await proof.verify(trustBase, requestId);
+
+      if (sdkStatus !== InclusionProofVerificationStatus.OK) {
+        warnings.push(`SDK proof.verify() returned: ${sdkStatus} (may be due to UnicityCertificate mismatch in local testing)`);
+      }
+    } catch (err) {
+      warnings.push(`SDK proof.verify() threw error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   return {
     valid: errors.length === 0,

@@ -5,8 +5,8 @@ import { TransferCommitment } from '@unicitylabs/state-transition-sdk/lib/transa
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { AddressFactory } from '@unicitylabs/state-transition-sdk/lib/address/AddressFactory.js';
-import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
+import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
+import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';

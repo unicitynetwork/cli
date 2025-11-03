@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
-import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
+import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { CborDecoder } from '@unicitylabs/commons/lib/cbor/CborDecoder.js';
 import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';
 import * as fs from 'fs';

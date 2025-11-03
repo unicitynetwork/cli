@@ -8,8 +8,8 @@ import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predica
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
-import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
-import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
+import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
+import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateInclusionProof, validateTokenProofsJson } from '../utils/proof-validation.js';
