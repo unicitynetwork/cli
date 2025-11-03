@@ -2,8 +2,11 @@ import { Command } from 'commander';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { CborDecoder } from '@unicitylabs/commons/lib/cbor/CborDecoder.js';
+import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
+import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
+import { checkOwnershipStatus } from '../utils/ownership-verification.js';
 import * as fs from 'fs';
 
 /**
@@ -196,6 +199,9 @@ export function verifyTokenCommand(program: Command): void {
     .command('verify-token')
     .description('Verify and display detailed information about a token file')
     .option('-f, --file <file>', 'Token file to verify (required)')
+    .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
+    .option('--skip-network', 'Skip network ownership verification')
     .action(async (options) => {
       try {
         // Check if file option is provided
@@ -300,6 +306,50 @@ export function verifyTokenCommand(program: Command): void {
           } else {
             console.log('\nPredicate: (none)');
           }
+        }
+
+        // Display ownership status (query aggregator)
+        if (!options.skipNetwork && token && tokenJson.state) {
+          console.log('\n=== Ownership Status ===');
+
+          // Determine endpoint
+          let endpoint = options.endpoint;
+          if (options.local) {
+            endpoint = 'http://127.0.0.1:3000';
+          }
+
+          try {
+            console.log('Querying aggregator for current state...');
+            const aggregatorClient = new AggregatorClient(endpoint);
+            const client = new StateTransitionClient(aggregatorClient);
+
+            // Get trust base (reuse if already loaded)
+            let trustBase = null;
+            try {
+              trustBase = await getCachedTrustBase({
+                filePath: process.env.TRUSTBASE_PATH,
+                useFallback: false
+              });
+            } catch (err) {
+              console.log('  ⚠ Could not load trust base for ownership verification');
+              console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
+            }
+
+            if (trustBase) {
+              const ownershipStatus = await checkOwnershipStatus(token, tokenJson, client, trustBase);
+
+              console.log(`\n${ownershipStatus.message}`);
+              ownershipStatus.details.forEach(detail => {
+                console.log(`  ${detail}`);
+              });
+            }
+          } catch (err) {
+            console.log('  ⚠ Cannot verify ownership status');
+            console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (options.skipNetwork) {
+          console.log('\n=== Ownership Status ===');
+          console.log('Network verification skipped (--skip-network flag)');
         }
 
         // Display transaction history
