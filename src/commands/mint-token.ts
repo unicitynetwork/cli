@@ -19,6 +19,7 @@ import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/Signi
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import { validateInclusionProof } from '../utils/proof-validation.js';
+import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -344,31 +345,13 @@ export function mintTokenCommand(program: Command): void {
         const aggregatorClient = new AggregatorClient(endpoint);
         const client = new StateTransitionClient(aggregatorClient);
 
-        // Get trust base for Token.mint()
-        console.error('Setting up trust base...');
-        // For local/testing, create minimal trust base matching aggregator format
-        // In production, this should be fetched from aggregator
-        const trustBase = RootTrustBase.fromJSON({
-          version: '1',
-          networkId: endpoint.includes('localhost') || endpoint.includes('127.0.0.1') ? 3 : 1,
-          epoch: '1',
-          epochStartRound: '1',
-          rootNodes: [
-            {
-              nodeId: '16Uiu2HAm6YizNi4XUqUcCF3aoEVZaSzP3XSrGeKA1b893RLtCLfu',
-              sigKey: '02cf6a24725f81b38431f3ddb92ed89a01b06a07f4e15945096c2e11a13916ff6d',
-              stake: '1'
-            }
-          ],
-          quorumThreshold: '1',
-          stateHash: '0000000000000000000000000000000000000000000000000000000000000000',
-          changeRecordHash: null,
-          previousEntryHash: null,
-          signatures: {
-            '16Uiu2HAm6YizNi4XUqUcCF3aoEVZaSzP3XSrGeKA1b893RLtCLfu': 'c6a2603d88ed172ef492f3b55bc6f0651ca7fde037b8651c83c33e8fd4884e5d72ef863fac564a0863e2bdea4ef73a1b2de2abe36485a3fa95d3cda1c51dcc2300'
-          }
+        // Load trust base dynamically from file or fallback to hardcoded
+        console.error('Loading trust base...');
+        const trustBase = await getCachedTrustBase({
+          filePath: process.env.TRUSTBASE_PATH,
+          useFallback: false // Try file loading first, fallback if unavailable
         });
-        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId})\n`);
+        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
 
         // Process tokenId - must be 256-bit (64 hex chars) or will be hashed
         const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true });

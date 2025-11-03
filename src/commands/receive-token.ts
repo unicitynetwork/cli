@@ -13,6 +13,7 @@ import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/j
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateInclusionProof, validateTokenProofsJson } from '../utils/proof-validation.js';
+import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -254,29 +255,13 @@ export function receiveTokenCommand(program: Command): void {
         const client = new StateTransitionClient(aggregatorClient);
         console.error(`  ✓ Connected to ${endpoint}\n`);
 
-        // STEP 7.5: Create trust base for validation and token update
-        console.error('Step 7.5: Setting up trust base...');
-        const trustBase = RootTrustBase.fromJSON({
-          version: '1',
-          networkId: endpoint.includes('localhost') ? 3 : 1,
-          epoch: '1',
-          epochStartRound: '1',
-          rootNodes: [
-            {
-              nodeId: '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb',
-              sigKey: '03384d4d4ad517fb94634910e0c88cb4551a483017c03256de4310afa4b155dfad',
-              stake: '1'
-            }
-          ],
-          quorumThreshold: '1',
-          stateHash: '0000000000000000000000000000000000000000000000000000000000000000',
-          changeRecordHash: null,
-          previousEntryHash: null,
-          signatures: {
-            '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb': '843bc1fd04f31a6eee7c584de67c6985fd6021e912622aacaa7278a56a10ec7e42911d6a5c53604c60849a61911f1dc6276a642a7df7c4d57cac8d893694a17601'
-          }
+        // STEP 7.5: Load trust base dynamically from file or fallback to hardcoded
+        console.error('Step 7.5: Loading trust base...');
+        const trustBase = await getCachedTrustBase({
+          filePath: process.env.TRUSTBASE_PATH,
+          useFallback: false // Try file loading first, fallback if unavailable
         });
-        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId})\n`);
+        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
 
         // STEP 8: Submit transfer commitment to network
         console.error('Step 8: Submitting transfer to network...');

@@ -247,7 +247,7 @@ export function verifyTokenCommand(program: Command): void {
           console.log('\n=== Cryptographic Proof Verification ===');
           console.log('Verifying proofs with SDK...');
 
-          const trustBase = createDefaultTrustBase();
+          const trustBase = await createDefaultTrustBase();
           const sdkProofValidation = await validateTokenProofs(token, trustBase);
 
           if (sdkProofValidation.valid) {

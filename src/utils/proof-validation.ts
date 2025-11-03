@@ -8,6 +8,7 @@ import { InclusionProofVerificationStatus } from '@unicitylabs/commons/lib/api/I
 import { RequestId } from '@unicitylabs/state-transition-sdk/lib/api/RequestId.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
+import { getCachedTrustBase } from './trustbase-loader.js';
 
 /**
  * Result of proof validation
@@ -328,30 +329,14 @@ export function validateTokenProofsJson(tokenJson: any): ProofValidationResult {
 
 /**
  * Create a default trust base for local/test environments
- * Matches the trust base used in mint-token and receive-token
+ * Now uses dynamic loading from file or fallback
  *
- * @param networkId Network ID (3 for local, 1 for production)
- * @returns Trust base instance
+ * @deprecated Use getCachedTrustBase() from trustbase-loader.js instead
+ * @returns Trust base instance (async promise)
  */
-export function createDefaultTrustBase(networkId: number = 3): RootTrustBase {
-  return RootTrustBase.fromJSON({
-    version: '1',
-    networkId: networkId,
-    epoch: '1',
-    epochStartRound: '1',
-    rootNodes: [
-      {
-        nodeId: '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb',
-        sigKey: '03384d4d4ad517fb94634910e0c88cb4551a483017c03256de4310afa4b155dfad',
-        stake: '1'
-      }
-    ],
-    quorumThreshold: '1',
-    stateHash: '0000000000000000000000000000000000000000000000000000000000000000',
-    changeRecordHash: null,
-    previousEntryHash: null,
-    signatures: {
-      '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb': '843bc1fd04f31a6eee7c584de67c6985fd6021e912622aacaa7278a56a10ec7e42911d6a5c53604c60849a61911f1dc6276a642a7df7c4d57cac8d893694a17601'
-    }
+export async function createDefaultTrustBase(): Promise<RootTrustBase> {
+  return getCachedTrustBase({
+    filePath: process.env.TRUSTBASE_PATH,
+    useFallback: false
   });
 }
