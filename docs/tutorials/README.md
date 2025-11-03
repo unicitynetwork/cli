@@ -32,7 +32,7 @@ You're Production Ready!
 ## Tutorial Quick Navigation
 
 ### Tutorial 1: Your First Token (Beginner)
-**File**: [TUTORIAL_1_FIRST_TOKEN.md](TUTORIAL_1_FIRST_TOKEN.md)
+**File**: [01-first-token.md](01-first-token.md)
 
 **What You'll Learn**:
 - System setup and installation
@@ -64,7 +64,7 @@ npm run verify-token -- -f token.txf
 ---
 
 ### Tutorial 2: Token Transfers (Intermediate)
-**File**: [TUTORIAL_2_TOKEN_TRANSFERS.md](TUTORIAL_2_TOKEN_TRANSFERS.md)
+**File**: [02-token-transfers.md](02-token-transfers.md)
 
 **What You'll Learn**:
 - Create multiple identities (Alice and Bob)
@@ -103,7 +103,7 @@ SECRET="bob-secret" npm run receive-token -- -f transfer.txf --save
 ---
 
 ### Tutorial 3: Advanced Operations (Advanced)
-**File**: [TUTORIAL_3_ADVANCED_OPERATIONS.md](TUTORIAL_3_ADVANCED_OPERATIONS.md)
+**File**: [03-advanced-operations.md](03-advanced-operations.md)
 
 **What You'll Learn**:
 - All token type presets (UCT, NFT, USDU)
@@ -152,7 +152,7 @@ npm run send-token -- -f token.txf -r ADDR2 --save
 ---
 
 ### Tutorial 4: Token Internals (Technical Deep-Dive)
-**File**: [TUTORIAL_4_TOKEN_INTERNALS.md](TUTORIAL_4_TOKEN_INTERNALS.md)
+**File**: [04-token-internals.md](04-token-internals.md)
 
 **What You'll Learn**:
 - TXF file format and structure
@@ -197,7 +197,7 @@ npm run send-token -- -f token.txf -r ADDR2 --save
 ---
 
 ### Tutorial 5: Production Best Practices (Advanced)
-**File**: [TUTORIAL_5_PRODUCTION_PRACTICES.md](TUTORIAL_5_PRODUCTION_PRACTICES.md)
+**File**: [05-production-practices.md](05-production-practices.md)
 
 **What You'll Learn**:
 - Secure secret management (vault, HSM, environment)
@@ -396,28 +396,28 @@ Read tutorials as needed for your use case
 While tutorials provide comprehensive learning, these guides offer deeper detail on specific topics:
 
 ### For Tutorial 1
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Quick start overview
-- [GEN_ADDRESS_GUIDE.md](GEN_ADDRESS_GUIDE.md) - Address generation deep-dive
-- [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) - Minting options reference
-- [VERIFY_TOKEN_GUIDE.md](VERIFY_TOKEN_GUIDE.md) - Verification documentation
+- [GETTING_STARTED.md](../getting-started.md) - Quick start overview
+- [GEN_ADDRESS_GUIDE.md](../guides/commands/gen-address.md) - Address generation deep-dive
+- [MINT_TOKEN_GUIDE.md](../guides/commands/mint-token.md) - Minting options reference
+- [VERIFY_TOKEN_GUIDE.md](../guides/commands/verify-token.md) - Verification documentation
 
 ### For Tutorial 2
-- [OFFLINE_TRANSFER_WORKFLOW.md](OFFLINE_TRANSFER_WORKFLOW.md) - Transfer details
-- [SEND_TOKEN_GUIDE.md](SEND_TOKEN_GUIDE.md) - Send command reference
-- [RECEIVE_TOKEN_GUIDE.md](RECEIVE_TOKEN_GUIDE.md) - Receive command reference
+- [OFFLINE_TRANSFER_WORKFLOW.md](../guides/workflows/offline-transfer.md) - Transfer details
+- [SEND_TOKEN_GUIDE.md](../guides/commands/send-token.md) - Send command reference
+- [RECEIVE_TOKEN_GUIDE.md](../guides/commands/receive-token.md) - Receive command reference
 
 ### For Tutorial 3
-- [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) - All token type presets
-- [SEND_TOKEN_GUIDE.md](SEND_TOKEN_GUIDE.md) - Pattern A vs Pattern B
+- [MINT_TOKEN_GUIDE.md](../guides/commands/mint-token.md) - All token type presets
+- [SEND_TOKEN_GUIDE.md](../guides/commands/send-token.md) - Pattern A vs Pattern B
 
 ### For Tutorial 4
-- [TXF_IMPLEMENTATION_GUIDE.md](TXF_IMPLEMENTATION_GUIDE.md) - TXF format specification
+- [TXF_IMPLEMENTATION_GUIDE.md](../reference/txf-format.md) - TXF format specification
 
 ### For All Tutorials
-- [GLOSSARY.md](GLOSSARY.md) - Term definitions
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
-- [FAQ.md](FAQ.md) - Frequently asked questions
-- [README.md](README.md) - Complete command reference
+- [GLOSSARY.md](../glossary.md) - Term definitions
+- [TROUBLESHOOTING.md](../troubleshooting.md) - Common issues and solutions
+- [FAQ.md](../faq.md) - Frequently asked questions
+- [README.md](../README.md) - Complete command reference
 
 ---
 
@@ -474,7 +474,7 @@ Next: Build something amazing with Unicity!
 - Review the Prerequisites section
 - Ensure Node.js 18+ is installed
 - Run the verification command again
-- Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- Check [TROUBLESHOOTING.md](../troubleshooting.md)
 
 ### "Tutorial 2 seems complicated"
 - This is normal! Re-read carefully
@@ -500,9 +500,9 @@ Next: Build something amazing with Unicity!
 
 When stuck:
 
-1. **Check the Glossary**: [GLOSSARY.md](GLOSSARY.md)
-2. **Search Troubleshooting**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-3. **Review FAQ**: [FAQ.md](FAQ.md)
+1. **Check the Glossary**: [GLOSSARY.md](../glossary.md)
+2. **Search Troubleshooting**: [TROUBLESHOOTING.md](../troubleshooting.md)
+3. **Review FAQ**: [FAQ.md](../faq.md)
 4. **Re-read the specific tutorial** section
 5. **Check supplementary guides** for command reference
 6. **File an issue**: https://github.com/unicitynetwork/cli/issues
@@ -545,11 +545,11 @@ Pick a tutorial and start learning. Each one builds on the previous, so start wi
 
 ## Quick Links
 
-- Start learning: [Tutorial 1 - Your First Token](TUTORIAL_1_FIRST_TOKEN.md)
-- Commands reference: [README.md](README.md)
-- Definitions: [GLOSSARY.md](GLOSSARY.md)
-- Issues: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- FAQ: [FAQ.md](FAQ.md)
+- Start learning: [Tutorial 1 - Your First Token](01-first-token.md)
+- Commands reference: [README.md](../README.md)
+- Definitions: [GLOSSARY.md](../glossary.md)
+- Issues: [TROUBLESHOOTING.md](../troubleshooting.md)
+- FAQ: [FAQ.md](../faq.md)
 
 ---
 

@@ -308,7 +308,7 @@ SECRET="my-secret" npm run mint-token -- \
   -d '{"amount":"100.00","currency":"USD"}'
 ```
 
-See [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) for all token types.
+See [MINT_TOKEN_GUIDE.md](guides/commands/mint-token.md) for all token types.
 
 ### Try Advanced Features
 
@@ -327,19 +327,18 @@ SECRET="my-secret" npm run send-token -- \
 
 ### Learn Common Workflows
 
-- [WORKFLOWS.md](WORKFLOWS.md) - Complete end-to-end workflows
-- [TRANSFER_GUIDE.md](TRANSFER_GUIDE.md) - Deep dive on transfers
-- [SECURITY.md](SECURITY.md) - Keep your tokens safe
+- [WORKFLOWS.md](guides/workflows/transfer-guide.md) - Complete end-to-end workflows
+- [TRANSFER_GUIDE.md](guides/workflows/transfer-guide.md) - Deep dive on transfers
 
 ### Read Command Guides
 
 Each command has a detailed guide:
 
-- [gen-address](GEN_ADDRESS_GUIDE.md) - Address generation options
-- [mint-token](MINT_TOKEN_GUIDE.md) - All minting options
-- [verify-token](VERIFY_TOKEN_GUIDE.md) - Understand token structure
-- [send-token](SEND_TOKEN_GUIDE.md) - Transfer patterns explained
-- [receive-token](RECEIVE_TOKEN_GUIDE.md) - Claim tokens sent to you
+- [gen-address](guides/commands/gen-address.md) - Address generation options
+- [mint-token](guides/commands/mint-token.md) - All minting options
+- [verify-token](guides/commands/verify-token.md) - Understand token structure
+- [send-token](guides/commands/send-token.md) - Transfer patterns explained
+- [receive-token](guides/commands/receive-token.md) - Claim tokens sent to you
 
 ---
 
@@ -366,10 +365,10 @@ Each command has a detailed guide:
 
 ### Get More Help
 
-- **Troubleshooting Guide**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **FAQ**: [FAQ.md](FAQ.md)
+- **Troubleshooting Guide**: [TROUBLESHOOTING.md](troubleshooting.md)
+- **FAQ**: [FAQ.md](faq.md)
 - **All Commands**: [README.md](README.md)
-- **Glossary**: [GLOSSARY.md](GLOSSARY.md) - Understand the terms
+- **Glossary**: [GLOSSARY.md](glossary.md) - Understand the terms
 
 ### Join the Community
 

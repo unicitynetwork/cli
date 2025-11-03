@@ -880,6 +880,6 @@ You've mastered:
 
 *You're now a certified Unicity CLI expert!*
 
-Questions or issues? Check the [TROUBLESHOOTING.md](TROUBLESHOOTING.md) guide or review earlier tutorials.
+Questions or issues? Check the [TROUBLESHOOTING.md](../troubleshooting.md) guide or review earlier tutorials.
 
 Remember: **Security is not optional - it's essential.**

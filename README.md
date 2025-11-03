@@ -10,11 +10,11 @@ This CLI provides a convenient interface to the transaction flow engine, allowin
 
 ## Documentation
 
-- **[Getting Started Guide](GETTING_STARTED.md)** - New users start here (15-minute tutorial)
-- **[API Reference](API_REFERENCE.md)** - Complete command-line API documentation
-- **[Documentation Index](DOCUMENTATION_INDEX.md)** - Full documentation navigation
-- **[Tutorial Series](TUTORIALS_INDEX.md)** - Progressive learning path (beginner to expert)
-- **[Glossary](GLOSSARY.md)** - Key terms and concepts
+- **[Getting Started Guide](docs/getting-started.md)** - New users start here (15-minute tutorial)
+- **[API Reference](docs/reference/api-reference.md)** - Complete command-line API documentation
+- **[Documentation Index](docs/README.md)** - Full documentation navigation
+- **[Tutorial Series](docs/tutorials/README.md)** - Progressive learning path (beginner to expert)
+- **[Glossary](docs/glossary.md)** - Key terms and concepts
 
 ## Installation
 
@@ -100,15 +100,15 @@ npm run register-request -- -e https://gateway.unicity.network mySecretKey "init
 
 | Command | Description | Guide |
 |---------|-------------|-------|
-| `mint-token` | Create new tokens (self-mint to your address) | [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md) |
-| `verify-token` | Verify and inspect token files | [VERIFY_TOKEN_GUIDE.md](VERIFY_TOKEN_GUIDE.md) |
-| `send-token` | Send tokens to recipients (offline or immediate) | [SEND_TOKEN_GUIDE.md](SEND_TOKEN_GUIDE.md) |
-| `receive-token` | Complete offline token transfers | [RECEIVE_TOKEN_GUIDE.md](RECEIVE_TOKEN_GUIDE.md) |
-| `gen-address` | Generate addresses from secrets | [GEN_ADDRESS_GUIDE.md](GEN_ADDRESS_GUIDE.md) |
+| `mint-token` | Create new tokens (self-mint to your address) | [docs/guides/commands/mint-token.md](docs/guides/commands/mint-token.md) |
+| `verify-token` | Verify and inspect token files | [docs/guides/commands/verify-token.md](docs/guides/commands/verify-token.md) |
+| `send-token` | Send tokens to recipients (offline or immediate) | [docs/guides/commands/send-token.md](docs/guides/commands/send-token.md) |
+| `receive-token` | Complete offline token transfers | [docs/guides/commands/receive-token.md](docs/guides/commands/receive-token.md) |
+| `gen-address` | Generate addresses from secrets | [docs/guides/commands/gen-address.md](docs/guides/commands/gen-address.md) |
 | `get-request` | Get inclusion proofs | - |
 | `register-request` | Register state transitions | - |
 
-**Transfer Commands** - See [TRANSFER_GUIDE.md](TRANSFER_GUIDE.md) for complete workflow
+**Transfer Commands** - See [docs/guides/workflows/transfer-guide.md](docs/guides/workflows/transfer-guide.md) for complete workflow
 
 ## Key Features
 

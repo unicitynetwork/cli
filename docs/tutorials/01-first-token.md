@@ -406,7 +406,7 @@ You've successfully completed your first Unicity CLI tutorial. You now understan
 
 **What's next?** Move to Tutorial 2 to learn how to transfer tokens to other people!
 
-**Questions?** Check the [GLOSSARY.md](GLOSSARY.md) for term definitions or [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues.
+**Questions?** Check the [GLOSSARY.md](../glossary.md) for term definitions or [TROUBLESHOOTING.md](../troubleshooting.md) for common issues.
 
 ---
 

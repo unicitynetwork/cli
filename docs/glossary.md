@@ -19,7 +19,7 @@ A unique identifier for receiving tokens, derived from your secret (private key)
 
 **Safety**: Addresses are safe to share publicly. They do NOT reveal your secret/private key.
 
-**See**: [GEN_ADDRESS_GUIDE.md](GEN_ADDRESS_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md](guides/commands/gen-address.md)
 
 ---
 
@@ -28,7 +28,7 @@ Network component that collects state transition requests and aggregates them in
 
 **Default Endpoint**: `https://gateway.unicity.network`
 
-**See**: [CLAUDE.md](CLAUDE.md#architecture-overview)
+**See**: [CLAUDE.md](../.dev/README.md#architecture-overview)
 
 ---
 
@@ -41,7 +41,7 @@ Binary data serialization format used for predicates in Unicity tokens. More com
 
 **Size**: Unicity predicates are exactly 187 bytes when CBOR-encoded
 
-**See**: [VERIFY_TOKEN_GUIDE.md#predicate-structure-deep-dive](VERIFY_TOKEN_GUIDE.md)
+**See**: [VERIFY_TOKEN_GUIDE.md#predicate-structure-deep-dive](guides/commands/verify-token.md#predicate-structure-deep-dive)
 
 ---
 
@@ -59,7 +59,7 @@ Cryptographic structure containing transaction data and authenticator (signature
 - **MintCommitment**: For creating new tokens
 - **TransferCommitment**: For transferring token ownership
 
-**See**: [OFFLINE_TRANSFER_WORKFLOW.md](OFFLINE_TRANSFER_WORKFLOW.md)
+**See**: [OFFLINE_TRANSFER_WORKFLOW.md](guides/workflows/offline-transfer.md)
 
 ---
 
@@ -102,7 +102,7 @@ The original mint transaction that created a token. Contains initial token data,
 
 **Always preserved**: Every token retains its genesis transaction in the transaction history.
 
-**See**: [VERIFY_TOKEN_GUIDE.md#genesis-transaction](VERIFY_TOKEN_GUIDE.md)
+**See**: [VERIFY_TOKEN_GUIDE.md#genesis-transaction](guides/commands/verify-token.md#genesis-transaction)
 
 ---
 
@@ -138,7 +138,7 @@ Cryptographic proof that a transaction was included in the blockchain. Contains:
 
 **Purpose**: Proves transaction finality without needing full blockchain
 
-**See**: [VERIFY_TOKEN_GUIDE.md#inclusion-proof](VERIFY_TOKEN_GUIDE.md)
+**See**: [VERIFY_TOKEN_GUIDE.md#inclusion-proof](guides/commands/verify-token.md#inclusion-proof)
 
 ---
 
@@ -157,7 +157,7 @@ Single-use ownership predicate that includes a nonce. Creates unique addresses f
 
 **Opposite**: Unmasked Predicate
 
-**See**: [GEN_ADDRESS_GUIDE.md#masked-addresses](GEN_ADDRESS_GUIDE.md), [MINT_TOKEN_GUIDE.md#masked-predicate](MINT_TOKEN_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md#masked-addresses](guides/commands/gen-address.md#masked-addresses), [MINT_TOKEN_GUIDE.md#masked-predicate](guides/commands/mint-token.md#masked-predicate)
 
 ---
 
@@ -175,7 +175,7 @@ Create a new token. The CLI uses a **self-mint pattern** where tokens are minted
 
 **Command**: `npm run mint-token`
 
-**See**: [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md)
+**See**: [MINT_TOKEN_GUIDE.md](guides/commands/mint-token.md)
 
 ---
 
@@ -190,7 +190,7 @@ Token that represents a unique item and cannot be split or merged. Each NFT is d
 
 **Examples**: Artwork, collectibles, certificates, receipts
 
-**See**: [MINT_TOKEN_GUIDE.md#token-types](MINT_TOKEN_GUIDE.md)
+**See**: [MINT_TOKEN_GUIDE.md#token-types](guides/commands/mint-token.md#token-types)
 
 ---
 
@@ -204,7 +204,7 @@ Random or unique value used in masked predicates to create distinct addresses. M
 
 **Storage**: For masked addresses, you must save the nonce to spend the token later
 
-**See**: [GEN_ADDRESS_GUIDE.md#nonce-management](GEN_ADDRESS_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md#nonce-management](guides/commands/gen-address.md#nonce-management)
 
 ---
 
@@ -219,7 +219,7 @@ Token that exists outside the blockchain but is secured by blockchain-based proo
 
 **Security**: Inclusion proofs ensure tokens can't be double-spent
 
-**See**: [GETTING_STARTED.md](GETTING_STARTED.md)
+**See**: [GETTING_STARTED.md](getting-started.md)
 
 ---
 
@@ -229,7 +229,7 @@ Transfer pattern where sender creates a transfer package offline, and recipient 
 **Pattern A** (default): Offline transfer package
 **Pattern B** (`--submit-now`): Immediate network submission
 
-**See**: [OFFLINE_TRANSFER_WORKFLOW.md](OFFLINE_TRANSFER_WORKFLOW.md), [TRANSFER_GUIDE.md](TRANSFER_GUIDE.md)
+**See**: [OFFLINE_TRANSFER_WORKFLOW.md](guides/workflows/offline-transfer.md), [TRANSFER_GUIDE.md](guides/workflows/transfer-guide.md)
 
 ---
 
@@ -247,7 +247,7 @@ Cryptographic ownership proof that determines who can spend a token. Contains:
 - **Masked Predicate**: Single-use with nonce
 - **Unmasked Predicate**: Reusable without nonce
 
-**See**: [VERIFY_TOKEN_GUIDE.md#predicate-details](VERIFY_TOKEN_GUIDE.md)
+**See**: [VERIFY_TOKEN_GUIDE.md#predicate-details](guides/commands/verify-token.md#predicate-details)
 
 ---
 
@@ -265,7 +265,7 @@ Official Unicity token type with predefined token type ID.
 
 **Usage**: `--preset nft` or `--preset usdu`
 
-**See**: [GEN_ADDRESS_GUIDE.md#preset-token-types](GEN_ADDRESS_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md#preset-token-types](guides/commands/gen-address.md#preset-token-types)
 
 ---
 
@@ -296,7 +296,7 @@ Random value used in token creation to ensure uniqueness. Automatically generate
 
 **Size**: 256-bit (32 bytes)
 
-**See**: `--salt` option in [MINT_TOKEN_GUIDE.md](MINT_TOKEN_GUIDE.md)
+**See**: `--salt` option in [MINT_TOKEN_GUIDE.md](guides/commands/mint-token.md)
 
 ---
 
@@ -324,7 +324,7 @@ Your private key or password that controls your tokens. Used to:
 - Environment variable: `SECRET="my-secret" npm run ...`
 - Interactive prompt: CLI will ask if not provided
 
-**See**: [SECURITY.md](SECURITY.md), [Getting Started - Security](GETTING_STARTED.md)
+**See**: [Getting Started - Security](getting-started.md)
 
 ---
 
@@ -336,7 +336,7 @@ Default minting approach where tokens are created directly to your own address. 
 - Immediate ownership
 - No address mismatch errors
 
-**See**: [MINT_TOKEN_GUIDE.md#self-mint-pattern](MINT_TOKEN_GUIDE.md)
+**See**: [MINT_TOKEN_GUIDE.md#self-mint-pattern](guides/commands/mint-token.md#self-mint-pattern)
 
 ---
 
@@ -379,7 +379,7 @@ Lifecycle state of a token in Extended TXF format.
 - `BURNED` - Token destroyed (split/swap operation)
 - `FAILED` - Network submission failed
 
-**See**: [Extended TXF](#extended-txf), [TRANSFER_GUIDE.md#status-lifecycle](TRANSFER_GUIDE.md)
+**See**: [Extended TXF](#extended-txf), [TRANSFER_GUIDE.md#status-lifecycle](guides/workflows/transfer-guide.md#status-lifecycle)
 
 ---
 
@@ -405,7 +405,7 @@ Metadata or state information stored in a token. Can be any format:
 
 **Storage**: Hex-encoded in TXF file, decoded for display
 
-**See**: [MINT_TOKEN_GUIDE.md#smart-serialization](MINT_TOKEN_GUIDE.md)
+**See**: [MINT_TOKEN_GUIDE.md#smart-serialization](guides/commands/mint-token.md#smart-serialization)
 
 ---
 
@@ -431,7 +431,7 @@ Unique 256-bit identifier for a specific token instance.
 
 **Custom Types**: Use `-y, --token-type` with any string (will be hashed) or exact 64-char hex
 
-**See**: [GEN_ADDRESS_GUIDE.md#preset-token-types](GEN_ADDRESS_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md#preset-token-types](guides/commands/gen-address.md#preset-token-types)
 
 ---
 
@@ -453,7 +453,7 @@ Changing ownership of a token from one address to another.
 - **Pattern A (Offline)**: Create package → send file → recipient submits
 - **Pattern B (Immediate)**: Submit to network immediately
 
-**See**: [TRANSFER_GUIDE.md](TRANSFER_GUIDE.md), [SEND_TOKEN_GUIDE.md](SEND_TOKEN_GUIDE.md)
+**See**: [TRANSFER_GUIDE.md](guides/workflows/transfer-guide.md), [SEND_TOKEN_GUIDE.md](guides/commands/send-token.md)
 
 ---
 
@@ -473,7 +473,7 @@ JSON file format (`.txf` extension) for storing and exchanging tokens. Portable 
 **Structure**: Genesis, State, Transactions, Nametags
 **Extended**: v2.0 adds offlineTransfer and status fields
 
-**See**: [TXF_IMPLEMENTATION_GUIDE.md](TXF_IMPLEMENTATION_GUIDE.md)
+**See**: [TXF_IMPLEMENTATION_GUIDE.md](reference/txf-format.md)
 
 ---
 
@@ -510,7 +510,7 @@ Reusable ownership predicate without nonce. Same address for all tokens of a giv
 
 **Opposite**: Masked Predicate
 
-**See**: [GEN_ADDRESS_GUIDE.md#unmasked-addresses](GEN_ADDRESS_GUIDE.md), [MINT_TOKEN_GUIDE.md#unmasked-predicate](MINT_TOKEN_GUIDE.md)
+**See**: [GEN_ADDRESS_GUIDE.md#unmasked-addresses](guides/commands/gen-address.md#unmasked-addresses), [MINT_TOKEN_GUIDE.md#unmasked-predicate](guides/commands/mint-token.md#unmasked-predicate)
 
 ---
 
@@ -544,7 +544,7 @@ Check token validity and structure using `verify-token` command. Shows:
 
 **Always verify** tokens after minting or receiving.
 
-**See**: [VERIFY_TOKEN_GUIDE.md](VERIFY_TOKEN_GUIDE.md)
+**See**: [VERIFY_TOKEN_GUIDE.md](guides/commands/verify-token.md)
 
 ---
 
@@ -560,7 +560,7 @@ Collection of tokens controlled by a secret. In CLI context, a directory of `.tx
 - Receive tokens: `receive-token`
 - Verify tokens: `verify-token`
 
-**See**: [WORKFLOWS.md](WORKFLOWS.md)
+**See**: [WORKFLOWS.md](guides/workflows/transfer-guide.md)
 
 ---
 
@@ -600,9 +600,8 @@ Collection of tokens controlled by a secret. In CLI context, a directory of `.tx
 
 ## See Also
 
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Beginner's guide
+- [GETTING_STARTED.md](getting-started.md) - Beginner's guide
 - [README.md](README.md) - All commands
-- [WORKFLOWS.md](WORKFLOWS.md) - Common workflows
-- [SECURITY.md](SECURITY.md) - Security best practices
-- [FAQ.md](FAQ.md) - Frequently asked questions
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues
+- [WORKFLOWS.md](guides/workflows/transfer-guide.md) - Common workflows
+- [FAQ.md](faq.md) - Frequently asked questions
+- [TROUBLESHOOTING.md](troubleshooting.md) - Common issues

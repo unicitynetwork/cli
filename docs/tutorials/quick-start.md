@@ -6,7 +6,7 @@ Answer these questions to find the right tutorial:
 
 ### Question 1: Have you installed the CLI before?
 
-**No** → Start with [Tutorial 1: Your First Token](TUTORIAL_1_FIRST_TOKEN.md)
+**No** → Start with [Tutorial 1: Your First Token](01-first-token.md)
 
 **Yes** → Go to Question 2
 
@@ -14,7 +14,7 @@ Answer these questions to find the right tutorial:
 
 ### Question 2: Can you currently mint tokens?
 
-**No** → Go back to [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md)
+**No** → Go back to [Tutorial 1](01-first-token.md)
 
 **Yes** → Go to Question 3
 
@@ -23,27 +23,27 @@ Answer these questions to find the right tutorial:
 ### Question 3: What do you want to learn?
 
 #### "I want to send tokens to other people"
-→ [Tutorial 2: Token Transfers](TUTORIAL_2_TOKEN_TRANSFERS.md)
+→ [Tutorial 2: Token Transfers](02-token-transfers.md)
 - Learn offline and immediate transfers
 - Understand complete transfer workflows
 - Set up multiple identities
 
 #### "I want to use advanced features"
-→ [Tutorial 3: Advanced Operations](TUTORIAL_3_ADVANCED_OPERATIONS.md)
+→ [Tutorial 3: Advanced Operations](03-advanced-operations.md)
 - Different token types (NFT, USDU, etc.)
 - Batch operations and scripting
 - Custom metadata and IDs
 - Immediate transfers
 
 #### "I want to understand how tokens work"
-→ [Tutorial 4: Token Internals](TUTORIAL_4_TOKEN_INTERNALS.md)
+→ [Tutorial 4: Token Internals](04-token-internals.md)
 - TXF file structure
 - Predicates and ownership
 - Network commitments
 - Cryptographic proofs
 
 #### "I want to deploy to production"
-→ [Tutorial 5: Production Practices](TUTORIAL_5_PRODUCTION_PRACTICES.md)
+→ [Tutorial 5: Production Practices](05-production-practices.md)
 - Secret management
 - Backup and recovery
 - Monitoring and compliance
@@ -61,7 +61,7 @@ SECRET="my-secret" npm run gen-address
 # Masked address (private)
 SECRET="my-secret" npm run gen-address -n "unique-nonce"
 ```
-→ Tutorial: [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md)
+→ Tutorial: [Tutorial 1](01-first-token.md)
 
 ### 💎 Token Minting
 ```bash
@@ -74,14 +74,14 @@ SECRET="my-secret" npm run mint-token -- --preset nft -d '{"name":"My NFT"}'
 # USDU stablecoin
 SECRET="my-secret" npm run mint-token -- --preset usdu -d '{"amount":"100"}'
 ```
-→ Tutorial: [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md), [Tutorial 3](TUTORIAL_3_ADVANCED_OPERATIONS.md)
+→ Tutorial: [Tutorial 1](01-first-token.md), [Tutorial 3](03-advanced-operations.md)
 
 ### ✅ Token Verification
 ```bash
 # Verify a token
 npm run verify-token -- -f token.txf
 ```
-→ Tutorial: [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md)
+→ Tutorial: [Tutorial 1](01-first-token.md)
 
 ### 📤 Send Token (Offline)
 ```bash
@@ -91,7 +91,7 @@ SECRET="my-secret" npm run send-token -- \
   -r "RECIPIENT_ADDRESS" \
   --save
 ```
-→ Tutorial: [Tutorial 2](TUTORIAL_2_TOKEN_TRANSFERS.md)
+→ Tutorial: [Tutorial 2](02-token-transfers.md)
 
 ### 📤 Send Token (Immediate)
 ```bash
@@ -101,7 +101,7 @@ SECRET="my-secret" npm run send-token -- \
   -r "RECIPIENT_ADDRESS" \
   --submit-now --save
 ```
-→ Tutorial: [Tutorial 3](TUTORIAL_3_ADVANCED_OPERATIONS.md)
+→ Tutorial: [Tutorial 3](03-advanced-operations.md)
 
 ### 📥 Receive Token
 ```bash
@@ -110,37 +110,37 @@ SECRET="my-secret" npm run receive-token -- \
   -f transfer-package.txf \
   --save
 ```
-→ Tutorial: [Tutorial 2](TUTORIAL_2_TOKEN_TRANSFERS.md)
+→ Tutorial: [Tutorial 2](02-token-transfers.md)
 
 ---
 
 ## Common Scenarios
 
 ### Scenario 1: "I just installed the CLI"
-1. Read: [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md) (15 min)
+1. Read: [Tutorial 1](01-first-token.md) (15 min)
 2. Do: Install, generate address, mint token, verify
-3. Next: [Tutorial 2](TUTORIAL_2_TOKEN_TRANSFERS.md)
+3. Next: [Tutorial 2](02-token-transfers.md)
 
 ### Scenario 2: "I want to send a token to someone"
-1. If new: First complete [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md)
-2. Read: [Tutorial 2](TUTORIAL_2_TOKEN_TRANSFERS.md) (20 min)
+1. If new: First complete [Tutorial 1](01-first-token.md)
+2. Read: [Tutorial 2](02-token-transfers.md) (20 min)
 3. Do: Set up two identities, mint, transfer, receive
-4. Optional: [Tutorial 3](TUTORIAL_3_ADVANCED_OPERATIONS.md) for advanced patterns
+4. Optional: [Tutorial 3](03-advanced-operations.md) for advanced patterns
 
 ### Scenario 3: "I want to mint many tokens automatically"
 1. Prerequisites: Complete [Tutorials 1-2](TUTORIAL_1_FIRST_TOKEN.md)
-2. Read: [Tutorial 3](TUTORIAL_3_ADVANCED_OPERATIONS.md) - Part 6 (15 min)
+2. Read: [Tutorial 3](03-advanced-operations.md) - Part 6 (15 min)
 3. Do: Write batch scripts from examples
-4. Next: [Tutorial 5](TUTORIAL_5_PRODUCTION_PRACTICES.md) for production
+4. Next: [Tutorial 5](05-production-practices.md) for production
 
 ### Scenario 4: "My transfer isn't working"
-1. Check: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-2. Understand: [Tutorial 4](TUTORIAL_4_TOKEN_INTERNALS.md) - How transfers work
-3. Debug: Use verification commands from [Tutorial 1](TUTORIAL_1_FIRST_TOKEN.md)
+1. Check: [TROUBLESHOOTING.md](../troubleshooting.md)
+2. Understand: [Tutorial 4](04-token-internals.md) - How transfers work
+3. Debug: Use verification commands from [Tutorial 1](01-first-token.md)
 
 ### Scenario 5: "I'm deploying to production"
 1. Prerequisites: Complete [Tutorials 1-4](TUTORIAL_1_FIRST_TOKEN.md)
-2. Read: [Tutorial 5](TUTORIAL_5_PRODUCTION_PRACTICES.md) (20 min)
+2. Read: [Tutorial 5](05-production-practices.md) (20 min)
 3. Do: Set up secrets, backups, monitoring
 4. Follow: Production deployment checklist
 
@@ -246,10 +246,10 @@ If video tutorials are available (check documentation), here's how they align:
 
 ### "I don't understand something in a tutorial"
 1. Re-read the specific section
-2. Check the [GLOSSARY.md](GLOSSARY.md) for terms
+2. Check the [GLOSSARY.md](../glossary.md) for terms
 3. Look at supplementary guides (linked in tutorial)
 4. Try the hands-on exercise again
-5. Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+5. Check [TROUBLESHOOTING.md](../troubleshooting.md)
 
 ### "I'm moving too slow"
 - That's okay! Better to understand deeply than rush
@@ -363,16 +363,16 @@ Congratulations! You're now an Unicity CLI expert. Here are next steps:
 ## Still Have Questions?
 
 ### For Command Details
-Check: [README.md](README.md) - Complete command reference
+Check: [README.md](../README.md) - Complete command reference
 
 ### For Troubleshooting
-Check: [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues and solutions
+Check: [TROUBLESHOOTING.md](../troubleshooting.md) - Common issues and solutions
 
 ### For Terms/Concepts
-Check: [GLOSSARY.md](GLOSSARY.md) - Definitions of all terms
+Check: [GLOSSARY.md](../glossary.md) - Definitions of all terms
 
 ### For FAQ
-Check: [FAQ.md](FAQ.md) - Frequently asked questions
+Check: [FAQ.md](../faq.md) - Frequently asked questions
 
 ### For Everything Else
 1. Check supplementary guides linked in tutorials
@@ -420,7 +420,7 @@ Ready? Pick your starting point:
 
 **Good luck with your learning journey!**
 
-Questions? Check the [full tutorials index](TUTORIALS_INDEX.md).
+Questions? Check the [full tutorials index](README.md).
 
 ---
 
