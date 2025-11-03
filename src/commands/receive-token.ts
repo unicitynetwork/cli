@@ -303,9 +303,23 @@ export function receiveTokenCommand(program: Command): void {
         const newState = new TokenState(recipientPredicate, tokenData);
         console.error('  ✓ New token state created\n');
 
-        // STEP 13: Update token with recipient's state and transfer transaction
-        console.error('Step 13: Updating token with new ownership...');
-        const updatedToken = await token.update(trustBase, newState, transferTransaction);
+        // STEP 13: Create updated token with recipient's state and transfer transaction
+        console.error('Step 13: Creating updated token with new ownership...');
+
+        // Build updated token JSON with new state and transfer transaction
+        const tokenJson = await token.toJSON();
+        const newStateJson = await newState.toJSON();
+        const transferTxJson = await transferTransaction.toJSON();
+
+        // Create new token JSON with updated state and transaction history
+        const modifiedTokenJson = {
+          ...tokenJson,
+          state: newStateJson,
+          transactions: [...(tokenJson.transactions || []), transferTxJson]
+        };
+
+        // Recreate token from modified JSON
+        const updatedToken = await Token.fromJSON(modifiedTokenJson);
         console.error('  ✓ Token updated with recipient ownership\n');
 
         // STEP 14: Create final extended TXF with CONFIRMED status
