@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { CborDecoder } from '@unicitylabs/commons/lib/cbor/CborDecoder.js';
+import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';
 import * as fs from 'fs';
 
 /**
@@ -214,15 +215,59 @@ export function verifyTokenCommand(program: Command): void {
         console.log('=== Basic Information ===');
         console.log(`Version: ${tokenJson.version || 'N/A'}`);
 
+        // Validate token proofs before attempting to load
+        console.log('\n=== Proof Validation (JSON) ===');
+        const jsonProofValidation = validateTokenProofsJson(tokenJson);
+
+        if (jsonProofValidation.valid) {
+          console.log('✅ All proofs structurally valid');
+          console.log('  ✓ Genesis proof has authenticator');
+          if (tokenJson.transactions && tokenJson.transactions.length > 0) {
+            console.log(`  ✓ All transaction proofs have authenticators (${tokenJson.transactions.length} transaction${tokenJson.transactions.length !== 1 ? 's' : ''})`);
+          }
+        } else {
+          console.log('❌ Proof validation failed:');
+          jsonProofValidation.errors.forEach(err => console.log(`  - ${err}`));
+        }
+
+        if (jsonProofValidation.warnings.length > 0) {
+          console.log('⚠ Warnings:');
+          jsonProofValidation.warnings.forEach(warn => console.log(`  - ${warn}`));
+        }
+
         // Try to load with SDK
         let token: Token<any> | null = null;
         try {
           token = await Token.fromJSON(tokenJson);
-          console.log('✅ Token loaded successfully with SDK');
+          console.log('\n✅ Token loaded successfully with SDK');
           console.log(`Token ID: ${token.id.toJSON()}`);
           console.log(`Token Type: ${token.type.toJSON()}`);
+
+          // Perform cryptographic proof validation if loaded successfully
+          console.log('\n=== Cryptographic Proof Verification ===');
+          console.log('Verifying proofs with SDK...');
+
+          const trustBase = createDefaultTrustBase();
+          const sdkProofValidation = await validateTokenProofs(token, trustBase);
+
+          if (sdkProofValidation.valid) {
+            console.log('✅ All proofs cryptographically verified');
+            console.log('  ✓ Genesis proof signature valid');
+            console.log('  ✓ Genesis merkle path valid');
+            if (token.transactions && token.transactions.length > 0) {
+              console.log(`  ✓ All transaction proofs verified (${token.transactions.length} transaction${token.transactions.length !== 1 ? 's' : ''})`);
+            }
+          } else {
+            console.log('❌ Cryptographic verification failed:');
+            sdkProofValidation.errors.forEach(err => console.log(`  - ${err}`));
+          }
+
+          if (sdkProofValidation.warnings.length > 0) {
+            console.log('⚠ Warnings:');
+            sdkProofValidation.warnings.forEach(warn => console.log(`  - ${warn}`));
+          }
         } catch (err) {
-          console.log('⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
+          console.log('\n⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
           console.log('Displaying raw JSON data...\n');
         }
 
@@ -280,14 +325,19 @@ export function verifyTokenCommand(program: Command): void {
 
         // Summary
         console.log('\n=== Verification Summary ===');
-        console.log(`✓ File format: TXF v${tokenJson.version || '?'}`);
-        console.log(`✓ Has genesis: ${!!tokenJson.genesis}`);
-        console.log(`✓ Has state: ${!!tokenJson.state}`);
-        console.log(`✓ Has predicate: ${!!tokenJson.state?.predicate}`);
-        console.log(`✓ SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
+        console.log(`${!!tokenJson.genesis ? '✓' : '✗'} File format: TXF v${tokenJson.version || '?'}`);
+        console.log(`${!!tokenJson.genesis ? '✓' : '✗'} Has genesis: ${!!tokenJson.genesis}`);
+        console.log(`${!!tokenJson.state ? '✓' : '✗'} Has state: ${!!tokenJson.state}`);
+        console.log(`${!!tokenJson.state?.predicate ? '✓' : '✗'} Has predicate: ${!!tokenJson.state?.predicate}`);
+        console.log(`${jsonProofValidation.valid ? '✓' : '✗'} Proof structure valid: ${jsonProofValidation.valid ? 'Yes' : 'No'}`);
+        console.log(`${token !== null ? '✓' : '✗'} SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
 
-        if (token) {
-          console.log('\n💡 This token can be transferred using the transfer-token command');
+        if (token && jsonProofValidation.valid) {
+          console.log('\n✅ This token is valid and can be transferred using the send-token command');
+        } else if (token && !jsonProofValidation.valid) {
+          console.log('\n⚠️  Token loaded but has proof validation issues - transfer may fail');
+        } else {
+          console.log('\n❌ Token has issues and cannot be used for transfers');
         }
 
       } catch (error) {

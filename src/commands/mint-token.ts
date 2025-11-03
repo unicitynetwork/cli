@@ -18,6 +18,7 @@ import { IMintTransactionReason } from '@unicitylabs/state-transition-sdk/lib/tr
 import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
+import { validateInclusionProof } from '../utils/proof-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -184,15 +185,16 @@ async function processTokenType(
 }
 
 // Function to wait for an inclusion proof with timeout
+// Polls until proof exists AND authenticator is non-null
 async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: MintCommitment<IMintTransactionReason>,
-  timeoutMs: number = 30000,
+  timeoutMs: number = 60000,
   intervalMs: number = 1000
 ): Promise<any> {
   const startTime = Date.now();
+  let proofReceived = false;
 
-  // Log commitment info for debugging
   console.error('Waiting for inclusion proof for commitment...');
 
   while (Date.now() - startTime < timeoutMs) {
@@ -201,10 +203,27 @@ async function waitInclusionProof(
       const proofResponse = await client.getInclusionProof(commitment);
 
       if (proofResponse && proofResponse.inclusionProof) {
-        console.error('Inclusion proof received');
-        // Return the raw proof response - don't try to parse it
-        // The SDK methods will handle it correctly
-        return proofResponse.inclusionProof;
+        const proof = proofResponse.inclusionProof;
+
+        // First time we see the proof
+        if (!proofReceived) {
+          console.error('Inclusion proof received');
+          proofReceived = true;
+        }
+
+        // Check if authenticator is populated
+        // Parse JSON to check authenticator field
+        const proofJson = proof.toJSON ? proof.toJSON() : proof;
+
+        if (proofJson.authenticator !== null && proofJson.authenticator !== undefined) {
+          console.error('Authenticator populated - proof complete');
+          return proof;
+        } else {
+          // Proof exists but authenticator not yet populated
+          if (proofReceived) {
+            console.error('Waiting for authenticator to be populated...');
+          }
+        }
       }
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
@@ -220,7 +239,11 @@ async function waitInclusionProof(
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
-  throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  if (proofReceived) {
+    throw new Error(`Timeout waiting for authenticator to be populated after ${timeoutMs}ms`);
+  } else {
+    throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  }
 }
 
 // Unicity standard token types from https://github.com/unicitynetwork/unicity-ids
@@ -289,7 +312,7 @@ export function mintTokenCommand(program: Command): void {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
-        endpoint = 'http://localhost:3001';  // Use aggregator-1 (port 3001), not dashboard (port 3000)
+        endpoint = 'http://127.0.0.1:3000';
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
       }
@@ -436,6 +459,30 @@ export function mintTokenCommand(program: Command): void {
         console.error('Step 6: Waiting for inclusion proof...');
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
         console.error('  ✓ Inclusion proof received\n');
+
+        // STEP 6.5: Validate the inclusion proof
+        console.error('Step 6.5: Validating inclusion proof...');
+        const proofValidation = await validateInclusionProof(
+          inclusionProof,
+          mintCommitment.requestId,
+          trustBase
+        );
+
+        if (!proofValidation.valid) {
+          console.error('\n❌ Inclusion proof validation failed:');
+          proofValidation.errors.forEach(err => console.error(`  - ${err}`));
+          console.error('\nCannot proceed with invalid proof.');
+          process.exit(1);
+        }
+
+        console.error('  ✓ Proof structure validated (authenticator, transaction hash, merkle path)');
+        console.error('  ✓ Authenticator signature verified');
+
+        if (proofValidation.warnings.length > 0) {
+          console.error('  ⚠ Warnings:');
+          proofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+        }
+        console.error();
 
         // STEP 7: Create TokenState with SAME predicate instance (critical!)
         console.error('Step 7: Creating TokenState with predicate...');

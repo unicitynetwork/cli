@@ -9,6 +9,7 @@ import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
+import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -40,14 +41,16 @@ async function getSecret(): Promise<Uint8Array> {
 
 /**
  * Wait for inclusion proof with timeout
+ * Polls until proof exists AND authenticator is non-null
  */
 async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: TransferCommitment,
-  timeoutMs: number = 30000,
+  timeoutMs: number = 60000,
   intervalMs: number = 1000
 ): Promise<any> {
   const startTime = Date.now();
+  let proofReceived = false;
 
   console.error('Waiting for inclusion proof...');
 
@@ -57,8 +60,24 @@ async function waitInclusionProof(
       const proofResponse = await client.getInclusionProof(commitment);
 
       if (proofResponse && proofResponse.inclusionProof) {
-        console.error('  ✓ Inclusion proof received');
-        return proofResponse.inclusionProof;
+        const proof = proofResponse.inclusionProof;
+
+        // First time we see the proof
+        if (!proofReceived) {
+          console.error('  ✓ Inclusion proof received');
+          proofReceived = true;
+        }
+
+        // Check if authenticator is populated
+        const proofJson = proof.toJSON ? proof.toJSON() : proof;
+
+        if (proofJson.authenticator !== null && proofJson.authenticator !== undefined) {
+          console.error('  ✓ Authenticator populated - proof complete');
+          return proof;
+        } else {
+          // Proof exists but authenticator not yet populated
+          console.error('  ⏳ Waiting for authenticator to be populated...');
+        }
       }
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
@@ -73,7 +92,11 @@ async function waitInclusionProof(
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
-  throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  if (proofReceived) {
+    throw new Error(`Timeout waiting for authenticator to be populated after ${timeoutMs}ms`);
+  } else {
+    throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  }
 }
 
 export function sendTokenCommand(program: Command): void {
@@ -108,7 +131,7 @@ export function sendTokenCommand(program: Command): void {
         // Determine endpoint
         let endpoint = options.endpoint;
         if (options.local) {
-          endpoint = 'http://localhost:3001';
+          endpoint = 'http://127.0.0.1:3000';
         } else if (options.production) {
           endpoint = 'https://gateway.unicity.network';
         }
@@ -122,6 +145,33 @@ export function sendTokenCommand(program: Command): void {
         console.error('Step 1: Loading token from file...');
         const tokenFileContent = fs.readFileSync(options.file, 'utf8');
         const tokenJson = JSON.parse(tokenFileContent);
+        console.error(`  ✓ Token file loaded\n`);
+
+        // STEP 1.5: Validate token proofs BEFORE parsing with SDK
+        console.error('Step 1.5: Validating token structure and proofs...');
+        const jsonValidation = validateTokenProofsJson(tokenJson);
+
+        if (!jsonValidation.valid) {
+          console.error('\n❌ Token validation failed:');
+          jsonValidation.errors.forEach(err => console.error(`  - ${err}`));
+          console.error('\nCannot send a token with invalid proofs.');
+          process.exit(1);
+        }
+
+        if (jsonValidation.warnings.length > 0) {
+          console.error('  ⚠ Warnings:');
+          jsonValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+        }
+
+        console.error('  ✓ Token structure valid');
+        console.error('  ✓ Genesis proof validated');
+        if (tokenJson.transactions && tokenJson.transactions.length > 0) {
+          console.error(`  ✓ All transaction proofs validated (${tokenJson.transactions.length} transaction${tokenJson.transactions.length !== 1 ? 's' : ''})`);
+        }
+        console.error();
+
+        // STEP 1.6: Load token with SDK
+        console.error('Step 1.6: Parsing token with SDK...');
         const token = await Token.fromJSON(tokenJson);
         console.error(`  ✓ Token loaded: ${token.id.toJSON()}`);
         console.error(`  Token Type: ${token.type.toJSON()}\n`);

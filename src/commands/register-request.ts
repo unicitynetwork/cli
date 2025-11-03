@@ -21,7 +21,7 @@ export function registerRequestCommand(program: Command): void {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
-        endpoint = 'http://localhost:3001';
+        endpoint = 'http://127.0.0.1:3000';
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
       }
@@ -50,6 +50,26 @@ export function registerRequestCommand(program: Command): void {
 
         // 5. Create Authenticator = sign(transactionHash) with stateHash
         const authenticator = await Authenticator.create(signingService, transactionHash, stateHash);
+
+        console.log('\n=== AUTHENTICATOR CREATION DEBUG ===');
+        console.log('Authenticator created locally:');
+        console.log(`  Public Key: ${Buffer.from(authenticator.publicKey).toString('hex')}`);
+        console.log(`  Signature: ${authenticator.signature ? Buffer.from(authenticator.signature.bytes).toString('hex') : 'NULL'}`);
+        console.log(`  State Hash: ${authenticator.stateHash ? authenticator.stateHash.toJSON() : 'NULL'}`);
+
+        // TEST: Verify our locally created authenticator BEFORE sending
+        console.log('\n=== LOCAL AUTHENTICATOR VERIFICATION TEST ===');
+        const localVerifies = await authenticator.verify(transactionHash);
+        console.log(`✓ Local authenticator verifies transactionHash: ${localVerifies}`);
+
+        if (!localVerifies) {
+          console.error('❌ ERROR: Our locally-created authenticator FAILED verification!');
+          console.error('This indicates a problem with Authenticator.create() or verify()');
+          console.error('Aborting before submission...');
+          process.exit(1);
+        }
+
+        console.log('✓ Local authenticator is VALID before submission\n');
 
         // 6. Submit commitment to aggregator
         console.log(`Submitting to aggregator: ${endpoint}`);

@@ -12,6 +12,7 @@ import { HexConverter } from '@unicitylabs/commons/lib/util/HexConverter.js';
 import { JsonRpcNetworkError } from '@unicitylabs/commons/lib/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
+import { validateInclusionProof, validateTokenProofsJson } from '../utils/proof-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -43,14 +44,16 @@ async function getSecret(): Promise<Uint8Array> {
 
 /**
  * Wait for inclusion proof with timeout
+ * Polls until proof exists AND authenticator is non-null
  */
 async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: TransferCommitment,
-  timeoutMs: number = 30000,
+  timeoutMs: number = 60000,
   intervalMs: number = 1000
 ): Promise<any> {
   const startTime = Date.now();
+  let proofReceived = false;
 
   console.error('Waiting for inclusion proof...');
 
@@ -60,8 +63,24 @@ async function waitInclusionProof(
       const proofResponse = await client.getInclusionProof(commitment);
 
       if (proofResponse && proofResponse.inclusionProof) {
-        console.error('  ✓ Inclusion proof received');
-        return proofResponse.inclusionProof;
+        const proof = proofResponse.inclusionProof;
+
+        // First time we see the proof
+        if (!proofReceived) {
+          console.error('  ✓ Inclusion proof received');
+          proofReceived = true;
+        }
+
+        // Check if authenticator is populated
+        const proofJson = proof.toJSON ? proof.toJSON() : proof;
+
+        if (proofJson.authenticator !== null && proofJson.authenticator !== undefined) {
+          console.error('  ✓ Authenticator populated - proof complete');
+          return proof;
+        } else {
+          // Proof exists but authenticator not yet populated
+          console.error('  ⏳ Waiting for authenticator to be populated...');
+        }
       }
     } catch (err) {
       if (err instanceof JsonRpcNetworkError && err.status === 404) {
@@ -76,7 +95,11 @@ async function waitInclusionProof(
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
-  throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  if (proofReceived) {
+    throw new Error(`Timeout waiting for authenticator to be populated after ${timeoutMs}ms`);
+  } else {
+    throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
+  }
 }
 
 export function receiveTokenCommand(program: Command): void {
@@ -102,7 +125,7 @@ export function receiveTokenCommand(program: Command): void {
         // Determine endpoint
         let endpoint = options.endpoint;
         if (options.local) {
-          endpoint = 'http://localhost:3001';
+          endpoint = 'http://127.0.0.1:3000';
         } else if (options.production) {
           endpoint = 'https://gateway.unicity.network';
         }
@@ -138,6 +161,24 @@ export function receiveTokenCommand(program: Command): void {
         }
 
         console.error('  ✓ Offline transfer package validated');
+
+        // STEP 2.5: Validate token proofs before processing
+        console.error('\nStep 2.5: Validating token proofs...');
+        const proofValidation = validateTokenProofsJson(extendedTxf);
+
+        if (!proofValidation.valid) {
+          console.error('\n❌ Token proof validation failed:');
+          proofValidation.errors.forEach(err => console.error(`  - ${err}`));
+          console.error('\nCannot receive a token with invalid proofs.');
+          process.exit(1);
+        }
+
+        if (proofValidation.warnings.length > 0) {
+          console.error('  ⚠ Proof warnings:');
+          proofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+        }
+
+        console.error('  ✓ Token proofs validated');
 
         const offlineTransfer = extendedTxf.offlineTransfer!;
         console.error(`  Sender: ${offlineTransfer.sender.address}`);
@@ -213,32 +254,8 @@ export function receiveTokenCommand(program: Command): void {
         const client = new StateTransitionClient(aggregatorClient);
         console.error(`  ✓ Connected to ${endpoint}\n`);
 
-        // STEP 8: Submit transfer commitment to network
-        console.error('Step 8: Submitting transfer to network...');
-        try {
-          await client.submitTransferCommitment(transferCommitment);
-          console.error('  ✓ Transfer submitted to network\n');
-        } catch (err) {
-          // Check if already submitted (acceptable error)
-          if (err instanceof Error && err.message.includes('already exists')) {
-            console.error('  ℹ Transfer already submitted (continuing...)\n');
-          } else {
-            throw err;
-          }
-        }
-
-        // STEP 9: Wait for inclusion proof
-        console.error('Step 9: Waiting for inclusion proof...');
-        const inclusionProof = await waitInclusionProof(client, transferCommitment);
-        console.error();
-
-        // STEP 10: Create transfer transaction from commitment + proof
-        console.error('Step 10: Creating transfer transaction...');
-        const transferTransaction = transferCommitment.toTransaction(inclusionProof);
-        console.error('  ✓ Transfer transaction created\n');
-
-        // STEP 11: Create trust base for token update
-        console.error('Step 11: Setting up trust base...');
+        // STEP 7.5: Create trust base for validation and token update
+        console.error('Step 7.5: Setting up trust base...');
         const trustBase = RootTrustBase.fromJSON({
           version: '1',
           networkId: endpoint.includes('localhost') ? 3 : 1,
@@ -260,6 +277,53 @@ export function receiveTokenCommand(program: Command): void {
           }
         });
         console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId})\n`);
+
+        // STEP 8: Submit transfer commitment to network
+        console.error('Step 8: Submitting transfer to network...');
+        try {
+          await client.submitTransferCommitment(transferCommitment);
+          console.error('  ✓ Transfer submitted to network\n');
+        } catch (err) {
+          // Check if already submitted (acceptable error)
+          if (err instanceof Error && err.message.includes('already exists')) {
+            console.error('  ℹ Transfer already submitted (continuing...)\n');
+          } else {
+            throw err;
+          }
+        }
+
+        // STEP 9: Wait for inclusion proof
+        console.error('Step 9: Waiting for inclusion proof...');
+        const inclusionProof = await waitInclusionProof(client, transferCommitment);
+        console.error();
+
+        // STEP 9.5: Validate the transfer inclusion proof
+        console.error('Step 9.5: Validating transfer inclusion proof...');
+        const transferProofValidation = await validateInclusionProof(
+          inclusionProof,
+          transferCommitment.requestId,
+          trustBase
+        );
+
+        if (!transferProofValidation.valid) {
+          console.error('\n❌ Transfer proof validation failed:');
+          transferProofValidation.errors.forEach(err => console.error(`  - ${err}`));
+          console.error('\nCannot proceed with invalid proof.');
+          process.exit(1);
+        }
+
+        if (transferProofValidation.warnings.length > 0) {
+          console.error('  ⚠ Proof warnings:');
+          transferProofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+        }
+
+        console.error('  ✓ Transfer proof validated');
+        console.error('  ✓ Authenticator verified\n');
+
+        // STEP 10: Create transfer transaction from commitment + proof
+        console.error('Step 10: Creating transfer transaction...');
+        const transferTransaction = transferCommitment.toTransaction(inclusionProof);
+        console.error('  ✓ Transfer transaction created\n');
 
         // STEP 12: Create new token state with recipient's predicate
         console.error('Step 12: Creating new token state with recipient predicate...');
