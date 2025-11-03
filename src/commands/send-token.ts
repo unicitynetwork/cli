@@ -9,7 +9,8 @@ import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConv
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
-import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';
+import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
+import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -147,14 +148,14 @@ export function sendTokenCommand(program: Command): void {
         const tokenJson = JSON.parse(tokenFileContent);
         console.error(`  ✓ Token file loaded\n`);
 
-        // STEP 1.5: Validate token proofs BEFORE parsing with SDK
-        console.error('Step 1.5: Validating token structure and proofs...');
+        // STEP 1.5: Validate token structure BEFORE parsing with SDK
+        console.error('Step 1.5: Validating token structure...');
         const jsonValidation = validateTokenProofsJson(tokenJson);
 
         if (!jsonValidation.valid) {
-          console.error('\n❌ Token validation failed:');
+          console.error('\n❌ Token structure validation failed:');
           jsonValidation.errors.forEach(err => console.error(`  - ${err}`));
-          console.error('\nCannot send a token with invalid proofs.');
+          console.error('\nCannot send a token with invalid structure.');
           process.exit(1);
         }
 
@@ -164,10 +165,6 @@ export function sendTokenCommand(program: Command): void {
         }
 
         console.error('  ✓ Token structure valid');
-        console.error('  ✓ Genesis proof validated');
-        if (tokenJson.transactions && tokenJson.transactions.length > 0) {
-          console.error(`  ✓ All transaction proofs validated (${tokenJson.transactions.length} transaction${tokenJson.transactions.length !== 1 ? 's' : ''})`);
-        }
         console.error();
 
         // STEP 1.6: Load token with SDK
@@ -175,6 +172,35 @@ export function sendTokenCommand(program: Command): void {
         const token = await Token.fromJSON(tokenJson);
         console.error(`  ✓ Token loaded: ${token.id.toJSON()}`);
         console.error(`  Token Type: ${token.type.toJSON()}\n`);
+
+        // STEP 1.7: Load TrustBase and perform cryptographic proof validation
+        console.error('Step 1.7: Loading trust base for proof validation...');
+        const trustBase = await getCachedTrustBase({
+          filePath: process.env.TRUSTBASE_PATH,
+          useFallback: false
+        });
+        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
+
+        console.error('Step 1.8: Validating token proofs cryptographically...');
+        const proofValidation = await validateTokenProofs(token, trustBase);
+
+        if (!proofValidation.valid) {
+          console.error('\n❌ Token proof validation failed:');
+          proofValidation.errors.forEach(err => console.error(`  - ${err}`));
+          console.error('\nCannot send a token with invalid proofs.');
+          process.exit(1);
+        }
+
+        console.error('  ✓ Genesis proof signature verified');
+        if (token.transactions && token.transactions.length > 0) {
+          console.error(`  ✓ All transaction proofs verified (${token.transactions.length} transaction${token.transactions.length !== 1 ? 's' : ''})`);
+        }
+
+        if (proofValidation.warnings.length > 0) {
+          console.error('  ⚠ Proof warnings:');
+          proofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+        }
+        console.error();
 
         // STEP 2: Parse recipient address
         console.error('Step 2: Parsing recipient address...');

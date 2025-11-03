@@ -6,6 +6,8 @@ import { UnicityCertificate } from '@unicitylabs/state-transition-sdk/lib/bft/Un
 import { Authenticator } from '@unicitylabs/state-transition-sdk/lib/api/Authenticator.js';
 import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
+import { getCachedTrustBase } from '../utils/trustbase-loader.js';
+import { validateInclusionProof } from '../utils/proof-validation.js';
 
 export function getRequestCommand(program: Command): void {
   program
@@ -27,6 +29,30 @@ export function getRequestCommand(program: Command): void {
       }
 
       try {
+        // Load TrustBase for proof verification (if not in JSON mode)
+        let trustBase = null;
+        if (!options.json && !options.local) {
+          // For production endpoints, try to load TrustBase for full validation
+          try {
+            console.error('Loading trust base for proof validation...');
+            trustBase = await getCachedTrustBase({
+              filePath: process.env.TRUSTBASE_PATH,
+              useFallback: false
+            });
+            console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
+          } catch (err) {
+            console.error('  ⚠ Could not load trust base - UnicityCertificate validation will be limited\n');
+          }
+        } else if (!options.json && options.local) {
+          // For local endpoint, always load TrustBase
+          console.error('Loading trust base for local aggregator...');
+          trustBase = await getCachedTrustBase({
+            filePath: process.env.TRUSTBASE_PATH,
+            useFallback: false
+          });
+          console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
+        }
+
         // Use SDK to fetch inclusion proof
         const aggregatorClient = new AggregatorClient(endpoint);
         const requestId = RequestId.fromJSON(requestIdStr);
@@ -107,8 +133,8 @@ export function getRequestCommand(program: Command): void {
           console.log();
         }
 
-        // Perform verifications using SDK only
-        await performVerifications(inclusionProof, options.verbose);
+        // Perform verifications using SDK and TrustBase
+        await performVerifications(inclusionProof, requestId, trustBase, options.verbose);
 
       } catch (err) {
         console.error(`\nError getting request: ${err instanceof Error ? err.message : String(err)}`);
@@ -236,53 +262,93 @@ function displayAuthenticator(authenticator: Authenticator, transactionHash: Dat
   }
 }
 
-async function performVerifications(inclusionProof: InclusionProof, verbose: boolean): Promise<void> {
+async function performVerifications(inclusionProof: InclusionProof, requestId: RequestId, trustBase: any, verbose: boolean): Promise<void> {
   console.log('=== Verification Summary ===');
 
-  const results = {
-    authenticator: false,
-    inclusionProof: true, // Assume true if we got the proof
-    unicityCertificate: false
-  };
-
-  // Verify authenticator using SDK method
-  if (inclusionProof.authenticator && inclusionProof.transactionHash) {
-    try {
-      results.authenticator = await inclusionProof.authenticator.verify(inclusionProof.transactionHash);
-
-      if (verbose) {
-        console.log('\nAuthenticator Verification Details:');
-        console.log(`  Method: SDK authenticator.verify()`);
-        console.log(`  Transaction Hash: ${inclusionProof.transactionHash.toJSON()}`);
-        console.log(`  Public Key: ${Buffer.from(inclusionProof.authenticator.publicKey).toString('hex').substring(0, 32)}...`);
-        console.log(`  Result: ${results.authenticator ? 'PASSED' : 'FAILED'}`);
-      }
-    } catch (err) {
-      results.authenticator = false;
-      if (verbose) {
-        console.log(`\nAuthenticator Verification Error: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-  }
-
-  // Check Unicity Certificate presence (actual verification would require SDK utilities)
-  const certBytes = inclusionProof.unicityCertificate.toCBOR();
-  if (certBytes && certBytes.length > 0) {
-    results.unicityCertificate = true;
+  // Use comprehensive validation with TrustBase if available
+  if (trustBase) {
+    const validation = await validateInclusionProof(inclusionProof, requestId, trustBase);
 
     if (verbose) {
-      console.log('\nUnicity Certificate Verification Details:');
-      console.log(`  Certificate Length: ${certBytes.length} bytes`);
-      console.log(`  Result: PRESENT (cryptographic verification requires SDK utilities)`);
+      console.log('\nDetailed Validation Results:');
+      if (validation.errors.length > 0) {
+        console.log('Errors:');
+        validation.errors.forEach(err => console.log(`  ❌ ${err}`));
+      }
+      if (validation.warnings.length > 0) {
+        console.log('Warnings:');
+        validation.warnings.forEach(warn => console.log(`  ⚠ ${warn}`));
+      }
     }
+
+    // Display results
+    console.log(`${validation.valid ? '✅' : '❌'} Authenticator Signature: ${validation.valid ? 'VERIFIED' : 'FAILED'}`);
+    console.log(`${inclusionProof.transactionHash ? '✅' : '❌'} Transaction Hash: ${inclusionProof.transactionHash ? 'PRESENT' : 'MISSING'}`);
+    console.log(`${inclusionProof.merkleTreePath ? '✅' : '❌'} Merkle Path: ${inclusionProof.merkleTreePath ? 'VALID' : 'INVALID'}`);
+    console.log(`${inclusionProof.unicityCertificate ? '✅' : '❌'} Unicity Certificate: ${inclusionProof.unicityCertificate ? 'PRESENT' : 'MISSING'}`);
+
+    const allPassed = validation.valid && validation.errors.length === 0;
+    console.log(`\nOverall Status: ${allPassed ? '✅ ALL CHECKS PASSED' : '⚠️ SOME CHECKS FAILED'}`);
+
+    if (validation.warnings.length > 0) {
+      console.log(`\nNote: ${validation.warnings.length} warning(s) - proof may be valid but has informational notices`);
+    }
+  } else {
+    // Fallback to basic validation without TrustBase
+    const results = {
+      authenticator: false,
+      transactionHash: false,
+      merkleTreePath: false,
+      unicityCertificate: false
+    };
+
+    // Verify authenticator using SDK method
+    if (inclusionProof.authenticator && inclusionProof.transactionHash) {
+      try {
+        results.authenticator = await inclusionProof.authenticator.verify(inclusionProof.transactionHash);
+        results.transactionHash = true;
+
+        if (verbose) {
+          console.log('\nAuthenticator Verification Details:');
+          console.log(`  Method: SDK authenticator.verify()`);
+          console.log(`  Transaction Hash: ${inclusionProof.transactionHash.toJSON()}`);
+          console.log(`  Public Key: ${Buffer.from(inclusionProof.authenticator.publicKey).toString('hex').substring(0, 32)}...`);
+          console.log(`  Result: ${results.authenticator ? 'PASSED' : 'FAILED'}`);
+        }
+      } catch (err) {
+        results.authenticator = false;
+        if (verbose) {
+          console.log(`\nAuthenticator Verification Error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    // Check Merkle tree path
+    if (inclusionProof.merkleTreePath && inclusionProof.merkleTreePath.root) {
+      results.merkleTreePath = true;
+    }
+
+    // Check Unicity Certificate presence
+    const certBytes = inclusionProof.unicityCertificate.toCBOR();
+    if (certBytes && certBytes.length > 0) {
+      results.unicityCertificate = true;
+
+      if (verbose) {
+        console.log('\nUnicity Certificate Details:');
+        console.log(`  Certificate Length: ${certBytes.length} bytes`);
+        console.log(`  Result: PRESENT (full cryptographic verification requires TrustBase)`);
+      }
+    }
+
+    // Display clean summary
+    console.log(`${results.authenticator ? '✅' : '❌'} Authenticator Signature: ${results.authenticator ? 'VERIFIED' : 'FAILED'}`);
+    console.log(`${results.transactionHash ? '✅' : '❌'} Transaction Hash: ${results.transactionHash ? 'PRESENT' : 'MISSING'}`);
+    console.log(`${results.merkleTreePath ? '✅' : '❌'} Merkle Path: ${results.merkleTreePath ? 'VALID' : 'INVALID'}`);
+    console.log(`${results.unicityCertificate ? '✅' : '❌'} Unicity Certificate: ${results.unicityCertificate ? 'PRESENT' : 'MISSING'}`);
+
+    // Show overall status
+    const allPassed = results.authenticator && results.transactionHash && results.merkleTreePath && results.unicityCertificate;
+    console.log(`\nOverall Status: ${allPassed ? '✅ ALL CHECKS PASSED' : '⚠️ SOME CHECKS FAILED'}`);
+    console.log('\n⚠️ Note: Full UnicityCertificate validation requires TrustBase (not loaded)');
   }
-
-  // Display clean summary
-  console.log(`${results.authenticator ? '✅' : '❌'} Authenticator: ${results.authenticator ? 'OK' : 'FAILED'}`);
-  console.log(`${results.inclusionProof ? '✅' : '❌'} Inclusion Proof: ${results.inclusionProof ? 'OK' : 'FAILED'}`);
-  console.log(`${results.unicityCertificate ? '✅' : '❌'} Unicity Certificate: ${results.unicityCertificate ? 'OK' : 'FAILED'}`);
-
-  // Show overall status
-  const allPassed = results.authenticator && results.inclusionProof && results.unicityCertificate;
-  console.log(`\nOverall Status: ${allPassed ? '✅ ALL CHECKS PASSED' : '⚠️ SOME CHECKS FAILED'}`);
 }

@@ -2,7 +2,8 @@ import { Command } from 'commander';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { CborDecoder } from '@unicitylabs/commons/lib/cbor/CborDecoder.js';
-import { validateTokenProofs, validateTokenProofsJson, createDefaultTrustBase } from '../utils/proof-validation.js';
+import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
+import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import * as fs from 'fs';
 
 /**
@@ -245,9 +246,15 @@ export function verifyTokenCommand(program: Command): void {
 
           // Perform cryptographic proof validation if loaded successfully
           console.log('\n=== Cryptographic Proof Verification ===');
+          console.log('Loading trust base...');
+
+          const trustBase = await getCachedTrustBase({
+            filePath: process.env.TRUSTBASE_PATH,
+            useFallback: false
+          });
+          console.log(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})`);
           console.log('Verifying proofs with SDK...');
 
-          const trustBase = await createDefaultTrustBase();
           const sdkProofValidation = await validateTokenProofs(token, trustBase);
 
           if (sdkProofValidation.valid) {
