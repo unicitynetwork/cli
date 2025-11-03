@@ -350,13 +350,13 @@ export function mintTokenCommand(program: Command): void {
         // In production, this should be fetched from aggregator
         const trustBase = RootTrustBase.fromJSON({
           version: '1',
-          networkId: endpoint.includes('localhost') ? 3 : 1,
+          networkId: endpoint.includes('localhost') || endpoint.includes('127.0.0.1') ? 3 : 1,
           epoch: '1',
           epochStartRound: '1',
           rootNodes: [
             {
-              nodeId: '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb',
-              sigKey: '03384d4d4ad517fb94634910e0c88cb4551a483017c03256de4310afa4b155dfad',
+              nodeId: '16Uiu2HAm6YizNi4XUqUcCF3aoEVZaSzP3XSrGeKA1b893RLtCLfu',
+              sigKey: '02cf6a24725f81b38431f3ddb92ed89a01b06a07f4e15945096c2e11a13916ff6d',
               stake: '1'
             }
           ],
@@ -365,7 +365,7 @@ export function mintTokenCommand(program: Command): void {
           changeRecordHash: null,
           previousEntryHash: null,
           signatures: {
-            '16Uiu2HAkv5hkDFUT3cFVMTCetJJnoC5HWbCd2CxG44uMWVXNdbzb': '843bc1fd04f31a6eee7c584de67c6985fd6021e912622aacaa7278a56a10ec7e42911d6a5c53604c60849a61911f1dc6276a642a7df7c4d57cac8d893694a17601'
+            '16Uiu2HAm6YizNi4XUqUcCF3aoEVZaSzP3XSrGeKA1b893RLtCLfu': 'c6a2603d88ed172ef492f3b55bc6f0651ca7fde037b8651c83c33e8fd4884e5d72ef863fac564a0863e2bdea4ef73a1b2de2abe36485a3fa95d3cda1c51dcc2300'
           }
         });
         console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId})\n`);
