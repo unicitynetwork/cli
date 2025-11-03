@@ -456,7 +456,7 @@ export function mintTokenCommand(program: Command): void {
           version: "2.0",
           genesis: {
             data: mintTransaction.data.toJSON(),
-            inclusionProof: inclusionProof
+            inclusionProof: inclusionProof.toJSON()  // ✅ Serialize inclusion proof properly
           },
           state: tokenState.toJSON(),  // ✅ Use SDK method for proper encoding!
           transactions: [],  // Empty for newly minted token
