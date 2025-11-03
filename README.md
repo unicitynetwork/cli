@@ -135,6 +135,16 @@ All generated tokens use:
 
 ## Development
 
+### Local Development Setup
+
+For local development with the Docker aggregator, see **[TRUSTBASE_LOADING.md](TRUSTBASE_LOADING.md)** for:
+- How to extract TrustBase from your local Docker aggregator
+- Quick setup guide for development environment
+- Dynamic TrustBase loading configuration
+- Troubleshooting common issues
+
+### Development Commands
+
 For development, you can use:
 
 ```bash
@@ -145,3 +155,17 @@ For example:
 ```bash
 npm run dev -- get-request -e https://gateway-test1.unicity.network:443 7c8a9b0f1d2e3f4a5b6c7d8e9f0a1b2c
 ```
+
+### Local Testing with Docker Aggregator
+
+Use the `--local` flag to test against your local Docker aggregator:
+
+```bash
+# Mint a token against local aggregator
+SECRET="test" npm run mint-token -- --local -d '{"test":"data"}' --save
+```
+
+The CLI will automatically:
+1. Use endpoint `http://127.0.0.1:3000`
+2. Load TrustBase from `./config/trust-base.json` (if available)
+3. Fall back to hardcoded configuration for standard Docker setup

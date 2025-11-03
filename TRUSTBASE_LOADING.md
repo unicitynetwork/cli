@@ -35,6 +35,80 @@ This file can be accessed via:
 2. `docker cp` command
 3. Sharing the config directory
 
+## Quick Start for Local Development
+
+### Prerequisites
+
+Before using dynamic TrustBase loading, ensure your local Docker aggregator is running:
+
+```bash
+# Check if aggregator container is running
+docker ps | grep aggregator
+
+# Expected output shows container name (could be aggregator-service, unicity-aggregator, etc.)
+# Note the CONTAINER ID or NAMES column - you'll need this for the docker cp command
+```
+
+**Find your container name:**
+```bash
+# List all running containers with 'aggregator' in the name
+docker ps --filter "name=aggregator" --format "table {{.Names}}\t{{.Status}}"
+
+# Or show full container list
+docker ps
+```
+
+Common container names:
+- `aggregator-service`
+- `unicity-aggregator`
+- `local-aggregator`
+- Or with project prefix like `unicity_aggregator_1`
+
+If you don't have the aggregator running, you'll need to start it first. Contact your team for the Docker Compose setup.
+
+### Fastest Setup (Recommended)
+
+For smooth local development, extract the TrustBase once and reuse it:
+
+```bash
+# 0. Create config directory (if it doesn't exist)
+mkdir -p config
+
+# 1. Extract TrustBase from Docker aggregator
+# Replace 'aggregator-service' with your actual container name from above
+docker cp aggregator-service:/app/bft-config/trust-base.json ./config/trust-base.json
+
+# 2. IMPORTANT: Verify the file is valid JSON with correct structure
+cat ./config/trust-base.json | jq '.networkId, .rootNodes[0].nodeId'
+
+# Expected output:
+# 3
+# "16Uiu2HAm6YizNi4XUqUcCF3aoEVZaSzP3XSrGeKA1b893RLtCLfu"
+
+# 3. The CLI will now automatically detect and use this file
+SECRET="test" npm run mint-token -- --local -d '{"test":"data"}' --save
+```
+
+You should see:
+```
+Loading trust base...
+Loaded TrustBase from: ./config/trust-base.json
+  ✓ Trust base ready (Network ID: 3, Epoch: 1)
+```
+
+**Done!** Your development environment is now properly configured.
+
+### Alternative: Let CLI Use Fallback (Zero Setup)
+
+If you're using the standard Docker aggregator setup with no modifications:
+
+```bash
+# Just run commands normally - no setup needed
+SECRET="test" npm run mint-token -- --local -d '{"test":"data"}'
+```
+
+The CLI will automatically use the hardcoded configuration that matches the default Docker setup. This works out-of-the-box but is only suitable for local development with the standard configuration.
+
 ## Implementation
 
 ### New Utility Module
@@ -50,12 +124,14 @@ Created `/home/vrogojin/cli/src/utils/trustbase-loader.ts` with:
 
 The loader tries these sources in order:
 
-1. **Environment variable path** (`TRUSTBASE_PATH`)
+1. **Custom file path** via `TRUSTBASE_PATH` environment variable
+   - Commands pass `process.env.TRUSTBASE_PATH` to the loader
+   - Allows overriding the default search paths
 2. **Default paths** (checked in order):
    - `/tmp/aggregator/bft-config/trust-base.json` (Docker volume mount)
    - `/app/bft-config/trust-base.json` (Running inside aggregator network)
    - `./config/trust-base.json` (Local development)
-   - `./trust-base.json` (Project root)
+   - `<project-root>/trust-base.json` (Project root)
 3. **Hardcoded fallback** (local Docker aggregator config)
 
 ### Commands Updated
@@ -189,9 +265,17 @@ This means multiple commands in the same process will reuse the loaded TrustBase
 ### For Different Networks
 
 The TrustBase contains network-specific information:
-- Network ID (3 for local, 1 for production)
+- **Network ID**
+  - Local Docker: `3`
+  - Testnet: Check your aggregator's trust-base.json
+  - Production: `1`
 - Root node information
 - Epoch and signatures
+
+**To check your network ID:**
+```bash
+cat trust-base.json | jq '.networkId'
+```
 
 Ensure you're using the correct trust-base.json for your target network.
 
@@ -218,24 +302,54 @@ Potential improvements for future versions:
 
 **Solution:** Verify the file exists and has correct permissions:
 ```bash
-ls -la /tmp/trust-base.json
-cat /tmp/trust-base.json
+ls -la ./config/trust-base.json
+cat ./config/trust-base.json
+```
+
+### Issue: "Permission denied" when reading trust-base.json
+
+**Solution:** Ensure the file has correct permissions after copying from Docker:
+```bash
+chmod 644 ./config/trust-base.json
 ```
 
 ### Issue: "Proof verification fails"
 
 **Solution:** Ensure trust-base.json matches the aggregator you're connecting to:
 ```bash
-# Compare with aggregator's current trust-base
+# Compare with aggregator's current trust-base (replace container name)
 docker exec aggregator-service cat /app/bft-config/trust-base.json
+
+# Check if they match
+diff <(docker exec aggregator-service cat /app/bft-config/trust-base.json) ./config/trust-base.json
 ```
 
 ### Issue: "Network ID mismatch"
 
 **Solution:** Different aggregators use different network IDs. Verify:
+```bash
+# Check your local trust-base.json network ID
+cat ./config/trust-base.json | jq '.networkId'
+
+# Check aggregator's network ID
+docker exec aggregator-service cat /app/bft-config/trust-base.json | jq '.networkId'
+```
+
+Expected values:
 - Local Docker: Network ID 3
-- Testnet: Network ID varies
-- Mainnet: Network ID 1
+- Testnet: Check your aggregator's configuration
+- Production: Network ID 1
+
+### Issue: Container name 'aggregator-service' not found
+
+**Solution:** Find your actual container name:
+```bash
+# List all containers with 'aggregator' in the name
+docker ps --filter "name=aggregator" --format "table {{.Names}}\t{{.Status}}"
+
+# Use the actual container name in commands
+docker cp <your-container-name>:/app/bft-config/trust-base.json ./config/trust-base.json
+```
 
 ## Related Files
 
