@@ -272,7 +272,7 @@ export function mintTokenCommand(program: Command): void {
     .command('mint-token')
     .description('Mint a new token to yourself on the Unicity Network (self-mint pattern)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3000)')
+    .option('--local', 'Use local aggregator (http://localhost:3001)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--preset <type>', 'Use preset token type: nft, alpha/uct, usdu, euru')
     .option('-n, --nonce <nonce>', 'Nonce for masked predicate (creates one-time address if provided)')
@@ -289,7 +289,7 @@ export function mintTokenCommand(program: Command): void {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
-        endpoint = 'http://localhost:3000';
+        endpoint = 'http://localhost:3001';  // Use aggregator-1 (port 3001), not dashboard (port 3000)
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
       }
@@ -452,11 +452,16 @@ export function mintTokenCommand(program: Command): void {
         // The predicate must be a CBOR array: [engine_id, template, params]
         console.error('Step 9: Creating SDK-compliant TXF structure...');
 
+        // The SDK's inclusionProof.toJSON() doesn't include the authenticator
+        // We need to add it manually from the mintCommitment
+        const inclusionProofJson = inclusionProof.toJSON();
+        inclusionProofJson.authenticator = mintCommitment.authenticator.toJSON();
+
         const txfToken = {
           version: "2.0",
           genesis: {
             data: mintTransaction.data.toJSON(),
-            inclusionProof: inclusionProof.toJSON()  // ✅ Serialize inclusion proof properly
+            inclusionProof: inclusionProofJson  // Include authenticator from commitment
           },
           state: tokenState.toJSON(),  // ✅ Use SDK method for proper encoding!
           transactions: [],  // Empty for newly minted token

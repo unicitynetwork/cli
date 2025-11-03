@@ -5,7 +5,7 @@ export function getRequestCommand(program: Command): void {
     .command('get-request')
     .description('Get inclusion proof for a specific request ID')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3000)')
+    .option('--local', 'Use local aggregator (http://localhost:3001)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--json', 'Output raw JSON response for pipeline processing')
     .argument('<requestId>', 'Request ID to query')
@@ -13,7 +13,7 @@ export function getRequestCommand(program: Command): void {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
-        endpoint = 'http://localhost:3000';
+        endpoint = 'http://localhost:3001';
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
       }

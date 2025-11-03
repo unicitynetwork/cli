@@ -12,7 +12,7 @@ export function registerRequestCommand(program: Command): void {
     .command('register-request')
     .description('Register a commitment request at generic abstraction level (no token structures)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3000)')
+    .option('--local', 'Use local aggregator (http://localhost:3001)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .argument('<secret>', 'Secret key for signing the request')
     .argument('<state>', 'State data (will be hashed to derive RequestId)')
@@ -21,7 +21,7 @@ export function registerRequestCommand(program: Command): void {
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
-        endpoint = 'http://localhost:3000';
+        endpoint = 'http://localhost:3001';
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
       }
