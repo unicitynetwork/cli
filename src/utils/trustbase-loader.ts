@@ -1,6 +1,7 @@
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 /**
  * Configuration for TrustBase loading strategies
@@ -107,10 +108,28 @@ export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootT
     }
   }
 
-  // Fall back to hardcoded configuration
-  console.warn('Could not load TrustBase from file, using hardcoded configuration');
-  console.warn('This may only work with your local Docker aggregator setup');
-  console.warn('For production use, mount the aggregator trust-base.json as a volume');
+  // Try to extract from running Docker aggregator
+  console.log('Attempting to extract TrustBase from Docker aggregator...');
+  const containerName = findAggregatorContainer();
+
+  if (containerName) {
+    console.log(`Found aggregator container: ${containerName}`);
+    const dockerTrustBase = extractTrustBaseFromDocker(containerName);
+
+    if (dockerTrustBase) {
+      console.log(`✓ Loaded TrustBase from Docker container: ${containerName}`);
+      return RootTrustBase.fromJSON(dockerTrustBase);
+    } else {
+      console.warn(`Failed to extract TrustBase from container: ${containerName}`);
+    }
+  } else {
+    console.warn('No running aggregator container found');
+  }
+
+  // Fall back to hardcoded configuration (should not be used for --local)
+  console.warn('Could not load TrustBase from file or Docker, using hardcoded configuration');
+  console.warn('⚠️  WARNING: Hardcoded TrustBase may not match your aggregator!');
+  console.warn('For local development, ensure Docker aggregator is running');
 
   return RootTrustBase.fromJSON(fallbackJson);
 }
@@ -125,6 +144,40 @@ export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootT
 async function loadTrustBaseFromFile(filePath: string): Promise<unknown> {
   const fileContent = fs.readFileSync(filePath, 'utf-8');
   return JSON.parse(fileContent);
+}
+
+/**
+ * Attempt to extract TrustBase from running Docker aggregator
+ *
+ * @param containerName Docker container name (default: aggregator-service)
+ * @returns Parsed TrustBase JSON or null if extraction fails
+ */
+function extractTrustBaseFromDocker(containerName: string = 'aggregator-service'): unknown | null {
+  try {
+    // Try to execute docker exec to read the trust-base.json
+    const command = `docker exec ${containerName} cat /app/bft-config/trust-base.json`;
+    const output = execSync(command, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    return JSON.parse(output);
+  } catch (error) {
+    // Docker command failed - container might not be running or doesn't exist
+    return null;
+  }
+}
+
+/**
+ * Find running aggregator container name
+ *
+ * @returns Container name or null if not found
+ */
+function findAggregatorContainer(): string | null {
+  try {
+    const command = `docker ps --filter "name=aggregator" --format "{{.Names}}" | head -1`;
+    const output = execSync(command, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const containerName = output.trim();
+    return containerName || null;
+  } catch (error) {
+    return null;
+  }
 }
 
 /**
