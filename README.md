@@ -29,6 +29,14 @@ This CLI provides a convenient interface to the transaction flow engine, allowin
 - **[Security Tests](test-scenarios/security/)** - Security audits and adversarial tests (68 scenarios)
 - **[Edge Cases](test-scenarios/edge-cases/)** - Corner cases and concurrency tests (149 scenarios)
 
+### Unicity Expert Agents (AI Assistants)
+- **[Expert Agents Overview](.claude-agents/README.md)** - AI assistant profiles for Unicity expertise
+- **[Unicity Architect](.claude-agents/unicity-experts/unicity-architect.md)** - Architecture and design principles expert
+- **[Consensus Expert](.claude-agents/unicity-experts/consensus-expert.md)** - PoW and BFT consensus mechanisms expert
+- **[Proof Aggregator Expert](.claude-agents/unicity-experts/proof-aggregator-expert.md)** - Aggregator layer and API expert
+- **[Unicity Developers](.claude-agents/unicity-experts/unicity-developers.md)** - SDK experts (TypeScript, Java, Rust)
+- **[Research Documentation](.claude-agents/unicity-research/)** - Comprehensive technical research (575+ KB)
+
 ### Local Development Setup
 For local development with the Docker aggregator, see **[TrustBase Loading](.dev/architecture/trustbase-loading.md)** for:
 - How to extract TrustBase from your local Docker aggregator
