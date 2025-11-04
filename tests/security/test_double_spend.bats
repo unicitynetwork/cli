@@ -38,6 +38,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
+    assert_token_fully_valid "${alice_token}"
 
     # Generate addresses for Bob and Carol
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
@@ -53,6 +54,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
     assert_file_exists "${transfer_bob}"
+    assert_offline_transfer_valid "${transfer_bob}"
 
     # ATTACK: Alice creates transfer to Carol using SAME ORIGINAL token
     # This creates two competing transfers for the same token state
@@ -60,6 +62,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${transfer_carol}"
     assert_success  # Creation of transfer package succeeds (offline operation)
     assert_file_exists "${transfer_carol}"
+    assert_offline_transfer_valid "${transfer_carol}"
 
     # Now both Bob and Carol try to receive their transfers
     # Only ONE should succeed - the other will fail with "already spent"
@@ -81,6 +84,7 @@ teardown() {
     if [[ $bob_exit -eq 0 ]]; then
         ((success_count++))
         assert_file_exists "${bob_received}"
+        assert_token_fully_valid "${bob_received}"
         log_info "Bob successfully received token"
     else
         ((failure_count++))
@@ -90,6 +94,7 @@ teardown() {
     if [[ $carol_exit -eq 0 ]]; then
         ((success_count++))
         assert_file_exists "${carol_received}"
+        assert_token_fully_valid "${carol_received}"
         log_info "Carol successfully received token"
     else
         ((failure_count++))
@@ -117,6 +122,7 @@ teardown() {
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
+    assert_token_fully_valid "${alice_token}"
 
     # Bob generates address
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
@@ -127,6 +133,7 @@ teardown() {
     local transfer="${TEST_TEMP_DIR}/transfer-bob.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer}"
     assert_success
+    assert_offline_transfer_valid "${transfer}"
 
     # ATTACK: Launch multiple parallel receive attempts with SAME transfer file
     # Simulates race condition where multiple clients try to claim same transfer
@@ -194,6 +201,7 @@ teardown() {
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
+    assert_token_fully_valid "${alice_token}"
 
     # Bob and Carol generate addresses
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
@@ -208,11 +216,13 @@ teardown() {
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
+    assert_offline_transfer_valid "${transfer_bob}"
 
     local bob_token="${TEST_TEMP_DIR}/bob-token.txf"
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${bob_token}"
     assert_success
     assert_file_exists "${bob_token}"
+    assert_token_fully_valid "${bob_token}"
 
     # Alice keeps a copy of the original token file (before transfer)
     # ATTACK: Alice tries to send the token AGAIN using her old token file
@@ -251,6 +261,7 @@ teardown() {
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
+    assert_token_fully_valid "${alice_token}"
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
     assert_success
@@ -259,12 +270,14 @@ teardown() {
     local transfer="${TEST_TEMP_DIR}/transfer-bob.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer}"
     assert_success
+    assert_offline_transfer_valid "${transfer}"
 
     # Bob receives the transfer (FIRST TIME - should succeed)
     local bob_token1="${TEST_TEMP_DIR}/bob-token-1.txf"
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token1}"
     assert_success
     assert_file_exists "${bob_token1}"
+    assert_token_fully_valid "${bob_token1}"
 
     # ATTACK: Bob tries to receive SAME transfer again
     local bob_token2="${TEST_TEMP_DIR}/bob-token-2.txf"
@@ -274,6 +287,7 @@ teardown() {
     if [[ $status -eq 0 ]]; then
         # If succeeded, verify it's idempotent (same token state)
         assert_file_exists "${bob_token2}"
+        assert_token_fully_valid "${bob_token2}"
 
         local token1_id=$(jq -r '.genesis.data.tokenId' "${bob_token1}")
         local token2_id=$(jq -r '.genesis.data.tokenId' "${bob_token2}")
@@ -309,6 +323,7 @@ teardown() {
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
+    assert_token_fully_valid "${alice_token}"
 
     # Bob generates address and receives from Alice
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
@@ -318,10 +333,12 @@ teardown() {
     local transfer_to_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_to_bob}"
     assert_success
+    assert_offline_transfer_valid "${transfer_to_bob}"
 
     local bob_token="${TEST_TEMP_DIR}/bob-token.txf"
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_to_bob} --local -o ${bob_token}"
     assert_success
+    assert_token_fully_valid "${bob_token}"
 
     # Carol generates address and receives from Bob
     run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
@@ -331,10 +348,12 @@ teardown() {
     local transfer_to_carol="${TEST_TEMP_DIR}/transfer-carol.txf"
     run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_address} --local -o ${transfer_to_carol}"
     assert_success
+    assert_offline_transfer_valid "${transfer_to_carol}"
 
     local carol_token="${TEST_TEMP_DIR}/carol-token.txf"
     run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_to_carol} --local -o ${carol_token}"
     assert_success
+    assert_token_fully_valid "${carol_token}"
 
     # Current state: Carol owns the token
     # Bob's intermediate state (bob_token) is now outdated
@@ -379,6 +398,7 @@ teardown() {
     local alice_uct="${TEST_TEMP_DIR}/alice-uct.txf"
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct --local -o ${alice_uct}"
     assert_success
+    assert_token_fully_valid "${alice_uct}"
 
     # Verify token is fungible (UCT type)
     local token_type=$(jq -r '.genesis.data.tokenType' "${alice_uct}")
@@ -400,18 +420,27 @@ teardown() {
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob-uct.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_uct} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
+    assert_offline_transfer_valid "${transfer_bob}"
 
     # ATTACK: Try to send same token to Carol (simulating coin splitting attack)
     local transfer_carol="${TEST_TEMP_DIR}/transfer-carol-uct.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_uct} -r ${carol_address} --local -o ${transfer_carol}"
     assert_success  # Offline package creation succeeds
+    assert_offline_transfer_valid "${transfer_carol}"
 
     # Only ONE receive should succeed
     local bob_received=0
     local carol_received=0
 
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-uct.txf" && bob_received=1
-    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-uct.txf" && carol_received=1
+    if run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-uct.txf"; then
+        bob_received=1
+        assert_token_fully_valid "${TEST_TEMP_DIR}/bob-uct.txf"
+    fi
+
+    if run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-uct.txf"; then
+        carol_received=1
+        assert_token_fully_valid "${TEST_TEMP_DIR}/carol-uct.txf"
+    fi
 
     # Verify exactly ONE succeeded
     local total_received=$((bob_received + carol_received))

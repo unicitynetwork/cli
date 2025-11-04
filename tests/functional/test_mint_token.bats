@@ -28,6 +28,9 @@ teardown() {
     assert_file_exists "token.txf"
     assert is_valid_txf "token.txf"
 
+    # Validate token structure and cryptography
+    assert_token_fully_valid "token.txf"
+
     # Check TXF version
     assert_json_field_equals "token.txf" "version" "2.0"
 
@@ -63,6 +66,7 @@ teardown() {
 
     # Verify token created
     assert_file_exists "token.txf"
+    assert_token_fully_valid "token.txf"
 
     # Check token data exists and is hex-encoded
     assert_json_field_exists "token.txf" "state.data"
@@ -81,6 +85,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset nft -d '${text_data}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify token data
     local decoded_data
@@ -94,6 +99,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset uct --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Check token type
     assert_token_type "token.txf" "uct"
@@ -115,6 +121,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '${amount}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify coin amount
     local coin_count
@@ -135,6 +142,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset usdu -c '${amount}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify token type
     assert_token_type "token.txf" "usdu"
@@ -153,6 +161,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset euru -c '${amount}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify token type
     assert_token_type "token.txf" "euru"
@@ -173,6 +182,7 @@ teardown() {
     # Mint without -u flag (default is masked)
     run_cli_with_secret "${SECRET}" "mint-token --preset nft -n '${nonce}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify predicate type
     local pred_type
@@ -193,6 +203,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset nft -i ${token_id} --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify token ID matches
     assert_json_field_equals "token.txf" "genesis.data.tokenId" "${token_id}"
@@ -206,6 +217,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset nft --salt ${salt} --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify salt in genesis data
     assert_json_field_equals "token.txf" "genesis.data.salt" "${salt}"
@@ -221,6 +233,7 @@ teardown() {
     # Verify custom filename
     assert_file_exists "my-custom-nft.txf"
     assert is_valid_txf "my-custom-nft.txf"
+    assert_token_fully_valid "my-custom-nft.txf"
 }
 
 # MINT_TOKEN-012: Mint with STDOUT Only
@@ -233,6 +246,7 @@ teardown() {
     # Verify stdout capture
     assert_file_exists "captured-token.json"
     assert is_valid_txf "captured-token.json"
+    assert_token_fully_valid "captured-token.json"
 
     # No auto-generated file should exist
     local auto_files
@@ -244,6 +258,7 @@ teardown() {
 @test "MINT_TOKEN-013: Mint NFT with unmasked address" {
     run_cli_with_secret "${SECRET}" "mint-token --preset nft -u --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -258,6 +273,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset nft -n '${nonce}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -269,6 +285,7 @@ teardown() {
 @test "MINT_TOKEN-015: Mint UCT with unmasked address" {
     run_cli_with_secret "${SECRET}" "mint-token --preset uct -u --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -283,6 +300,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset uct -n '${nonce}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -294,6 +312,7 @@ teardown() {
 @test "MINT_TOKEN-017: Mint USDU with unmasked address" {
     run_cli_with_secret "${SECRET}" "mint-token --preset usdu -u -c 1000000 --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -308,6 +327,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset usdu -n '${nonce}' -c 1000000 --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
@@ -323,6 +343,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '${amounts}' --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify 3 coins created
     local coin_count
@@ -356,6 +377,7 @@ teardown() {
 
     run_cli_with_secret "${SECRET}" "mint-token --preset nft --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Verify inclusion proof from local network
     assert_has_inclusion_proof "token.txf"

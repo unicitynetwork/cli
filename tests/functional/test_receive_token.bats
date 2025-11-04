@@ -28,8 +28,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft" "" "bob-addr.json")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "alice-token.txf"
+    assert_token_fully_valid "alice-token.txf"
     send_token_offline "${ALICE_SECRET}" "alice-token.txf" "${bob_addr}" "transfer-package.txf"
     assert_success
+    assert_offline_transfer_valid "transfer-package.txf"
 
     # Execute: Bob receives the token
     receive_token "${BOB_SECRET}" "transfer-package.txf" "bob-token.txf"
@@ -38,6 +40,7 @@ teardown() {
     # Verify: Token file created
     assert_file_exists "bob-token.txf"
     assert is_valid_txf "bob-token.txf"
+    assert_token_fully_valid "bob-token.txf"
 
     # Verify: Transfer submitted to network
     # Status should be CONFIRMED (no more pending transfer)
@@ -72,12 +75,15 @@ teardown() {
 
     # Mint NFT with metadata
     mint_token_to_address "${ALICE_SECRET}" "nft" "{\"name\":\"Test NFT\",\"id\":123}" "nft-token.txf"
+    assert_token_fully_valid "nft-token.txf"
     send_token_offline "${ALICE_SECRET}" "nft-token.txf" "${bob_addr}" "nft-transfer.txf"
     assert_success
+    assert_offline_transfer_valid "nft-transfer.txf"
 
     # Receive
     receive_token "${BOB_SECRET}" "nft-transfer.txf" "bob-nft.txf"
     assert_success
+    assert_token_fully_valid "bob-nft.txf"
 
     # Verify: Token data preserved
     local data
@@ -103,12 +109,15 @@ teardown() {
 
     # Mint UCT with 10 UCT
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "uct-token.txf" "-c 10000000000000000000"
+    assert_token_fully_valid "uct-token.txf"
     send_token_offline "${ALICE_SECRET}" "uct-token.txf" "${bob_addr}" "uct-transfer.txf"
     assert_success
+    assert_offline_transfer_valid "uct-transfer.txf"
 
     # Receive
     receive_token "${BOB_SECRET}" "uct-transfer.txf" "bob-uct.txf"
     assert_success
+    assert_token_fully_valid "bob-uct.txf"
 
     # Verify: Coin data intact
     local coin_count
@@ -135,8 +144,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Execute: Carol tries to receive with her secret (wrong!)
     receive_token "${CAROL_SECRET}" "transfer.txf" "carol-token.txf"
@@ -162,18 +173,22 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # First receive
     receive_token "${BOB_SECRET}" "transfer.txf" "received1.txf"
     assert_success
+    assert_token_fully_valid "received1.txf"
 
     # Second receive (retry)
     receive_token "${BOB_SECRET}" "transfer.txf" "received2.txf"
 
     # Should succeed (idempotent operation)
     assert_success
+    assert_token_fully_valid "received2.txf"
 
     # Both files should have same final state
     local tx_count1 tx_count2
@@ -190,12 +205,15 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Receive with local network
     receive_token "${BOB_SECRET}" "transfer.txf" "bob-token.txf"
     assert_success
+    assert_token_fully_valid "bob-token.txf"
 
     # Verify: Inclusion proof from local network
     assert_json_field_exists "bob-token.txf" "transactions[0].inclusionProof"
@@ -223,8 +241,10 @@ teardown() {
 
     # Alice sends to masked address
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_masked_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Bob receives with same secret + nonce
     # Note: CLI should automatically derive the same masked address
@@ -233,6 +253,7 @@ teardown() {
 
     # Verify: Token received successfully
     assert_file_exists "bob-token.txf"
+    assert_token_fully_valid "bob-token.txf"
 
     # Verify: Address verification passed
     local tx_count

@@ -31,6 +31,7 @@ teardown() {
     # Setup: Mint token for Alice
     mint_token_to_address "${ALICE_SECRET}" "nft" "{\"name\":\"Test NFT\"}" "alice-token.txf"
     assert_success
+    assert_token_fully_valid "alice-token.txf"
 
     # Execute: Create offline transfer package
     send_token_offline "${ALICE_SECRET}" "alice-token.txf" "${bob_addr}" "transfer.txf" "Test transfer message"
@@ -39,6 +40,7 @@ teardown() {
     # Verify: Transfer file created
     assert_file_exists "transfer.txf"
     assert is_valid_txf "transfer.txf"
+    assert_offline_transfer_valid "transfer.txf"
 
     # Verify: Has offline transfer section
     assert_has_offline_transfer "transfer.txf"
@@ -79,6 +81,7 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft" "" "bob-addr.json")
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "alice-token.txf"
     assert_success
+    assert_token_fully_valid "alice-token.txf"
 
     # Execute: Submit transfer immediately
     send_token_immediate "${ALICE_SECRET}" "alice-token.txf" "${bob_addr}" "transferred.txf"
@@ -86,6 +89,7 @@ teardown() {
 
     # Verify: Transfer file created
     assert_file_exists "transferred.txf"
+    assert_token_fully_valid "transferred.txf"
 
     # Verify: Status is TRANSFERRED
     local status
@@ -114,10 +118,12 @@ teardown() {
     # Mint NFT with custom data
     mint_token_to_address "${ALICE_SECRET}" "nft" "{\"name\":\"Art NFT\",\"artist\":\"Alice\"}" "nft-token.txf"
     assert_success
+    assert_token_fully_valid "nft-token.txf"
 
     # Send NFT
     send_token_offline "${ALICE_SECRET}" "nft-token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Verify: Token data preserved
     local data
@@ -142,10 +148,12 @@ teardown() {
     # Mint UCT with 5 UCT
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "uct-token.txf" "-c 5000000000000000000"
     assert_success
+    assert_token_fully_valid "uct-token.txf"
 
     # Send UCT
     send_token_offline "${ALICE_SECRET}" "uct-token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Verify: Coin data preserved
     local coin_count
@@ -164,8 +172,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     assert_token_type "transfer.txf" "nft"
 }
@@ -176,8 +186,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "uct")
 
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "token.txf" "-c 1000000000000000000"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     assert_token_type "transfer.txf" "uct"
 }
@@ -188,8 +200,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "usdu")
 
     mint_token_to_address "${ALICE_SECRET}" "usdu" "" "token.txf" "-c 100000000"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     assert_token_type "transfer.txf" "usdu"
 }
@@ -200,8 +214,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "euru")
 
     mint_token_to_address "${ALICE_SECRET}" "euru" "" "token.txf" "-c 50000000"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     assert_token_type "transfer.txf" "euru"
 }
@@ -212,8 +228,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "alpha")
 
     mint_token_to_address "${ALICE_SECRET}" "alpha" "" "token.txf" "-c 1000000000000000000"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     assert_token_type "transfer.txf" "alpha"
 }
@@ -231,10 +249,12 @@ teardown() {
     # Mint with custom type
     run_cli_with_secret "${ALICE_SECRET}" "mint-token -y ${custom_type} --local -o token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Send
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Verify custom type preserved
     assert_json_field_equals "transfer.txf" "genesis.data.tokenType" "${custom_type}"
@@ -248,8 +268,10 @@ teardown() {
     bob_addr=$(generate_address "${BOB_SECRET}" "nft")
 
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_immediate "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transferred.txf"
     assert_success
+    assert_token_fully_valid "transferred.txf"
 
     # Verify submitted to local network
     assert_no_offline_transfer "transferred.txf"
@@ -276,8 +298,10 @@ teardown() {
 
     # Mint and send
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_addr}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # Verify recipient address is masked
     local recipient
@@ -295,8 +319,10 @@ teardown() {
 
     # First transfer: Alice -> Bob (submit immediately)
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
+    assert_token_fully_valid "token.txf"
     send_token_immediate "${ALICE_SECRET}" "token.txf" "${bob_addr}" "sent-token.txf"
     assert_success
+    assert_token_fully_valid "sent-token.txf"
 
     # Try to send again from same state: Alice -> Carol
     send_token_offline "${ALICE_SECRET}" "sent-token.txf" "${carol_addr}" "transfer2.txf"

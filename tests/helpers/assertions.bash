@@ -607,3 +607,742 @@ export -f assert_valid_token
 export -f assert_has_offline_transfer
 export -f assert_no_offline_transfer
 export -f assert_token_type
+# =============================================================================
+# Unicity Cryptographic Validation Functions
+# =============================================================================
+# These functions provide comprehensive validation of Unicity token structures,
+# including cryptographic verification, predicate validation, inclusion proofs,
+# and state hash computation.
+#
+# PRIMARY validation uses the verify-token CLI command as the authoritative
+# validator. SECONDARY structure checks provide early failure detection.
+#
+# Usage:
+#   verify_token_cryptographically "$token_file"
+#   assert_token_fully_valid "$token_file"
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Core Cryptographic Validation
+# -----------------------------------------------------------------------------
+
+# Verify token cryptographically using CLI verify-token command
+# This is the PRIMARY validation method - uses SDK cryptographic validation
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   verify_token_cryptographically "$token_file"
+verify_token_cryptographically() {
+  local token_file="${1:?Token file required}"
+  
+  # Check file exists
+  if [[ ! -f "$token_file" ]]; then
+    printf "${COLOR_RED}✗ Token Validation Failed: File not found${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Run verify-token command with --local flag (offline verification)
+  local verify_status=0
+  local verify_output
+  verify_output=$(run_cli verify-token -f "$token_file" --local 2>&1) || verify_status=$?
+  
+  # Check if command succeeded
+  if [[ $verify_status -ne 0 ]]; then
+    printf "${COLOR_RED}✗ Token Cryptographic Validation Failed${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    printf "  Exit code: %d\n" "$verify_status" >&2
+    printf "  Output:\n%s\n" "$verify_output" >&2
+    return 1
+  fi
+  
+  # Check that output indicates successful validation
+  # The verify-token command should output validation results
+  if echo "$verify_output" | grep -qiE "(error|fail|invalid)"; then
+    printf "${COLOR_RED}✗ Token Validation Indicated Errors${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    printf "  Output:\n%s\n" "$verify_output" >&2
+    return 1
+  fi
+  
+  # Check for positive validation indicators
+  if ! echo "$verify_output" | grep -qiE "(valid|success|verified|✓|✅)"; then
+    printf "${COLOR_YELLOW}⚠ Token Validation Completed But No Clear Success Indicator${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    printf "  Output:\n%s\n" "$verify_output" >&2
+    # Don't fail - command succeeded, just no clear success message
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token cryptographically valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Token Structure Validation
+# -----------------------------------------------------------------------------
+
+# Assert token has valid JSON structure with all required fields
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_has_valid_structure "$token_file"
+assert_token_has_valid_structure() {
+  local token_file="${1:?Token file required}"
+  
+  # Check file exists and is valid JSON
+  assert_file_exists "$token_file" || return 1
+  
+  # Validate JSON structure
+  if ! jq empty "$token_file" 2>/dev/null; then
+    printf "${COLOR_RED}✗ Invalid JSON in token file${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check version field
+  if ! jq -e '.version' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .version field${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check token object exists
+  if ! jq -e '.token' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .token object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check required token fields
+  local required_token_fields=(
+    ".token.tokenId"
+    ".token.typeId"
+  )
+  
+  for field in "${required_token_fields[@]}"; do
+    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing required field: %s${COLOR_RESET}\n" "$field" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
+  done
+  
+  # Check genesis object
+  if ! jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .genesis object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check state object
+  if ! jq -e '.state' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .state object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check required state fields
+  local required_state_fields=(
+    ".state.stateHash"
+    ".state.data"
+    ".state.predicate"
+  )
+  
+  for field in "${required_state_fields[@]}"; do
+    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing required field: %s${COLOR_RESET}\n" "$field" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
+  done
+  
+  # Check inclusion proof exists
+  if ! jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .inclusionProof object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token structure valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# Assert token has valid genesis transaction
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_has_valid_genesis "$token_file"
+assert_token_has_valid_genesis() {
+  local token_file="${1:?Token file required}"
+  
+  # Check genesis object exists
+  if ! jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing genesis object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check genesis has required fields
+  local required_fields=(
+    ".genesis.data"
+    ".genesis.data.tokenType"
+  )
+  
+  for field in "${required_fields[@]}"; do
+    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing genesis field: %s${COLOR_RESET}\n" "$field" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
+  done
+  
+  # Validate genesis transaction has proof (if applicable)
+  # Genesis may have inclusionProof at genesis level or rely on overall proof
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Genesis transaction valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# Assert token has valid current state
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_has_valid_state "$token_file"
+assert_token_has_valid_state() {
+  local token_file="${1:?Token file required}"
+  
+  # Check state object exists
+  if ! jq -e '.state' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing state object${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check state hash exists and is non-empty
+  local state_hash
+  state_hash=$(jq -r '.state.stateHash' "$token_file" 2>/dev/null)
+  
+  if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
+    printf "${COLOR_RED}✗ Missing or empty state hash${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check state hash format (should be hex string)
+  if ! [[ "$state_hash" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Invalid state hash format (not hex)${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    printf "  State hash: %s\n" "$state_hash" >&2
+    return 1
+  fi
+  
+  # Check state data exists
+  if ! jq -e '.state.data' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check predicate exists
+  if ! jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Current state valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Inclusion Proof Validation
+# -----------------------------------------------------------------------------
+
+# Assert inclusion proof has valid structure
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_inclusion_proof_valid "$token_file"
+assert_inclusion_proof_valid() {
+  local token_file="${1:?Token file required}"
+  
+  # Check inclusion proof object exists
+  if ! jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing inclusion proof${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check required proof fields (structure may vary based on proof type)
+  # Common fields: merklePath, blockHeight, rootHash, timestamp
+  
+  # Note: The verify-token command is the authoritative validator for proofs
+  # This function only checks basic structure existence
+  
+  # Get proof type if available
+  local has_merkle_path
+  has_merkle_path=$(jq -e '.inclusionProof.merklePath' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  
+  local has_block_height
+  has_block_height=$(jq -e '.inclusionProof.blockHeight' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  
+  if [[ "$has_merkle_path" == "false" ]] && [[ "$has_block_height" == "false" ]]; then
+    printf "${COLOR_YELLOW}⚠ Inclusion proof has non-standard structure${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    printf "  Note: Structure validation will be performed by verify-token command\n" >&2
+    # Don't fail - let verify-token handle it
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Inclusion proof structure present${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Predicate Validation
+# -----------------------------------------------------------------------------
+
+# Assert predicate structure is valid (CBOR format)
+# Args:
+#   $1: Predicate hex string (from .state.predicate)
+# Returns: 0 on success, 1 on failure
+# Example:
+#   predicate=$(jq -r '.state.predicate' "$token_file")
+#   assert_predicate_structure_valid "$predicate"
+assert_predicate_structure_valid() {
+  local predicate_hex="${1:?Predicate hex required}"
+  
+  # Check hex format (even length)
+  if [[ $((${#predicate_hex} % 2)) -ne 0 ]]; then
+    printf "${COLOR_RED}✗ Predicate hex has odd length${COLOR_RESET}\n" >&2
+    printf "  Length: %d characters\n" "${#predicate_hex}" >&2
+    return 1
+  fi
+  
+  # Check minimum length for valid predicate
+  # CBOR structure + engine ID + template + params
+  # Typical SDK predicates: ~187 bytes (374 hex chars)
+  # Minimum reasonable: 50 hex chars (25 bytes)
+  if [[ ${#predicate_hex} -lt 50 ]]; then
+    printf "${COLOR_RED}✗ Predicate hex too short${COLOR_RESET}\n" >&2
+    printf "  Length: %d characters (minimum: 50)\n" "${#predicate_hex}" >&2
+    return 1
+  fi
+  
+  # Check maximum reasonable length (prevent DOS)
+  # Maximum: 10KB = 20000 hex chars
+  if [[ ${#predicate_hex} -gt 20000 ]]; then
+    printf "${COLOR_RED}✗ Predicate hex too long${COLOR_RESET}\n" >&2
+    printf "  Length: %d characters (maximum: 20000)\n" "${#predicate_hex}" >&2
+    return 1
+  fi
+  
+  # Check hex characters only
+  if ! [[ "$predicate_hex" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Predicate contains non-hex characters${COLOR_RESET}\n" >&2
+    return 1
+  fi
+  
+  # Note: Full CBOR decoding and structure validation is performed by verify-token
+  # This function only checks basic format requirements
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Predicate structure valid (format check)${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# Assert predicate in token file is valid
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_predicate_valid "$token_file"
+assert_token_predicate_valid() {
+  local token_file="${1:?Token file required}"
+  
+  # Extract predicate from token
+  local predicate_hex
+  predicate_hex=$(jq -r '.state.predicate' "$token_file" 2>/dev/null)
+  
+  if [[ -z "$predicate_hex" ]] || [[ "$predicate_hex" == "null" ]]; then
+    printf "${COLOR_RED}✗ Missing predicate in token state${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Validate predicate structure
+  assert_predicate_structure_valid "$predicate_hex" || return 1
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token predicate valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# State Hash Validation
+# -----------------------------------------------------------------------------
+
+# Assert state hash is correctly computed
+# Note: State hash computation is complex - relies on verify-token for validation
+# This function checks that the hash exists and has proper format
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_state_hash_correct "$token_file"
+assert_state_hash_correct() {
+  local token_file="${1:?Token file required}"
+  
+  # Extract state hash
+  local state_hash
+  state_hash=$(jq -r '.state.stateHash' "$token_file" 2>/dev/null)
+  
+  if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
+    printf "${COLOR_RED}✗ Missing state hash${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check hash format (hex string)
+  if ! [[ "$state_hash" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Invalid state hash format${COLOR_RESET}\n" >&2
+    printf "  Hash: %s\n" "$state_hash" >&2
+    return 1
+  fi
+  
+  # Check hash length (SHA256 = 32 bytes = 64 hex chars, or other hash sizes)
+  local hash_len=${#state_hash}
+  
+  # Common hash sizes: 32 bytes (SHA256), 20 bytes (RIPEMD160), etc.
+  # Allow 40-128 hex chars (20-64 bytes)
+  if [[ $hash_len -lt 40 ]] || [[ $hash_len -gt 128 ]]; then
+    printf "${COLOR_YELLOW}⚠ State hash length unusual${COLOR_RESET}\n" >&2
+    printf "  Length: %d hex characters\n" "$hash_len" >&2
+    printf "  Note: Typically 64 chars (SHA256)\n" >&2
+    # Don't fail - let verify-token validate
+  fi
+  
+  # Note: Actual hash computation validation is performed by verify-token
+  # This function only checks format
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ State hash format valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Token Chain Validation
+# -----------------------------------------------------------------------------
+
+# Assert token has valid transaction chain
+# For tokens with multiple state transitions
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_chain_valid "$token_file"
+assert_token_chain_valid() {
+  local token_file="${1:?Token file required}"
+  
+  # Check if token has transaction history
+  local has_history
+  has_history=$(jq -e '.transactionHistory' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  
+  if [[ "$has_history" == "false" ]]; then
+    # No transaction history - single state token
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Single-state token (no chain)${COLOR_RESET}\n" >&2
+    fi
+    return 0
+  fi
+  
+  # Validate transaction history array
+  local tx_count
+  tx_count=$(jq -r '.transactionHistory | length' "$token_file" 2>/dev/null)
+  
+  if [[ -z "$tx_count" ]] || [[ "$tx_count" == "null" ]] || [[ $tx_count -lt 1 ]]; then
+    printf "${COLOR_RED}✗ Invalid transaction history${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Note: Full chain validation (hash links, proofs) is done by verify-token
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token chain structure valid (%d transactions)${COLOR_RESET}\n" "$tx_count" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Offline Transfer Validation
+# -----------------------------------------------------------------------------
+
+# Assert offline transfer has valid structure
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_offline_transfer_valid "$token_file"
+assert_offline_transfer_valid() {
+  local token_file="${1:?Token file required}"
+  
+  # Check if token has offline transfer
+  if ! jq -e '.offlineTransfer' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Token does not have offline transfer${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Check required offline transfer fields
+  local required_fields=(
+    ".offlineTransfer.sender"
+    ".offlineTransfer.recipient"
+  )
+  
+  for field in "${required_fields[@]}"; do
+    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing offline transfer field: %s${COLOR_RESET}\n" "$field" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
+  done
+  
+  # Validate recipient address format (hex string)
+  local recipient
+  recipient=$(jq -r '.offlineTransfer.recipient' "$token_file" 2>/dev/null)
+  
+  if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
+    printf "${COLOR_RED}✗ Empty recipient address${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  if ! [[ "$recipient" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Invalid recipient address format${COLOR_RESET}\n" >&2
+    printf "  Address: %s\n" "$recipient" >&2
+    return 1
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Offline transfer structure valid${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Comprehensive Token Validation
+# -----------------------------------------------------------------------------
+
+# Assert token is fully valid (all checks)
+# This is the MAIN validation function - combines all checks
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_fully_valid "$token_file"
+assert_token_fully_valid() {
+  local token_file="${1:?Token file required}"
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_BLUE}=== Comprehensive Token Validation ===${COLOR_RESET}\n" >&2
+    printf "File: %s\n" "$token_file" >&2
+  fi
+  
+  # 1. Structure validation (fast checks first)
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "\n[1/5] Validating token structure...\n" >&2
+  fi
+  assert_token_has_valid_structure "$token_file" || return 1
+  
+  # 2. Genesis validation
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "[2/5] Validating genesis transaction...\n" >&2
+  fi
+  assert_token_has_valid_genesis "$token_file" || return 1
+  
+  # 3. Current state validation
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "[3/5] Validating current state...\n" >&2
+  fi
+  assert_token_has_valid_state "$token_file" || return 1
+  
+  # 4. Predicate validation
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "[4/5] Validating predicate...\n" >&2
+  fi
+  assert_token_predicate_valid "$token_file" || return 1
+  
+  # 5. Cryptographic validation (PRIMARY - most important)
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "[5/5] Performing cryptographic validation...\n" >&2
+  fi
+  verify_token_cryptographically "$token_file" || return 1
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "\n${COLOR_GREEN}✅ Token fully validated (all checks passed)${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# Quick validation (structure + crypto only, skip detailed checks)
+# Use for performance-critical scenarios
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_token_valid_quick "$token_file"
+assert_token_valid_quick() {
+  local token_file="${1:?Token file required}"
+  
+  # Basic structure check
+  assert_file_exists "$token_file" || return 1
+  assert_valid_json "$token_file" || return 1
+  
+  # Cryptographic validation (comprehensive)
+  verify_token_cryptographically "$token_file" || return 1
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token valid (quick check)${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# BFT Authenticator Validation (Advanced)
+# -----------------------------------------------------------------------------
+
+# Assert BFT authenticator signatures are valid
+# Note: BFT validation typically happens at aggregator level
+# This function checks if BFT fields exist in proof structure
+# Args:
+#   $1: Token file path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_bft_signatures_valid "$token_file"
+assert_bft_signatures_valid() {
+  local token_file="${1:?Token file required}"
+  
+  # Check if proof has BFT authenticator fields
+  local has_bft
+  has_bft=$(jq -e '.inclusionProof.bftAuthenticator' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  
+  if [[ "$has_bft" == "false" ]]; then
+    # No BFT authenticator in proof - may be normal for certain proof types
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_YELLOW}⚠ No BFT authenticator in proof${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+    fi
+    # Don't fail - not all proofs have BFT authenticator
+    return 0
+  fi
+  
+  # Check BFT authenticator structure
+  if ! jq -e '.inclusionProof.bftAuthenticator.signatures' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ BFT authenticator missing signatures${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+  
+  # Note: Actual signature validation is performed by verify-token
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ BFT authenticator structure present${COLOR_RESET}\n" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Helper: Assert JSON Field Has Value (not just exists)
+# -----------------------------------------------------------------------------
+
+# Assert JSON field exists and has non-null, non-empty value
+# Args:
+#   $1: File path
+#   $2: JSON path
+# Returns: 0 on success, 1 on failure
+# Example:
+#   assert_json_has_field "$token_file" ".state.stateHash"
+assert_json_has_field() {
+  local file="${1:?File path required}"
+  local field="${2:?JSON field required}"
+  
+  # Check field exists
+  if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Field does not exist: %s${COLOR_RESET}\n" "$field" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+  
+  # Check field is not null
+  local value
+  value=$(jq -r "$field" "$file" 2>/dev/null)
+  
+  if [[ "$value" == "null" ]]; then
+    printf "${COLOR_RED}✗ Field is null: %s${COLOR_RESET}\n" "$field" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+  
+  # For string fields, check not empty
+  if [[ -z "$value" ]]; then
+    printf "${COLOR_RED}✗ Field is empty: %s${COLOR_RESET}\n" "$field" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+  
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Field has value: %s${COLOR_RESET}\n" "$field" >&2
+  fi
+  
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# Export New Functions
+# -----------------------------------------------------------------------------
+
+export -f verify_token_cryptographically
+export -f assert_token_has_valid_structure
+export -f assert_token_has_valid_genesis
+export -f assert_token_has_valid_state
+export -f assert_inclusion_proof_valid
+export -f assert_predicate_structure_valid
+export -f assert_token_predicate_valid
+export -f assert_state_hash_correct
+export -f assert_token_chain_valid
+export -f assert_offline_transfer_valid
+export -f assert_token_fully_valid
+export -f assert_token_valid_quick
+export -f assert_bft_signatures_valid
+export -f assert_json_has_field

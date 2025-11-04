@@ -39,6 +39,7 @@ teardown() {
     mint_token_to_address "${ALICE_SECRET}" "nft" \
         '{"name":"Birthday Gift","message":"Happy Birthday Bob!"}' "alice-nft.txf"
     assert_success
+    assert_token_fully_valid "alice-nft.txf"
 
     # Step 4: Verify Alice's token
     verify_token "alice-nft.txf" "--local"
@@ -47,6 +48,7 @@ teardown() {
     # Step 5: Alice creates transfer package
     send_token_offline "${ALICE_SECRET}" "alice-nft.txf" "${bob_address}" "transfer-to-bob.txf" "For you!"
     assert_success
+    assert_offline_transfer_valid "transfer-to-bob.txf"
 
     # Step 6: Verify transfer package
     verify_token "transfer-to-bob.txf" "--local"
@@ -56,6 +58,7 @@ teardown() {
     # Step 7: Bob receives token
     receive_token "${BOB_SECRET}" "transfer-to-bob.txf" "bob-nft.txf"
     assert_success
+    assert_token_fully_valid "bob-nft.txf"
 
     # Step 8: Verify Bob's token
     verify_token "bob-nft.txf" "--local"
@@ -89,12 +92,15 @@ teardown() {
 
     # Step 2: Alice mints and sends to Bob
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"stage":"alice"}' "alice-token.txf"
+    assert_token_fully_valid "alice-token.txf"
     send_token_offline "${ALICE_SECRET}" "alice-token.txf" "${bob_address}" "transfer-alice-bob.txf"
     assert_success
+    assert_offline_transfer_valid "transfer-alice-bob.txf"
 
     # Step 3: Bob receives
     receive_token "${BOB_SECRET}" "transfer-alice-bob.txf" "bob-token.txf"
     assert_success
+    assert_token_fully_valid "bob-token.txf"
 
     # Step 4: Verify Bob's ownership
     verify_token "bob-token.txf" "--local"
@@ -106,10 +112,12 @@ teardown() {
     # Step 5: Bob sends to Carol
     send_token_offline "${BOB_SECRET}" "bob-token.txf" "${carol_address}" "transfer-bob-carol.txf"
     assert_success
+    assert_offline_transfer_valid "transfer-bob-carol.txf"
 
     # Step 6: Carol receives
     receive_token "${CAROL_SECRET}" "transfer-bob-carol.txf" "carol-token.txf"
     assert_success
+    assert_token_fully_valid "carol-token.txf"
 
     # Step 7: Verify Carol's ownership
     verify_token "carol-token.txf" "--local"
@@ -136,6 +144,7 @@ teardown() {
     # Alice mints 100 UCT
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "alice-uct.txf" "-c 100000000000000000000"
     assert_success
+    assert_token_fully_valid "alice-uct.txf"
 
     # Verify coin amount
     local coin_amount
@@ -145,10 +154,12 @@ teardown() {
     # Alice sends to Bob
     send_token_offline "${ALICE_SECRET}" "alice-uct.txf" "${bob_address}" "transfer-uct.txf"
     assert_success
+    assert_offline_transfer_valid "transfer-uct.txf"
 
     # Bob receives
     receive_token "${BOB_SECRET}" "transfer-uct.txf" "bob-uct.txf"
     assert_success
+    assert_token_fully_valid "bob-uct.txf"
 
     # Verify Bob has 100 UCT
     verify_token "bob-uct.txf" "--local"
@@ -173,10 +184,12 @@ teardown() {
     # Step 1: Alice mints token
     mint_token_to_address "${ALICE_SECRET}" "nft" "" "token.txf"
     assert_success
+    assert_token_fully_valid "token.txf"
 
     # Step 2: Alice creates transfer package (offline)
     send_token_offline "${ALICE_SECRET}" "token.txf" "${bob_address}" "transfer.txf"
     assert_success
+    assert_offline_transfer_valid "transfer.txf"
 
     # No network submission yet
     assert_has_offline_transfer "transfer.txf"
@@ -187,6 +200,7 @@ teardown() {
     # Step 4: Bob receives and submits
     receive_token "${BOB_SECRET}" "transfer.txf" "bob-token.txf"
     assert_success
+    assert_token_fully_valid "bob-token.txf"
 
     # Now network submission occurs
     assert_no_offline_transfer "bob-token.txf"
@@ -231,13 +245,17 @@ teardown() {
 
     # Step 1: Alice -> Bob (offline)
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"stage":1}' "alice-token.txf"
+    assert_token_fully_valid "alice-token.txf"
     send_token_offline "${ALICE_SECRET}" "alice-token.txf" "${bob_address}" "transfer1.txf"
+    assert_offline_transfer_valid "transfer1.txf"
     receive_token "${BOB_SECRET}" "transfer1.txf" "bob-token.txf"
     assert_success
+    assert_token_fully_valid "bob-token.txf"
 
     # Step 2: Bob -> Carol (immediate)
     send_token_immediate "${BOB_SECRET}" "bob-token.txf" "${carol_address}" "carol-token.txf"
     assert_success
+    assert_token_fully_valid "carol-token.txf"
 
     # Verify Carol has token with 2 transactions
     local tx_count
@@ -248,8 +266,10 @@ teardown() {
     local dave_address
     dave_address=$(generate_address "${DAVE_SECRET}" "nft")
     send_token_offline "${CAROL_SECRET}" "carol-token.txf" "${dave_address}" "transfer3.txf"
+    assert_offline_transfer_valid "transfer3.txf"
     receive_token "${DAVE_SECRET}" "transfer3.txf" "dave-token.txf"
     assert_success
+    assert_token_fully_valid "dave-token.txf"
 
     # Dave should have 3 transactions
     tx_count=$(get_transaction_count "dave-token.txf")
@@ -266,21 +286,27 @@ teardown() {
 
     # Alice sends NFT to Bob's address
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"type":"nft"}' "nft.txf"
+    assert_token_fully_valid "nft.txf"
 
     # Note: Need to generate NFT-specific address for Bob
     local bob_nft_address
     bob_nft_address=$(generate_address "${BOB_SECRET}" "nft" "" "bob-nft-addr.json")
 
     send_token_offline "${ALICE_SECRET}" "nft.txf" "${bob_nft_address}" "transfer-nft.txf"
+    assert_offline_transfer_valid "transfer-nft.txf"
     receive_token "${BOB_SECRET}" "transfer-nft.txf" "bob-nft.txf"
     assert_success
+    assert_token_fully_valid "bob-nft.txf"
 
     # Alice sends UCT to Bob's UCT address
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "uct.txf" "-c 50000000000000000000"
+    assert_token_fully_valid "uct.txf"
 
     send_token_offline "${ALICE_SECRET}" "uct.txf" "${bob_address}" "transfer-uct.txf"
+    assert_offline_transfer_valid "transfer-uct.txf"
     receive_token "${BOB_SECRET}" "transfer-uct.txf" "bob-uct.txf"
     assert_success
+    assert_token_fully_valid "bob-uct.txf"
 
     # Verify Bob has both tokens
     verify_token "bob-nft.txf" "--local"
@@ -301,13 +327,18 @@ teardown() {
 
     # Alice sends first token to Bob's masked address
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"token":1}' "token1.txf"
+    assert_token_fully_valid "token1.txf"
     send_token_offline "${ALICE_SECRET}" "token1.txf" "${bob_masked}" "transfer1.txf"
+    assert_offline_transfer_valid "transfer1.txf"
     receive_token "${BOB_SECRET}" "transfer1.txf" "bob-token1.txf"
     assert_success
+    assert_token_fully_valid "bob-token1.txf"
 
     # Alice tries to send second token to same masked address
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"token":2}' "token2.txf"
+    assert_token_fully_valid "token2.txf"
     send_token_offline "${ALICE_SECRET}" "token2.txf" "${bob_masked}" "transfer2.txf"
+    assert_offline_transfer_valid "transfer2.txf"
 
     # Bob tries to receive (should fail or warn - address already used)
     receive_token "${BOB_SECRET}" "transfer2.txf" "bob-token2.txf"
@@ -326,36 +357,48 @@ teardown() {
 
     # Test NFT
     mint_token_to_address "${ALICE_SECRET}" "nft" '{"test":"nft"}' "nft.txf"
+    assert_token_fully_valid "nft.txf"
     send_token_offline "${ALICE_SECRET}" "nft.txf" "${bob_address}" "transfer-nft.txf"
+    assert_offline_transfer_valid "transfer-nft.txf"
     receive_token "${BOB_SECRET}" "transfer-nft.txf" "bob-nft.txf"
     assert_success
+    assert_token_fully_valid "bob-nft.txf"
     verify_token "bob-nft.txf" "--local"
     assert_success
 
     # Test UCT
     bob_address=$(generate_address "${BOB_SECRET}" "uct")
     mint_token_to_address "${ALICE_SECRET}" "uct" "" "uct.txf" "-c 1000000000000000000"
+    assert_token_fully_valid "uct.txf"
     send_token_offline "${ALICE_SECRET}" "uct.txf" "${bob_address}" "transfer-uct.txf"
+    assert_offline_transfer_valid "transfer-uct.txf"
     receive_token "${BOB_SECRET}" "transfer-uct.txf" "bob-uct.txf"
     assert_success
+    assert_token_fully_valid "bob-uct.txf"
     verify_token "bob-uct.txf" "--local"
     assert_success
 
     # Test USDU
     bob_address=$(generate_address "${BOB_SECRET}" "usdu")
     mint_token_to_address "${ALICE_SECRET}" "usdu" "" "usdu.txf" "-c 100000000"
+    assert_token_fully_valid "usdu.txf"
     send_token_offline "${ALICE_SECRET}" "usdu.txf" "${bob_address}" "transfer-usdu.txf"
+    assert_offline_transfer_valid "transfer-usdu.txf"
     receive_token "${BOB_SECRET}" "transfer-usdu.txf" "bob-usdu.txf"
     assert_success
+    assert_token_fully_valid "bob-usdu.txf"
     verify_token "bob-usdu.txf" "--local"
     assert_success
 
     # Test EURU
     bob_address=$(generate_address "${BOB_SECRET}" "euru")
     mint_token_to_address "${ALICE_SECRET}" "euru" "" "euru.txf" "-c 50000000"
+    assert_token_fully_valid "euru.txf"
     send_token_offline "${ALICE_SECRET}" "euru.txf" "${bob_address}" "transfer-euru.txf"
+    assert_offline_transfer_valid "transfer-euru.txf"
     receive_token "${BOB_SECRET}" "transfer-euru.txf" "bob-euru.txf"
     assert_success
+    assert_token_fully_valid "bob-euru.txf"
     verify_token "bob-euru.txf" "--local"
     assert_success
 
