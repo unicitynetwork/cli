@@ -12,7 +12,16 @@ npm install && npm run build
 npm test
 ```
 
-**Requirements**: Node.js 18+, BATS, jq, local aggregator at port 3000
+**Requirements**: Node.js 18+, BATS, jq, Docker (for local aggregator)
+
+**Start Aggregator**:
+```bash
+# Start local aggregator (automatic TrustBase extraction)
+./scripts/aggregator.sh start
+
+# Check aggregator status
+./scripts/aggregator.sh status
+```
 
 ---
 
@@ -80,6 +89,35 @@ open tests/reports/coverage/index.html
 
 # CI mode (JSON + HTML + JUnit)
 npm run test:ci
+```
+
+### Aggregator Management
+
+```bash
+# Start aggregator
+./scripts/aggregator.sh start
+
+# Check status and health
+./scripts/aggregator.sh status
+
+# View logs
+./scripts/aggregator.sh logs
+./scripts/aggregator.sh logs -f  # Follow logs
+
+# Restart aggregator
+./scripts/aggregator.sh restart
+
+# Stop aggregator
+./scripts/aggregator.sh stop
+
+# Clean up (remove container and data)
+./scripts/aggregator.sh clean
+
+# Extract TrustBase config
+./scripts/aggregator.sh extract-trustbase
+
+# Open shell in container
+./scripts/aggregator.sh shell
 ```
 
 ---

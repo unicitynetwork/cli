@@ -38,8 +38,21 @@ This CLI provides a convenient interface to the transaction flow engine, allowin
 - **[Research Documentation](.claude-agents/unicity-research/)** - Comprehensive technical research (575+ KB)
 
 ### Local Development Setup
-For local development with the Docker aggregator, see **[TrustBase Loading](.dev/architecture/trustbase-loading.md)** for:
-- How to extract TrustBase from your local Docker aggregator
+
+**Start Local Aggregator**:
+```bash
+# Start aggregator (automatic TrustBase extraction)
+./scripts/aggregator.sh start
+
+# Check status
+./scripts/aggregator.sh status
+
+# View logs
+./scripts/aggregator.sh logs
+```
+
+For more information on the aggregator, see **[TrustBase Loading](.dev/architecture/trustbase-loading.md)** for:
+- How TrustBase extraction works
 - Quick setup guide for development environment
 - Dynamic TrustBase loading configuration
 - Troubleshooting common issues
