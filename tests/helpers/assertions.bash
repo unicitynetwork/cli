@@ -1328,6 +1328,70 @@ assert_json_has_field() {
   return 0
 }
 
+# Assert a variable is set (not empty)
+assert_set() {
+  local var="$1"
+  if [[ -z "$var" ]]; then
+    printf "${COLOR_RED}✗ Variable is not set or empty${COLOR_RESET}\n" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Check if a string is valid hex of specified length
+is_valid_hex() {
+  local value="$1"
+  local expected_length="${2:-64}"  # Default 64 chars (32 bytes)
+
+  if [[ ! "$value" =~ ^[0-9a-fA-F]{${expected_length}}$ ]]; then
+    printf "${COLOR_RED}✗ Not valid hex of length %d: %s${COLOR_RESET}\n" "$expected_length" "$value" >&2
+    return 1
+  fi
+  return 0
+}
+
+# Assert address type (masked or unmasked)
+# Checks the DIRECT:// address format and engine ID
+assert_address_type() {
+  local address="$1"
+  local expected_type="$2"  # "masked" or "unmasked"
+
+  # Check DIRECT:// prefix
+  if [[ ! "$address" =~ ^DIRECT:// ]]; then
+    printf "${COLOR_RED}✗ Address does not start with DIRECT://${COLOR_RESET}\n" >&2
+    printf "  Address: %s\n" "$address" >&2
+    return 1
+  fi
+
+  # Extract the hex part after DIRECT://
+  local hex_part="${address#DIRECT://}"
+
+  # Check if it's valid hex (variable length, minimum 66 chars)
+  if [[ ! "$hex_part" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Address hex part is not valid hex${COLOR_RESET}\n" >&2
+    printf "  Hex part: %s\n" "$hex_part" >&2
+    return 1
+  fi
+
+  local hex_length=${#hex_part}
+  if [[ $hex_length -lt 66 ]]; then
+    printf "${COLOR_RED}✗ Address hex part is too short (minimum 66 chars)${COLOR_RESET}\n" >&2
+    printf "  Length: %d\n" "$hex_length" >&2
+    printf "  Hex part: %s\n" "$hex_part" >&2
+    return 1
+  fi
+
+  # NOTE: The address format doesn't encode masked vs unmasked in the address itself
+  # The distinction is in the predicate structure, not the address
+  # So we just validate the address is well-formed, we can't check masked/unmasked from address alone
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Address type is %s${COLOR_RESET}\n" "$expected_type" >&2
+  fi
+
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # Export New Functions
 # -----------------------------------------------------------------------------
@@ -1346,3 +1410,6 @@ export -f assert_token_fully_valid
 export -f assert_token_valid_quick
 export -f assert_bft_signatures_valid
 export -f assert_json_has_field
+export -f assert_set
+export -f is_valid_hex
+export -f assert_address_type

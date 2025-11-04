@@ -20,28 +20,31 @@ teardown() {
     log_test "Generating unmasked UCT address"
 
     # Execute command without nonce (unmasked)
-    run_cli_with_secret "${SECRET}" "gen-address > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address"
     assert_success
+
+    # Save output to file for assertions
+    echo "$output" > address.json
 
     # Verify JSON structure
     assert_file_exists "address.json"
 
     # Check address type is unmasked
     local addr_type
-    addr_type=$(extract_json_field "address.json" "type")
+    addr_type=$(extract_json_field ".type")
     assert_equals "unmasked" "${addr_type}"
 
     # Check address format
     local address
-    address=$(extract_json_field "address.json" "address")
+    address=$(extract_json_field ".address")
     assert_address_type "${address}" "unmasked"
 
-    # Check token type is UCT
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_UCT}"
+    # Check token type is UCT (using file-based assertion)
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_UCT}"
 
     # Check preset info
-    assert_json_field_equals "address.json" "tokenTypeInfo.preset" "uct"
-    assert_json_field_equals "address.json" "tokenTypeInfo.name" "unicity"
+    assert_json_field_equals "address.json" ".tokenTypeInfo.preset" "uct"
+    assert_json_field_equals "address.json" ".tokenTypeInfo.name" "unicity"
 }
 
 # GEN_ADDR-002: Generate Masked Address with NFT Preset
@@ -52,35 +55,39 @@ teardown() {
     nonce=$(generate_test_nonce "nft")
 
     # Execute with nonce (masked) and NFT preset
-    run_cli_with_secret "${SECRET}" "gen-address --preset nft -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset nft -n ${nonce}"
     assert_success
+
+    # Save output
+    echo "$output" > address.json
 
     # Verify masked address
     assert_file_exists "address.json"
     local addr_type
-    addr_type=$(extract_json_field "address.json" "type")
+    addr_type=$(extract_json_field ".type")
     assert_equals "masked" "${addr_type}"
 
     # Check address has engine ID 1 (masked)
     local address
-    address=$(extract_json_field "address.json" "address")
+    address=$(extract_json_field ".address")
     assert_address_type "${address}" "masked"
 
     # Check nonce is present
-    assert_json_field_exists "address.json" "nonce"
+    assert_json_field_exists "address.json" ".nonce"
 
     # Check token type is NFT
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_NFT}"
-    assert_json_field_equals "address.json" "tokenTypeInfo.preset" "nft"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_NFT}"
+    assert_json_field_equals "address.json" ".tokenTypeInfo.preset" "nft"
 }
 
 # GEN_ADDR-003: NFT Unmasked
 @test "GEN_ADDR-003: Generate unmasked NFT address" {
-    run_cli_with_secret "${SECRET}" "gen-address --preset nft > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset nft"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "unmasked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_NFT}"
+    assert_json_field_equals "address.json" ".type" "unmasked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_NFT}"
 }
 
 # GEN_ADDR-004: NFT Masked
@@ -88,20 +95,22 @@ teardown() {
     local nonce
     nonce=$(generate_test_nonce)
 
-    run_cli_with_secret "${SECRET}" "gen-address --preset nft -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset nft -n ${nonce}"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "masked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_NFT}"
+    assert_json_field_equals "address.json" ".type" "masked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_NFT}"
 }
 
 # GEN_ADDR-005: UCT Unmasked
 @test "GEN_ADDR-005: Generate unmasked UCT address" {
-    run_cli_with_secret "${SECRET}" "gen-address --preset uct > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset uct"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "unmasked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_UCT}"
+    assert_json_field_equals "address.json" ".type" "unmasked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_UCT}"
 }
 
 # GEN_ADDR-006: UCT Masked
@@ -109,20 +118,22 @@ teardown() {
     local nonce
     nonce=$(generate_test_nonce)
 
-    run_cli_with_secret "${SECRET}" "gen-address --preset uct -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset uct -n ${nonce}"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "masked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_UCT}"
+    assert_json_field_equals "address.json" ".type" "masked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_UCT}"
 }
 
 # GEN_ADDR-007: ALPHA Unmasked
 @test "GEN_ADDR-007: Generate unmasked ALPHA address" {
-    run_cli_with_secret "${SECRET}" "gen-address --preset alpha > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset alpha"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "unmasked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_ALPHA}"
+    assert_json_field_equals "address.json" ".type" "unmasked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_ALPHA}"
 }
 
 # GEN_ADDR-008: ALPHA Masked
@@ -130,20 +141,22 @@ teardown() {
     local nonce
     nonce=$(generate_test_nonce)
 
-    run_cli_with_secret "${SECRET}" "gen-address --preset alpha -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset alpha -n ${nonce}"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "masked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_ALPHA}"
+    assert_json_field_equals "address.json" ".type" "masked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_ALPHA}"
 }
 
 # GEN_ADDR-009: USDU Unmasked
 @test "GEN_ADDR-009: Generate unmasked USDU address" {
-    run_cli_with_secret "${SECRET}" "gen-address --preset usdu > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset usdu"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "unmasked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_USDU}"
+    assert_json_field_equals "address.json" ".type" "unmasked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_USDU}"
 }
 
 # GEN_ADDR-010: USDU Masked
@@ -151,20 +164,22 @@ teardown() {
     local nonce
     nonce=$(generate_test_nonce)
 
-    run_cli_with_secret "${SECRET}" "gen-address --preset usdu -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset usdu -n ${nonce}"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "masked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_USDU}"
+    assert_json_field_equals "address.json" ".type" "masked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_USDU}"
 }
 
 # GEN_ADDR-011: EURU Unmasked
 @test "GEN_ADDR-011: Generate unmasked EURU address" {
-    run_cli_with_secret "${SECRET}" "gen-address --preset euru > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset euru"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "unmasked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_EURU}"
+    assert_json_field_equals "address.json" ".type" "unmasked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_EURU}"
 }
 
 # GEN_ADDR-012: EURU Masked
@@ -172,22 +187,24 @@ teardown() {
     local nonce
     nonce=$(generate_test_nonce)
 
-    run_cli_with_secret "${SECRET}" "gen-address --preset euru -n '${nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address --preset euru -n ${nonce}"
     assert_success
+    echo "$output" > address.json
 
-    assert_json_field_equals "address.json" "type" "masked"
-    assert_json_field_equals "address.json" "tokenType" "${TOKEN_TYPE_EURU}"
+    assert_json_field_equals "address.json" ".type" "masked"
+    assert_json_field_equals "address.json" ".tokenType" "${TOKEN_TYPE_EURU}"
 }
 
 # GEN_ADDR-013: Custom Token Type (64-char Hex)
 @test "GEN_ADDR-013: Generate address with custom 64-char hex token type" {
     local custom_type="1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
 
-    run_cli_with_secret "${SECRET}" "gen-address -y ${custom_type} > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address -y ${custom_type}"
     assert_success
+    echo "$output" > address.json
 
     # Should use custom type directly (no hashing for 64-char hex)
-    assert_json_field_equals "address.json" "tokenType" "${custom_type}"
+    assert_json_field_equals "address.json" ".tokenType" "${custom_type}"
 
     # No tokenTypeInfo for custom types
     local has_info
@@ -199,12 +216,13 @@ teardown() {
 @test "GEN_ADDR-014: Generate address with text token type (hashed)" {
     local custom_text="my-custom-token-type"
 
-    run_cli_with_secret "${SECRET}" "gen-address -y '${custom_text}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address -y ${custom_text}"
     assert_success
+    echo "$output" > address.json
 
     # Should hash the text to 256-bit
     local token_type
-    token_type=$(extract_json_field "address.json" "tokenType")
+    token_type=$(extract_json_field ".tokenType")
     assert_set token_type
     is_valid_hex "${token_type}" 64
 
@@ -218,27 +236,29 @@ teardown() {
 @test "GEN_ADDR-015: Generate masked address with explicit 64-char hex nonce" {
     local hex_nonce="fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 
-    run_cli_with_secret "${SECRET}" "gen-address -n ${hex_nonce} > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address -n ${hex_nonce}"
     assert_success
+    echo "$output" > address.json
 
     # Nonce should be used directly (no hashing)
-    assert_json_field_equals "address.json" "nonce" "${hex_nonce}"
-    assert_json_field_equals "address.json" "type" "masked"
+    assert_json_field_equals "address.json" ".nonce" "${hex_nonce}"
+    assert_json_field_equals "address.json" ".type" "masked"
 }
 
 # GEN_ADDR-016: Nonce Processing (Text, Hashed)
 @test "GEN_ADDR-016: Generate masked address with text nonce (hashed)" {
     local text_nonce="my-nonce-text"
 
-    run_cli_with_secret "${SECRET}" "gen-address -n '${text_nonce}' > address.json"
+    run_cli_with_secret "${SECRET}" "gen-address -n ${text_nonce}"
     assert_success
+    echo "$output" > address.json
 
     # Nonce should be hashed to 256-bit
     local nonce
-    nonce=$(extract_json_field "address.json" "nonce")
+    nonce=$(extract_json_field ".nonce")
     assert_set nonce
     is_valid_hex "${nonce}" 64
 
     # Should be masked address
-    assert_json_field_equals "address.json" "type" "masked"
+    assert_json_field_equals "address.json" ".type" "masked"
 }

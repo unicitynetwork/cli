@@ -212,11 +212,13 @@ run_cli() {
   fi
 
   # Capture output and exit code
+  # Note: Only capture stdout, not stderr (diagnostic messages go to stderr)
+  # Handle command string by using eval to properly parse arguments
   local exit_code=0
   if [[ -n "$timeout_cmd" ]]; then
-    output=$($timeout_cmd "${UNICITY_NODE_BIN:-node}" "$cli_path" "$@" 2>&1) || exit_code=$?
+    output=$(eval $timeout_cmd "${UNICITY_NODE_BIN:-node}" "$cli_path" "$@") || exit_code=$?
   else
-    output=$("${UNICITY_NODE_BIN:-node}" "$cli_path" "$@" 2>&1) || exit_code=$?
+    output=$(eval "${UNICITY_NODE_BIN:-node}" "$cli_path" "$@") || exit_code=$?
   fi
 
   # Debug output
@@ -449,12 +451,85 @@ error() {
   printf "[ERROR] %s\n" "$*" >&2
 }
 
+# Wrapper functions for BATS compatibility
+setup_common() {
+  setup_test
+}
+
+teardown_common() {
+  cleanup_test
+}
+
+# Test logging function
+log_test() {
+  if [[ "${UNICITY_TEST_DEBUG:-0}" == "1" ]]; then
+    printf "[TEST] %s\n" "$*" >&2
+  fi
+}
+
+# Generate test secret with unique suffix
+generate_test_secret() {
+  local prefix="${1:-test}"
+  printf "secret-%s-%s-%d" "$prefix" "$(date +%s)" "$$"
+}
+
+# Generate test nonce
+generate_test_nonce() {
+  local prefix="${1:-test}"
+  printf "nonce-%s-%s-%d" "$prefix" "$(date +%s)" "$$"
+}
+
+# Run CLI with secret in environment
+run_cli_with_secret() {
+  local secret="$1"
+  shift
+  SECRET="$secret" run_cli "$@"
+}
+
+# Validate test environment
+validate_test_environment() {
+  local missing=()
+
+  # Check for required commands
+  command -v node >/dev/null 2>&1 || missing+=("node")
+  command -v jq >/dev/null 2>&1 || missing+=("jq")
+  command -v curl >/dev/null 2>&1 || missing+=("curl")
+
+  # Check CLI binary exists
+  local cli_path
+  cli_path="$(get_cli_path)"
+  if [[ ! -f "$cli_path" ]]; then
+    printf "ERROR: CLI binary not found at: %s\n" "$cli_path" >&2
+    printf "Run 'npm run build' to compile the CLI\n" >&2
+    return 1
+  fi
+
+  # Report missing dependencies
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    printf "ERROR: Missing required commands: %s\n" "${missing[*]}" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# Print test configuration
+print_test_config() {
+  printf "=== Test Configuration ===\n" >&2
+  printf "Aggregator URL: %s\n" "${UNICITY_AGGREGATOR_URL:-http://localhost:3000}" >&2
+  printf "CLI Path: %s\n" "$(get_cli_path)" >&2
+  printf "Test Timeout: %s\n" "${UNICITY_CLI_TIMEOUT:-30}" >&2
+  printf "Debug Mode: %s\n" "${UNICITY_TEST_DEBUG:-0}" >&2
+}
+
 # Export all public functions
 export -f get_tests_dir
 export -f get_project_root
 export -f get_cli_path
 export -f setup_test
 export -f cleanup_test
+export -f setup_common
+export -f teardown_common
 export -f create_temp_file
 export -f create_temp_dir
 export -f create_artifact_file
@@ -473,3 +548,9 @@ export -f debug
 export -f info
 export -f warn
 export -f error
+export -f log_test
+export -f generate_test_secret
+export -f generate_test_nonce
+export -f run_cli_with_secret
+export -f validate_test_environment
+export -f print_test_config
