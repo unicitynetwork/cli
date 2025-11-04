@@ -232,6 +232,6 @@ node test-authenticator.js
 
 - `/home/vrogojin/cli/src/commands/register-request.ts` - Added authenticator creation debugging
 - `/home/vrogojin/cli/src/commands/get-request.ts` - Added comprehensive verification tests
-- `/home/vrogojin/cli/test-authenticator.js` - Created focused diagnostic script
+- `/home/vrogojin/cli/scripts/debug/test-authenticator.js` - Created focused diagnostic script
 
 All tests demonstrate that the authenticator works correctly; the issue is with UnicityCertificate/TrustBase mismatch.

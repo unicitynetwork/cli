@@ -107,7 +107,10 @@
 |----------|---------|
 | [TXF_IMPLEMENTATION_GUIDE.md](reference/txf-format.md) | Token file format spec |
 | [CLAUDE.md](../.dev/README.md) | Developer guidelines |
-| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | Implementation details |
+| [Implementation Documentation](implementation/README.md) | Implementation details |
+| [Testing Documentation](testing/README.md) | Test suite documentation |
+| [Security Documentation](security/README.md) | Security reports and analysis |
+| [Debug Scripts](../scripts/debug/README.md) | Development utilities |
 
 ---
 
