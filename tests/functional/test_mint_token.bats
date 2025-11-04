@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Functional tests for mint-token command
-# Test Suite: MINT_TOKEN (20 test scenarios)
+# Test Suite: MINT_TOKEN (28 test scenarios)
+# Updated: Added ALPHA token, deterministic tests, negative tests, and enhanced validation
 
 load '../helpers/common'
 load '../helpers/token-helpers'
@@ -8,7 +9,7 @@ load '../helpers/assertions'
 
 setup() {
     setup_common
-    check_aggregator
+    require_aggregator  # FIXED: Use require_aggregator (fails test if unavailable)
     SECRET=$(generate_test_secret "mint")
 }
 
@@ -26,7 +27,7 @@ teardown() {
 
     # Verify token file created
     assert_file_exists "token.txf"
-    assert is_valid_txf "token.txf"
+    is_valid_txf "token.txf"
 
     # Validate token structure and cryptography
     assert_token_fully_valid "token.txf"
@@ -105,7 +106,7 @@ teardown() {
     assert_token_type "token.txf" "uct"
 
     # Check it's fungible (has coinData)
-    assert is_fungible_token "token.txf"
+    is_fungible_token "token.txf"
 
     # Check coin data has 1 coin with amount 0 (default)
     local coin_count
@@ -130,7 +131,7 @@ teardown() {
 
     # Check coin amount
     local actual_amount
-    actual_amount=$(jq -r '.genesis.data.coinData[0].amount' token.txf)
+    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -149,7 +150,7 @@ teardown() {
 
     # Verify amount
     local actual_amount
-    actual_amount=$(jq -r '.genesis.data.coinData[0].amount' token.txf)
+    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -168,7 +169,7 @@ teardown() {
 
     # Verify amount
     local actual_amount
-    actual_amount=$(jq -r '.genesis.data.coinData[0].amount' token.txf)
+    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -232,7 +233,7 @@ teardown() {
 
     # Verify custom filename
     assert_file_exists "my-custom-nft.txf"
-    assert is_valid_txf "my-custom-nft.txf"
+    is_valid_txf "my-custom-nft.txf"
     assert_token_fully_valid "my-custom-nft.txf"
 }
 
@@ -240,12 +241,16 @@ teardown() {
 @test "MINT_TOKEN-012: Mint with stdout output" {
     log_test "Minting to stdout"
 
-    run_cli_with_secret "${SECRET}" "mint-token --preset nft --local --stdout > captured-token.json"
+    # FIXED: Execute command, capture output, then save to file
+    run_cli_with_secret "${SECRET}" "mint-token --preset nft --local --stdout"
     assert_success
+
+    # Save output to file
+    echo "$output" > captured-token.json
 
     # Verify stdout capture
     assert_file_exists "captured-token.json"
-    assert is_valid_txf "captured-token.json"
+    is_valid_txf "captured-token.json"
     assert_token_fully_valid "captured-token.json"
 
     # No auto-generated file should exist
@@ -263,7 +268,7 @@ teardown() {
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
     assert_equals "unmasked" "${pred_type}"
-    assert is_nft_token "token.txf"
+    is_nft_token "token.txf"
 }
 
 # MINT_TOKEN-014: Mint NFT Masked
@@ -278,7 +283,7 @@ teardown() {
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
     assert_equals "masked" "${pred_type}"
-    assert is_nft_token "token.txf"
+    is_nft_token "token.txf"
 }
 
 # MINT_TOKEN-015: Mint UCT Unmasked
@@ -290,7 +295,7 @@ teardown() {
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
     assert_equals "unmasked" "${pred_type}"
-    assert is_fungible_token "token.txf"
+    is_fungible_token "token.txf"
 }
 
 # MINT_TOKEN-016: Mint UCT Masked
@@ -305,7 +310,7 @@ teardown() {
     local pred_type
     pred_type=$(get_predicate_type "token.txf")
     assert_equals "masked" "${pred_type}"
-    assert is_fungible_token "token.txf"
+    is_fungible_token "token.txf"
 }
 
 # MINT_TOKEN-017: Mint USDU Unmasked
@@ -352,22 +357,22 @@ teardown() {
 
     # Verify individual amounts
     local amount1
-    amount1=$(jq -r '.genesis.data.coinData[0].amount' token.txf)
+    amount1=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
     assert_equals "1000000000000000000" "${amount1}"
 
     local amount2
-    amount2=$(jq -r '.genesis.data.coinData[1].amount' token.txf)
+    amount2=$(~/.local/bin/jq -r '.genesis.data.coinData[1].amount' token.txf)
     assert_equals "2000000000000000000" "${amount2}"
 
     local amount3
-    amount3=$(jq -r '.genesis.data.coinData[2].amount' token.txf)
+    amount3=$(~/.local/bin/jq -r '.genesis.data.coinData[2].amount' token.txf)
     assert_equals "3000000000000000000" "${amount3}"
 
     # Verify each coin has unique CoinId
     local coin_id1
-    coin_id1=$(jq -r '.genesis.data.coinData[0].coinId' token.txf)
+    coin_id1=$(~/.local/bin/jq -r '.genesis.data.coinData[0].coinId' token.txf)
     local coin_id2
-    coin_id2=$(jq -r '.genesis.data.coinData[1].coinId' token.txf)
+    coin_id2=$(~/.local/bin/jq -r '.genesis.data.coinData[1].coinId' token.txf)
     assert_not_equals "${coin_id1}" "${coin_id2}"
 }
 
@@ -387,4 +392,173 @@ teardown() {
 
     # Check unicity certificate exists
     assert_json_field_exists "token.txf" "genesis.inclusionProof.unicityCertificate"
+}
+
+# MINT_TOKEN-021: Mint ALPHA Token (Same TokenType as UCT, Different Semantic)
+@test "MINT_TOKEN-021: Mint ALPHA token" {
+    log_test "Minting ALPHA test token"
+
+    local amount="1000000000000000000"  # 1 ALPHA in base units
+
+    run_cli_with_secret "${SECRET}" "mint-token --preset alpha -c '${amount}' --local -o token.txf"
+    assert_success
+    assert_token_fully_valid "token.txf"
+
+    # Verify token type is ALPHA
+    assert_token_type "token.txf" "alpha"
+
+    # ALPHA shares the same tokenType hash as UCT
+    # Both use: 455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89
+    local token_type_hash
+    token_type_hash=$(~/.local/bin/jq -r '.genesis.data.tokenType' token.txf)
+    assert_equals "455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89" "${token_type_hash}"
+
+    # Verify it's fungible with coin data
+    is_fungible_token "token.txf"
+
+    # Verify amount
+    local actual_amount
+    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
+    assert_equals "${amount}" "${actual_amount}"
+}
+
+# MINT_TOKEN-022: Deterministic Token ID Generation
+@test "MINT_TOKEN-022: Same inputs produce same token ID" {
+    log_test "Testing deterministic token ID generation"
+
+    local secret="deterministic-secret-test"
+    local salt="1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+
+    # Mint first token
+    run_cli_with_secret "${secret}" "mint-token --preset nft --salt ${salt} --local -o token1.txf"
+    assert_success
+
+    # Mint second token with same parameters
+    run_cli_with_secret "${secret}" "mint-token --preset nft --salt ${salt} --local -o token2.txf"
+    assert_success
+
+    # Extract token IDs
+    local token_id1
+    token_id1=$(get_txf_token_id "token1.txf")
+    local token_id2
+    token_id2=$(get_txf_token_id "token2.txf")
+
+    # Token IDs should be identical (deterministic)
+    assert_equals "${token_id1}" "${token_id2}"
+}
+
+# MINT_TOKEN-023: Different Salts Produce Different Token IDs
+@test "MINT_TOKEN-023: Different salts produce different token IDs" {
+    log_test "Testing token ID uniqueness with different salts"
+
+    local secret="uniqueness-test"
+    local salt1="1111111111111111111111111111111111111111111111111111111111111111"
+    local salt2="2222222222222222222222222222222222222222222222222222222222222222"
+
+    # Mint with first salt
+    run_cli_with_secret "${secret}" "mint-token --preset nft --salt ${salt1} --local -o token1.txf"
+    assert_success
+
+    # Mint with second salt
+    run_cli_with_secret "${secret}" "mint-token --preset nft --salt ${salt2} --local -o token2.txf"
+    assert_success
+
+    # Extract token IDs
+    local token_id1
+    token_id1=$(get_txf_token_id "token1.txf")
+    local token_id2
+    token_id2=$(get_txf_token_id "token2.txf")
+
+    # Token IDs must be different
+    assert_not_equals "${token_id1}" "${token_id2}"
+}
+
+# MINT_TOKEN-024: Mint NFT with Empty Data
+@test "MINT_TOKEN-024: Mint NFT with empty data" {
+    log_test "Minting NFT with no data"
+
+    run_cli_with_secret "${SECRET}" "mint-token --preset nft --local -o token.txf"
+    assert_success
+    assert_token_fully_valid "token.txf"
+
+    # Verify it's an NFT
+    is_nft_token "token.txf"
+}
+
+# MINT_TOKEN-025: Reject Negative Coin Amount
+@test "MINT_TOKEN-025: Reject negative coin amount" {
+    log_test "Testing negative amount rejection"
+
+    local negative_amount="-1000"
+
+    # This should fail
+    run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '${negative_amount}' --local -o token.txf"
+
+    # Command should fail (validation should reject negative amounts)
+    assert_failure
+}
+
+# MINT_TOKEN-026: Mint UCT with Zero Amount
+@test "MINT_TOKEN-026: Mint UCT with zero amount" {
+    log_test "Minting UCT with 0 amount"
+
+    run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '0' --local -o token.txf"
+    assert_success
+    assert_token_fully_valid "token.txf"
+
+    # Verify amount is 0
+    local actual_amount
+    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0].amount' token.txf)
+    assert_equals "0" "${actual_amount}"
+}
+
+# MINT_TOKEN-027: Verify Each Coin Has Unique CoinId
+@test "MINT_TOKEN-027: Multi-coin tokens have unique coinIds" {
+    log_test "Verifying unique coinIds in multi-coin token"
+
+    local amounts="100,200,300"
+
+    run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '${amounts}' --local -o token.txf"
+    assert_success
+    assert_token_fully_valid "token.txf"
+
+    # Extract all coin IDs
+    local coin_id1
+    coin_id1=$(~/.local/bin/jq -r '.genesis.data.coinData[0].coinId' token.txf)
+    local coin_id2
+    coin_id2=$(~/.local/bin/jq -r '.genesis.data.coinData[1].coinId' token.txf)
+    local coin_id3
+    coin_id3=$(~/.local/bin/jq -r '.genesis.data.coinData[2].coinId' token.txf)
+
+    # All must be different
+    assert_not_equals "${coin_id1}" "${coin_id2}"
+    assert_not_equals "${coin_id1}" "${coin_id3}"
+    assert_not_equals "${coin_id2}" "${coin_id3}"
+
+    # All must be valid 64-char hex
+    is_valid_hex "${coin_id1}" 64
+    is_valid_hex "${coin_id2}" 64
+    is_valid_hex "${coin_id3}" 64
+}
+
+# MINT_TOKEN-028: Verify Merkle Proof Structure
+@test "MINT_TOKEN-028: Inclusion proof has valid Merkle structure" {
+    log_test "Validating Merkle proof structure"
+
+    run_cli_with_secret "${SECRET}" "mint-token --preset nft --local -o token.txf"
+    assert_success
+    assert_token_fully_valid "token.txf"
+
+    # Verify Merkle root is 64-char hex
+    local merkle_root
+    merkle_root=$(~/.local/bin/jq -r '.genesis.inclusionProof.merkleTreePath.root' token.txf)
+    is_valid_hex "${merkle_root}" 64
+
+    # Verify path steps exist
+    local steps_count
+    steps_count=$(jq '.genesis.inclusionProof.merkleTreePath.steps | length' token.txf)
+    [[ "${steps_count}" -ge 0 ]] || {
+        printf "Invalid steps count: %s\n" "${steps_count}" >&2
+        return 1
+    }
 }

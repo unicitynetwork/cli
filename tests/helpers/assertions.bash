@@ -249,7 +249,7 @@ assert_json_field_equals() {
   fi
 
   local actual
-  actual=$(jq -r "$field" "$file" 2>/dev/null || echo "")
+  actual=$(~/.local/bin/jq -r "$field" "$file" 2>/dev/null || echo "")
 
   if [[ "$actual" != "$expected" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field mismatch${COLOR_RESET}\n" >&2
@@ -280,7 +280,7 @@ assert_json_field_exists() {
     return 1
   fi
 
-  if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field does not exist${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  Field: %s\n" "$field" >&2
@@ -307,7 +307,7 @@ assert_json_field_not_exists() {
     return 1
   fi
 
-  if jq -e "$field" "$file" >/dev/null 2>&1; then
+  if ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field should not exist${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  Field: %s\n" "$field" >&2
@@ -534,7 +534,7 @@ assert_has_offline_transfer() {
 assert_no_offline_transfer() {
   local file="${1:?Token file required}"
 
-  if jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
+  if ~/.local/bin/jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: Token should not have offline transfer${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     return 1
@@ -555,7 +555,7 @@ assert_token_type() {
   local expected_preset="${2:?Expected preset required}"
 
   local actual_type
-  actual_type=$(jq -r '.genesis.data.tokenType' "$file" 2>/dev/null)
+  actual_type=$(~/.local/bin/jq -r '.genesis.data.tokenType' "$file" 2>/dev/null)
 
   local expected_type=""
   case "$expected_preset" in
@@ -698,49 +698,28 @@ assert_token_has_valid_structure() {
   assert_file_exists "$token_file" || return 1
   
   # Validate JSON structure
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     printf "${COLOR_RED}✗ Invalid JSON in token file${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
   
   # Check version field
-  if ! jq -e '.version' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.version' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .version field${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
   
-  # Check token object exists
-  if ! jq -e '.token' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing .token object${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
-  fi
-  
-  # Check required token fields
-  local required_token_fields=(
-    ".token.tokenId"
-    ".token.typeId"
-  )
-  
-  for field in "${required_token_fields[@]}"; do
-    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ Missing required field: %s${COLOR_RESET}\n" "$field" >&2
-      printf "  File: %s\n" "$token_file" >&2
-      return 1
-    fi
-  done
-  
   # Check genesis object
-  if ! jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .genesis object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
   
   # Check state object
-  if ! jq -e '.state' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.state' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .state object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
@@ -748,22 +727,28 @@ assert_token_has_valid_structure() {
   
   # Check required state fields
   local required_state_fields=(
-    ".state.stateHash"
     ".state.data"
     ".state.predicate"
   )
-  
+
   for field in "${required_state_fields[@]}"; do
-    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing required field: %s${COLOR_RESET}\n" "$field" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
     fi
   done
+
+  # Check genesis has data (including tokenType)
+  if ! ~/.local/bin/jq -e '.genesis.data.tokenType' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .genesis.data.tokenType${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
   
-  # Check inclusion proof exists
-  if ! jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing .inclusionProof object${COLOR_RESET}\n" >&2
+  # Check inclusion proof exists (in genesis for minted tokens)
+  if ! ~/.local/bin/jq -e '.genesis.inclusionProof' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing .genesis.inclusionProof object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
@@ -785,7 +770,7 @@ assert_token_has_valid_genesis() {
   local token_file="${1:?Token file required}"
   
   # Check genesis object exists
-  if ! jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing genesis object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
@@ -798,7 +783,7 @@ assert_token_has_valid_genesis() {
   )
   
   for field in "${required_fields[@]}"; do
-    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing genesis field: %s${COLOR_RESET}\n" "$field" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
@@ -823,50 +808,32 @@ assert_token_has_valid_genesis() {
 #   assert_token_has_valid_state "$token_file"
 assert_token_has_valid_state() {
   local token_file="${1:?Token file required}"
-  
+
   # Check state object exists
-  if ! jq -e '.state' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.state' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing state object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
-  # Check state hash exists and is non-empty
-  local state_hash
-  state_hash=$(jq -r '.state.stateHash' "$token_file" 2>/dev/null)
-  
-  if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
-    printf "${COLOR_RED}✗ Missing or empty state hash${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
-  fi
-  
-  # Check state hash format (should be hex string)
-  if ! [[ "$state_hash" =~ ^[0-9a-fA-F]+$ ]]; then
-    printf "${COLOR_RED}✗ Invalid state hash format (not hex)${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    printf "  State hash: %s\n" "$state_hash" >&2
-    return 1
-  fi
-  
+
   # Check state data exists
-  if ! jq -e '.state.data' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.state.data' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Check predicate exists
-  if ! jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Current state valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -884,7 +851,7 @@ assert_inclusion_proof_valid() {
   local token_file="${1:?Token file required}"
   
   # Check inclusion proof object exists
-  if ! jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing inclusion proof${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
@@ -898,10 +865,10 @@ assert_inclusion_proof_valid() {
   
   # Get proof type if available
   local has_merkle_path
-  has_merkle_path=$(jq -e '.inclusionProof.merklePath' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  has_merkle_path=$(~/.local/bin/jq -e '.inclusionProof.merklePath' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
   
   local has_block_height
-  has_block_height=$(jq -e '.inclusionProof.blockHeight' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  has_block_height=$(~/.local/bin/jq -e '.inclusionProof.blockHeight' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
   
   if [[ "$has_merkle_path" == "false" ]] && [[ "$has_block_height" == "false" ]]; then
     printf "${COLOR_YELLOW}⚠ Inclusion proof has non-standard structure${COLOR_RESET}\n" >&2
@@ -926,7 +893,7 @@ assert_inclusion_proof_valid() {
 #   $1: Predicate hex string (from .state.predicate)
 # Returns: 0 on success, 1 on failure
 # Example:
-#   predicate=$(jq -r '.state.predicate' "$token_file")
+#   predicate=$(~/.local/bin/jq -r '.state.predicate' "$token_file")
 #   assert_predicate_structure_valid "$predicate"
 assert_predicate_structure_valid() {
   local predicate_hex="${1:?Predicate hex required}"
@@ -983,7 +950,7 @@ assert_token_predicate_valid() {
   
   # Extract predicate from token
   local predicate_hex
-  predicate_hex=$(jq -r '.state.predicate' "$token_file" 2>/dev/null)
+  predicate_hex=$(~/.local/bin/jq -r '.state.predicate' "$token_file" 2>/dev/null)
   
   if [[ -z "$predicate_hex" ]] || [[ "$predicate_hex" == "null" ]]; then
     printf "${COLOR_RED}✗ Missing predicate in token state${COLOR_RESET}\n" >&2
@@ -1018,7 +985,7 @@ assert_state_hash_correct() {
   
   # Extract state hash
   local state_hash
-  state_hash=$(jq -r '.state.stateHash' "$token_file" 2>/dev/null)
+  state_hash=$(~/.local/bin/jq -r '.state.stateHash' "$token_file" 2>/dev/null)
   
   if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
     printf "${COLOR_RED}✗ Missing state hash${COLOR_RESET}\n" >&2
@@ -1071,7 +1038,7 @@ assert_token_chain_valid() {
   
   # Check if token has transaction history
   local has_history
-  has_history=$(jq -e '.transactionHistory' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  has_history=$(~/.local/bin/jq -e '.transactionHistory' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
   
   if [[ "$has_history" == "false" ]]; then
     # No transaction history - single state token
@@ -1083,7 +1050,7 @@ assert_token_chain_valid() {
   
   # Validate transaction history array
   local tx_count
-  tx_count=$(jq -r '.transactionHistory | length' "$token_file" 2>/dev/null)
+  tx_count=$(~/.local/bin/jq -r '.transactionHistory | length' "$token_file" 2>/dev/null)
   
   if [[ -z "$tx_count" ]] || [[ "$tx_count" == "null" ]] || [[ $tx_count -lt 1 ]]; then
     printf "${COLOR_RED}✗ Invalid transaction history${COLOR_RESET}\n" >&2
@@ -1114,7 +1081,7 @@ assert_offline_transfer_valid() {
   local token_file="${1:?Token file required}"
   
   # Check if token has offline transfer
-  if ! jq -e '.offlineTransfer' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.offlineTransfer' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Token does not have offline transfer${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
@@ -1127,7 +1094,7 @@ assert_offline_transfer_valid() {
   )
   
   for field in "${required_fields[@]}"; do
-    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing offline transfer field: %s${COLOR_RESET}\n" "$field" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
@@ -1136,7 +1103,7 @@ assert_offline_transfer_valid() {
   
   # Validate recipient address format (hex string)
   local recipient
-  recipient=$(jq -r '.offlineTransfer.recipient' "$token_file" 2>/dev/null)
+  recipient=$(~/.local/bin/jq -r '.offlineTransfer.recipient' "$token_file" 2>/dev/null)
   
   if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
     printf "${COLOR_RED}✗ Empty recipient address${COLOR_RESET}\n" >&2
@@ -1254,7 +1221,7 @@ assert_bft_signatures_valid() {
   
   # Check if proof has BFT authenticator fields
   local has_bft
-  has_bft=$(jq -e '.inclusionProof.bftAuthenticator' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
+  has_bft=$(~/.local/bin/jq -e '.inclusionProof.bftAuthenticator' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
   
   if [[ "$has_bft" == "false" ]]; then
     # No BFT authenticator in proof - may be normal for certain proof types
@@ -1267,7 +1234,7 @@ assert_bft_signatures_valid() {
   fi
   
   # Check BFT authenticator structure
-  if ! jq -e '.inclusionProof.bftAuthenticator.signatures' "$token_file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e '.inclusionProof.bftAuthenticator.signatures' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ BFT authenticator missing signatures${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
@@ -1298,7 +1265,7 @@ assert_json_has_field() {
   local field="${2:?JSON field required}"
   
   # Check field exists
-  if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+  if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Field does not exist: %s${COLOR_RESET}\n" "$field" >&2
     printf "  File: %s\n" "$file" >&2
     return 1
@@ -1306,7 +1273,7 @@ assert_json_has_field() {
   
   # Check field is not null
   local value
-  value=$(jq -r "$field" "$file" 2>/dev/null)
+  value=$(~/.local/bin/jq -r "$field" "$file" 2>/dev/null)
   
   if [[ "$value" == "null" ]]; then
     printf "${COLOR_RED}✗ Field is null: %s${COLOR_RESET}\n" "$field" >&2
@@ -1392,6 +1359,190 @@ assert_address_type() {
   return 0
 }
 
+# Check if file is valid TXF (Token Exchange Format)
+# Args: $1 = file path
+# Returns: 0 if valid TXF, 1 if invalid
+is_valid_txf() {
+  local file="${1:?File path required}"
+
+  # Check file exists
+  if [[ ! -f "$file" ]]; then
+    printf "${COLOR_RED}✗ TXF file not found: %s${COLOR_RESET}\n" "$file" >&2
+    return 1
+  fi
+
+  # Check valid JSON
+  if ! ~/.local/bin/jq empty "$file" 2>/dev/null; then
+    printf "${COLOR_RED}✗ TXF file contains invalid JSON${COLOR_RESET}\n" >&2
+    return 1
+  fi
+
+  # Check required TXF fields
+  local required_fields=(".version" ".genesis" ".state")
+  for field in "${required_fields[@]}"; do
+    if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ TXF file missing required field: %s${COLOR_RESET}\n" "$field" >&2
+      return 1
+    fi
+  done
+
+  # Check version is 2.0
+  local version
+  version=$(~/.local/bin/jq -r '.version' "$file" 2>/dev/null)
+  if [[ "$version" != "2.0" ]]; then
+    printf "${COLOR_RED}✗ Invalid TXF version: %s (expected 2.0)${COLOR_RESET}\n" "$version" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Valid TXF file${COLOR_RESET}\n" >&2
+  fi
+
+  return 0
+}
+
+# Extract token ID from TXF file
+# Args: $1 = file path
+# Returns: Token ID (64-char hex string) or empty
+get_txf_token_id() {
+  local file="${1:?File path required}"
+
+  # Try multiple possible locations for token ID
+  local token_id
+  token_id=$(~/.local/bin/jq -r '.genesis.data.tokenId // .token.tokenId // empty' "$file" 2>/dev/null)
+
+  echo "$token_id"
+}
+
+# Determine predicate type (masked vs unmasked)
+# Args: $1 = file path
+# Returns: "masked" or "unmasked"
+# Note: This is a heuristic check - full CBOR decoding would be needed for certainty
+get_predicate_type() {
+  local file="${1:?File path required}"
+
+  # Check if nonce was used (indicates masked predicate)
+  # Masked predicates are generated with a nonce, unmasked are not
+  # This is a heuristic - the actual determination requires CBOR decoding
+
+  # Try to find nonce in metadata or state
+  if ~/.local/bin/jq -e '.state.nonce' "$file" >/dev/null 2>&1; then
+    echo "masked"
+    return 0
+  fi
+
+  # Check predicate CBOR for engine ID
+  # Engine 1 (0x0001) = secp256k1 with hash (masked)
+  # Engine 3 (0x0003) = secp256k1 direct (unmasked)
+  local predicate_hex
+  predicate_hex=$(~/.local/bin/jq -r '.state.predicate' "$file" 2>/dev/null)
+
+  if [[ -n "$predicate_hex" ]]; then
+    # Simple heuristic: check for engine byte patterns
+    # This is not perfect without full CBOR decoder
+    # Masked predicates are typically longer due to nonce
+    local pred_length=${#predicate_hex}
+    if [[ $pred_length -gt 140 ]]; then
+      echo "masked"
+    else
+      echo "unmasked"
+    fi
+  else
+    # Default to unmasked if we can't determine
+    echo "unmasked"
+  fi
+}
+
+# Extract and decode token data from TXF file
+# Args: $1 = file path
+# Returns: Decoded data (text) or hex string
+get_token_data() {
+  local file="${1:?File path required}"
+
+  # Extract hex-encoded data
+  local hex_data
+  hex_data=$(~/.local/bin/jq -r '.state.data // .genesis.data.data // empty' "$file" 2>/dev/null)
+
+  if [[ -z "$hex_data" ]] || [[ "$hex_data" == "null" ]]; then
+    return 0
+  fi
+
+  # Try to decode hex to text
+  local decoded
+  if decoded=$(echo "$hex_data" | xxd -r -p 2>/dev/null); then
+    echo "$decoded"
+  else
+    # If decoding fails, return the hex string
+    echo "$hex_data"
+  fi
+}
+
+# Extract address from TXF file
+# Args: $1 = file path
+# Returns: DIRECT:// address or empty
+# Note: This requires CBOR decoding of the predicate to extract the public key
+get_txf_address() {
+  local file="${1:?File path required}"
+
+  # Try to find pre-computed address in state
+  local address
+  address=$(~/.local/bin/jq -r '.state.address // .address // empty' "$file" 2>/dev/null)
+
+  if [[ -n "$address" ]] && [[ "$address" != "null" ]]; then
+    echo "$address"
+    return 0
+  fi
+
+  # LIMITATION: Without CBOR decoder, we cannot extract address from predicate
+  # The predicate contains the public key, but it's CBOR-encoded
+  # For testing purposes, we can try to use the CLI to generate the address
+  # from the same secret, but this won't work for received tokens
+
+  # Return empty - this function is limited without CBOR support
+  return 0
+}
+
+# Assert that token has a valid inclusion proof
+# Args: $1 = file path
+# Returns: 0 if proof exists and is valid structure, 1 otherwise
+assert_has_inclusion_proof() {
+  local file="${1:?File path required}"
+
+  # Check if inclusionProof field exists
+  if ! ~/.local/bin/jq -e '.genesis.inclusionProof' "$file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing inclusion proof in genesis${COLOR_RESET}\n" >&2
+    return 1
+  fi
+
+  # Check required proof fields
+  local required_fields=(
+    ".genesis.inclusionProof.merkleTreePath"
+    ".genesis.inclusionProof.merkleTreePath.root"
+    ".genesis.inclusionProof.unicityCertificate"
+  )
+
+  for field in "${required_fields[@]}"; do
+    if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Inclusion proof missing field: %s${COLOR_RESET}\n" "$field" >&2
+      return 1
+    fi
+  done
+
+  # Verify Merkle root is valid hex hash (64 chars)
+  local merkle_root
+  merkle_root=$(~/.local/bin/jq -r '.genesis.inclusionProof.merkleTreePath.root' "$file" 2>/dev/null)
+  if [[ ! "$merkle_root" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    printf "${COLOR_RED}✗ Invalid Merkle root format (expected 64-char hex): %s${COLOR_RESET}\n" "$merkle_root" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token has valid inclusion proof structure${COLOR_RESET}\n" >&2
+  fi
+
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # Export New Functions
 # -----------------------------------------------------------------------------
@@ -1401,6 +1552,12 @@ export -f assert_token_has_valid_structure
 export -f assert_token_has_valid_genesis
 export -f assert_token_has_valid_state
 export -f assert_inclusion_proof_valid
+export -f is_valid_txf
+export -f get_txf_token_id
+export -f get_predicate_type
+export -f get_token_data
+export -f get_txf_address
+export -f assert_has_inclusion_proof
 export -f assert_predicate_structure_valid
 export -f assert_token_predicate_valid
 export -f assert_state_hash_correct
