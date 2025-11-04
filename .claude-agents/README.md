@@ -1,6 +1,169 @@
 # Unicity Expert Agents
 
-This directory contains comprehensive expert agent profiles for working with the Unicity Network. These profiles are designed to be used by AI assistants (like Claude) to provide specialized, deep expertise in different aspects of Unicity architecture and development.
+Comprehensive AI assistant expert profiles for working with the Unicity Network. These profiles provide specialized, deep expertise in Unicity architecture, consensus mechanisms, aggregator operations, and SDK development across multiple programming languages.
+
+**📦 Total Package:** 608 KB of expert knowledge
+- 4 Expert Agent Profiles (148 KB)
+- 16 Research Documents (444 KB)
+- 25+ Repositories Analyzed
+- 100+ Code Examples
+
+## Installation
+
+### Quick Install (Recommended)
+
+Clone this repository directly into your project's `.claude-agents` directory:
+
+```bash
+# From your project root
+git clone https://github.com/unicitynetwork/unicity-expert-agents.git .claude-agents
+
+# Or as a subdirectory if you already have .claude-agents
+cd .claude-agents
+git clone https://github.com/unicitynetwork/unicity-expert-agents.git unicity
+```
+
+### Install as Git Submodule
+
+For better version control integration:
+
+```bash
+# From your project root
+git submodule add https://github.com/unicitynetwork/unicity-expert-agents.git .claude-agents/unicity
+
+# Initialize and update
+git submodule update --init --recursive
+```
+
+### Manual Download
+
+Download and extract the latest release:
+
+```bash
+# Download the latest release
+curl -L https://github.com/unicitynetwork/unicity-expert-agents/archive/refs/heads/main.zip -o unicity-agents.zip
+
+# Extract to .claude-agents directory
+unzip unicity-agents.zip -d .claude-agents/unicity
+```
+
+### Verify Installation
+
+After installation, verify the structure:
+
+```bash
+ls -la .claude-agents/unicity-experts/
+# Should show:
+# - unicity-architect.md
+# - consensus-expert.md
+# - proof-aggregator-expert.md
+# - unicity-developers.md
+
+ls -la .claude-agents/unicity-research/
+# Should show 16 research documents
+```
+
+## Usage
+
+### For AI Assistants (Claude, ChatGPT, etc.)
+
+When a user asks about Unicity Network, load the appropriate expert profile:
+
+```python
+# Example: Loading expert profiles programmatically
+import os
+
+def load_unicity_expert(topic):
+    """Load the appropriate Unicity expert profile based on topic."""
+
+    experts = {
+        'architecture': '.claude-agents/unicity-experts/unicity-architect.md',
+        'consensus': '.claude-agents/unicity-experts/consensus-expert.md',
+        'aggregator': '.claude-agents/unicity-experts/proof-aggregator-expert.md',
+        'sdk': '.claude-agents/unicity-experts/unicity-developers.md'
+    }
+
+    if topic in experts:
+        with open(experts[topic], 'r') as f:
+            return f.read()
+
+    return None
+
+# Usage
+expert_knowledge = load_unicity_expert('architecture')
+```
+
+**Quick Decision Tree:**
+
+- **Architecture questions** → `unicity-experts/unicity-architect.md`
+  - "How does Unicity work?"
+  - "What makes Unicity different?"
+  - "Explain the four-layer architecture"
+
+- **Consensus questions** → `unicity-experts/consensus-expert.md`
+  - "How do I set up mining?"
+  - "What is BFT consensus?"
+  - "How do I run a validator?"
+
+- **Aggregator questions** → `unicity-experts/proof-aggregator-expert.md`
+  - "How do I deploy an aggregator?"
+  - "What is the API?"
+  - "How does proof aggregation work?"
+
+- **Development questions** → `unicity-experts/unicity-developers.md`
+  - "How do I create tokens in TypeScript?"
+  - "Show me Java SDK examples"
+  - "What SDKs are available?"
+
+### For Developers
+
+Use as comprehensive reference documentation:
+
+```bash
+# Quick search across all expert knowledge
+grep -r "StateTransition" .claude-agents/unicity-experts/
+
+# View specific expert profile
+cat .claude-agents/unicity-experts/unicity-architect.md | less
+
+# Search research documentation
+grep -r "Sparse Merkle Tree" .claude-agents/unicity-research/
+```
+
+### Integration with Claude Code
+
+If you're using Claude Code, add a reference in your project's `CLAUDE.md`:
+
+```markdown
+# CLAUDE.md
+
+## Unicity Expert Agents
+
+This project includes comprehensive Unicity Network expert agent profiles.
+When answering questions about Unicity, refer to:
+
+- Architecture: `.claude-agents/unicity-experts/unicity-architect.md`
+- Consensus: `.claude-agents/unicity-experts/consensus-expert.md`
+- Aggregator: `.claude-agents/unicity-experts/proof-aggregator-expert.md`
+- SDKs: `.claude-agents/unicity-experts/unicity-developers.md`
+
+Research documentation available in `.claude-agents/unicity-research/`
+```
+
+### Integration with Cursor IDE
+
+Add to your `.cursorrules` file:
+
+```
+# Unicity Network Expertise
+
+When questions are asked about Unicity Network:
+- Load expert profiles from .claude-agents/unicity-experts/
+- Refer to research docs in .claude-agents/unicity-research/
+- Use code examples from SDK research reports
+```
+
+## What's Included
 
 ## Expert Agent Profiles
 
