@@ -1,0 +1,28 @@
+Creating commitment at generic abstraction level...
+
+Public Key: 03e340e584cd1175fc1abf404b81ee457d0da77ee84ae9520981a8a57a5782faa8
+State Hash: 0000a4a2eba6e2b0e31ef7acd71276d65b4a5cb5db4be4d25cc05847d5e2b0e564d6
+Transaction Hash: 0000a2c529393cab62d05778efbb8b1bbc857930d7cb864dc9589aa8e1b279408d0a
+Request ID: 0000bca184091e25497d8d9d85b933ad361bbcccf079459b7069725c400d3d0faa23
+
+
+=== AUTHENTICATOR CREATION DEBUG ===
+Authenticator created locally:
+  Public Key: 03e340e584cd1175fc1abf404b81ee457d0da77ee84ae9520981a8a57a5782faa8
+  Signature: bea27bf04f38422c27a23b9dc72d0f356cdb7eb306bda68997a2cc4257a3d88d1eb74b90d728e9a56a31fd9ae9745399fa7ac765f92604b54ef31331ccbac4ea
+  State Hash: 0000a4a2eba6e2b0e31ef7acd71276d65b4a5cb5db4be4d25cc05847d5e2b0e564d6
+
+=== LOCAL AUTHENTICATOR VERIFICATION TEST ===
+✓ Local authenticator verifies transactionHash: true
+✓ Local authenticator is VALID before submission
+
+Submitting to aggregator: http://127.0.0.1:3000
+✅ Commitment successfully registered
+
+Commitment Details:
+  Request ID: 0000bca184091e25497d8d9d85b933ad361bbcccf079459b7069725c400d3d0faa23
+  Transaction Hash: 0000a2c529393cab62d05778efbb8b1bbc857930d7cb864dc9589aa8e1b279408d0a
+  State Hash: 0000a4a2eba6e2b0e31ef7acd71276d65b4a5cb5db4be4d25cc05847d5e2b0e564d6
+
+You can check the inclusion proof with:
+  npm run get-request -- 0000bca184091e25497d8d9d85b933ad361bbcccf079459b7069725c400d3d0faa23

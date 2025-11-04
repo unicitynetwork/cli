@@ -1,0 +1,39 @@
+{
+  "status": "EXCLUSION",
+  "requestId": "000008d76be409d18b95a38c7aaad99bc76b2cb124dec1a2f47b00f922a93c32edaa",
+  "endpoint": "http://127.0.0.1:3000",
+  "proof": {
+    "authenticator": null,
+    "merkleTreePath": {
+      "root": "0000cb7e5be05e4b7e8f9adce4b98543c537a9b80a9db52cfdde001c729ee3537f1e",
+      "steps": [
+        {
+          "data": "9d960fe84ce513a7d13b854d5577b705ce66fdca4491c3ed256e2ba793240c92",
+          "path": "0"
+        },
+        {
+          "data": "aa4db22b2394cd93fa266747525d0657e8f411d9c7188bdc9fb18795bd2d555b",
+          "path": "7"
+        },
+        {
+          "data": "3ea310312115a25e090b77dfe6d7c4c1f6da231a743126f4e3ee3902b9c7ec12",
+          "path": "2"
+        },
+        {
+          "data": "c359a2fb352300b12c07e2e6c0936a6a96489d301dfc7eb1f278fde249869bd6",
+          "path": "3"
+        },
+        {
+          "data": "4766fe4a5cbadcbe08d4639bc4524b8b36ecf6a397eff1ba85af83aee9a5133d",
+          "path": "2"
+        },
+        {
+          "data": "7fe6fed7c1abd30a8cd942510718688029a4ea1e2ff9eaa4ef75383f09d9b12c",
+          "path": "1"
+        }
+      ]
+    },
+    "transactionHash": null,
+    "unicityCertificate": "d903ef8701d903f08a011906550058220000db304c61687ffa2ba88c4f3d24bbe862924aeb38f0830ca1f7978169e4f285a058220000cb7e5be05e4b7e8f9adce4b98543c537a9b80a9db52cfdde001c729ee3537f1e401a690a2c3e58220000cb7e5be05e4b7e8f9adce4b98543c537a9b80a9db52cfdde001c729ee3537f1e00f65820bac550694a3c04d484cfc91a9e19a6130570dd9207f6ca041f165c085f28538258201c3dd944f15933d76d1b1acd530eb587fdaaded6c6ad57ee469a56a51a49d6f682418080d903f683010780d903e9880103192667001a690a2c405820815f43f86737d1abd15b90166da0c64a75d1a57764b6263e15c0c1c8a8a680b55820514075004cdda987d1cace495197fe066fd6c33c165ad945a6046f6fd2506c1ea1783531365569753248416d5234385774713247347067436f68585766697a72693466717947646e7a506d58453456625a76694b4831416b58419eaa512d43539bd564cea8fdaec913ee970d77a06e07daf24bc37d0a7d8d70ca4294496e2f95f56b9957afb56345ce50ed889fd5e55330df8d84ec5695b8855101"
+  }
+}

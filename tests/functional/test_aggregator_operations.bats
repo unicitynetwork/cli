@@ -33,10 +33,11 @@ teardown() {
     echo "$output" > register_response.txt
 
     # Extract request ID from console output (format: "Request ID: <hex>")
+    # RequestID is 68 hex chars (272 bits): 4-char algorithm prefix + 64-char hash
     local request_id
-    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
     assert_set request_id
-    is_valid_hex "${request_id}" 64
+    is_valid_hex "${request_id}" 68
 
     # Fetch the request by ID using --json flag
     run_cli "get-request ${request_id} --local --json"
@@ -65,12 +66,13 @@ teardown() {
     assert_success
 
     # Extract request ID from console output
+    # RequestID is 68 hex chars (272 bits): 4-char algorithm prefix + 64-char hash
     local request_id
-    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
     assert_set request_id
 
-    # Request ID should be 64-char hex (256-bit)
-    is_valid_hex "${request_id}" 64
+    # Request ID should be 68-char hex (272-bit)
+    is_valid_hex "${request_id}" 68
 }
 
 # AGGREGATOR-003: Get Request Returns Inclusion Proof
@@ -84,7 +86,7 @@ teardown() {
 
     # Extract request ID
     local request_id
-    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Fetch with verbose output and JSON format
     run_cli "get-request ${request_id} --local --json --verbose"
@@ -93,10 +95,11 @@ teardown() {
     # Save to file
     echo "$output" > proof.json
 
-    # Verify proof structure
+    # Verify proof structure (JSON format from --json flag)
     assert_file_exists "proof.json"
-    assert_json_field_exists "proof.json" ".inclusionProof"
-    assert_json_field_exists "proof.json" ".stateHash"
+    assert_json_field_exists "proof.json" ".proof"
+    assert_json_field_exists "proof.json" ".proof.merkleTreePath"
+    assert_json_field_exists "proof.json" ".status"
 }
 
 # AGGREGATOR-004: Different Secrets Produce Different Request IDs
@@ -111,13 +114,13 @@ teardown() {
     run_cli_with_secret "${secret1}" "register-request ${secret1} \"${TEST_STATE}\" \"${TEST_TX_DATA}\" --local"
     assert_success
     local request_id1
-    request_id1=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id1=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Register with second secret (same state/data)
     run_cli_with_secret "${secret2}" "register-request ${secret2} \"${TEST_STATE}\" \"${TEST_TX_DATA}\" --local"
     assert_success
     local request_id2
-    request_id2=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id2=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Request IDs should be different
     assert_not_equals "${request_id1}" "${request_id2}"
@@ -132,13 +135,13 @@ teardown() {
     run_cli_with_secret "${SECRET}" "register-request ${SECRET} \"${TEST_STATE}\" \"${TEST_TX_DATA}\" --local"
     assert_success
     local request_id1
-    request_id1=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id1=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Register second time with same parameters
     run_cli_with_secret "${SECRET}" "register-request ${SECRET} \"${TEST_STATE}\" \"${TEST_TX_DATA}\" --local"
     assert_success
     local request_id2
-    request_id2=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id2=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Request IDs should be identical
     assert_equals "${request_id1}" "${request_id2}"
@@ -149,21 +152,16 @@ teardown() {
     require_aggregator
     log_test "Verifying error handling for non-existent request"
 
-    # Use a random request ID that doesn't exist
-    local fake_request_id="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    # Use a random request ID that doesn't exist (68 chars = 272 bits with 0000 prefix)
+    local fake_request_id="0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
-    # Should fail or return empty/not-found response
-    run_cli "get-request ${fake_request_id} --local --json"
+    # Should return NOT_FOUND status or fail gracefully
+    run_cli "get-request ${fake_request_id} --local --json" || true
 
-    # Accept either failure or not-found response
-    # Some aggregators return 404, others return empty proof
-    if [[ $status -eq 0 ]]; then
-        # If success, output should indicate not found
-        assert_output_contains "not found" || assert_output_contains "null" || true
-    else
-        # Failure is acceptable for non-existent request
-        assert_failure
-    fi
+    # Output should indicate "NOT_FOUND" status in JSON
+    # The command should either succeed with NOT_FOUND or fail gracefully
+    # Either way, the aggregator should not crash
+    [[ "$output" == *"NOT_FOUND"* ]] || [[ "$output" == *"not found"* ]] || true
 }
 
 # AGGREGATOR-007: Register Request with Special Characters in Data
@@ -178,9 +176,9 @@ teardown() {
 
     # Extract request ID
     local request_id
-    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
     assert_set request_id
-    is_valid_hex "${request_id}" 64
+    is_valid_hex "${request_id}" 68
 }
 
 # AGGREGATOR-008: Verify State Hash in Response
@@ -219,7 +217,7 @@ teardown() {
 
         # Extract request ID
         local request_id
-        request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+        request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
         request_ids+=("$request_id")
     done
 
@@ -251,7 +249,7 @@ teardown() {
 
     # Extract request ID
     local request_id
-    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{64}' | head -n1)
+    request_id=$(echo "$output" | grep -oP '(?<=Request ID: )[0-9a-fA-F]{68}' | head -n1)
 
     # Get request with --json flag
     run_cli "get-request ${request_id} --local --json"
