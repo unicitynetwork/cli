@@ -20,33 +20,44 @@ import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predica
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import { validateInclusionProof } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
+import { validateSecret, validateTokenType, validateNonce, throwValidationError } from '../utils/input-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
 /**
  * Get secret from environment variable or prompt user
+ * Validates the secret before returning
  */
 async function getSecret(): Promise<Uint8Array> {
+  let secret: string;
+
   // Check environment variable first
   if (process.env.SECRET) {
-    const secret = process.env.SECRET;
+    secret = process.env.SECRET;
     // Clear it immediately for security
     delete process.env.SECRET;
-    return new TextEncoder().encode(secret);
+  } else {
+    // Prompt user interactively
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stderr
+    });
+
+    secret = await new Promise((resolve) => {
+      rl.question('Enter your secret (will be hidden): ', (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+    });
   }
 
-  // Prompt user interactively
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stderr
-  });
+  // Validate secret (CRITICAL: prevent weak/empty secrets)
+  const validation = validateSecret(secret, 'mint-token');
+  if (!validation.valid) {
+    throwValidationError(validation);
+  }
 
-  return new Promise((resolve) => {
-    rl.question('Enter your secret (will be hidden): ', (answer) => {
-      rl.close();
-      resolve(new TextEncoder().encode(answer));
-    });
-  });
+  return new TextEncoder().encode(secret);
 }
 
 /**
@@ -169,6 +180,12 @@ async function processTokenType(
 
   // If custom token type is provided
   if (tokenTypeOption) {
+    // Validate token type format (must be valid hex or preset name)
+    const validation = validateTokenType(tokenTypeOption, false);
+    if (!validation.valid) {
+      throwValidationError(validation);
+    }
+
     const tokenTypeBytes = await processInput(tokenTypeOption, 'tokenType', { requireHash: true });
     return { tokenType: new TokenType(tokenTypeBytes) };
   }
@@ -329,6 +346,12 @@ export function mintTokenCommand(program: Command): void {
         let nonce: Uint8Array | undefined;
 
         if (options.nonce) {
+          // Validate nonce format
+          const nonceValidation = validateNonce(options.nonce, false);
+          if (!nonceValidation.valid) {
+            throwValidationError(nonceValidation);
+          }
+
           // Masked predicate (one-time use)
           nonce = await processInput(options.nonce, 'nonce', { requireHash: true });
           signingService = await SigningService.createFromSecret(secret, nonce);

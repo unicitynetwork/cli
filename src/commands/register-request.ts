@@ -6,6 +6,7 @@ import { RequestId } from '@unicitylabs/state-transition-sdk/lib/api/RequestId.j
 import { Authenticator } from '@unicitylabs/state-transition-sdk/lib/api/Authenticator.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { TextEncoder } from 'util';
+import { validateSecret, throwValidationError } from '../utils/input-validation.js';
 
 export function registerRequestCommand(program: Command): void {
   program
@@ -18,6 +19,28 @@ export function registerRequestCommand(program: Command): void {
     .argument('<state>', 'State data (will be hashed to derive RequestId)')
     .argument('<transactionData>', 'Transaction data (will be hashed)')
     .action(async (secret: string, state: string, transactionData: string, options) => {
+      // Validate secret (CRITICAL: prevent weak/empty secrets)
+      const secretValidation = validateSecret(secret, 'register-request');
+      if (!secretValidation.valid) {
+        throwValidationError(secretValidation);
+      }
+
+      // Validate state argument (cannot be empty)
+      if (!state || state.trim() === '') {
+        console.error('❌ State cannot be empty');
+        console.error('\nState data is required for commitment registration.');
+        console.error('It will be hashed to derive the RequestId.\n');
+        process.exit(1);
+      }
+
+      // Validate transactionData argument (cannot be empty)
+      if (!transactionData || transactionData.trim() === '') {
+        console.error('❌ Transaction data cannot be empty');
+        console.error('\nTransaction data is required for commitment registration.');
+        console.error('It will be hashed and signed by the authenticator.\n');
+        process.exit(1);
+      }
+
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {

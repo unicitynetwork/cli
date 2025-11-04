@@ -9,6 +9,7 @@ import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predica
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
 import { DirectAddress } from '@unicitylabs/state-transition-sdk/lib/address/DirectAddress.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
+import { validateSecret, validateTokenType, validateNonce, throwValidationError } from '../utils/input-validation.js';
 import * as readline from 'readline';
 
 // Official Unicity token types from https://github.com/unicitynetwork/unicity-ids
@@ -41,27 +42,37 @@ const UNICITY_TOKEN_TYPES: Record<string, { id: string; name: string; descriptio
 };
 
 // Function to read the secret as a password
+// Validates the secret before returning
 async function readSecret(): Promise<string> {
+  let secret: string;
+
   // Check if SECRET environment variable is set
   if (process.env.SECRET) {
-    const secret = process.env.SECRET;
+    secret = process.env.SECRET;
     // Clear the environment variable for security
     process.env.SECRET = '';
-    return secret;
+  } else {
+    // If SECRET is not provided, prompt the user
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    secret = await new Promise<string>((resolve) => {
+      rl.question('Enter secret (password): ', (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+    });
   }
 
-  // If SECRET is not provided, prompt the user
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  // Validate secret (CRITICAL: prevent weak/empty secrets)
+  const validation = validateSecret(secret, 'gen-address');
+  if (!validation.valid) {
+    throwValidationError(validation);
+  }
 
-  return new Promise<string>((resolve) => {
-    rl.question('Enter secret (password): ', (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
+  return secret;
 }
 
 // Function to validate or generate a nonce
@@ -69,6 +80,12 @@ async function processNonce(input: string | undefined): Promise<Uint8Array | nul
   // If not provided, return null (will be treated as unmasked)
   if (!input) {
     return null;
+  }
+
+  // Validate nonce format (prevent empty/too long)
+  const validation = validateNonce(input, false);
+  if (!validation.valid) {
+    throwValidationError(validation);
   }
 
   // If it's a valid 32-byte hex string, convert it to bytes
@@ -109,6 +126,12 @@ async function processTokenType(
 
   // If custom token type is specified
   if (tokenTypeOption) {
+    // Validate token type format (must be valid hex or preset name)
+    const validation = validateTokenType(tokenTypeOption, false);
+    if (!validation.valid) {
+      throwValidationError(validation);
+    }
+
     // Check if it's a valid 64-char hex string (256-bit)
     if (/^(0x)?[0-9a-fA-F]{64}$/.test(tokenTypeOption)) {
       const hexStr = tokenTypeOption.startsWith('0x') ? tokenTypeOption.slice(2) : tokenTypeOption;

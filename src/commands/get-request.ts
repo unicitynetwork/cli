@@ -8,6 +8,7 @@ import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateInclusionProof } from '../utils/proof-validation.js';
+import { validateRequestId, throwValidationError } from '../utils/input-validation.js';
 
 export function getRequestCommand(program: Command): void {
   program
@@ -29,6 +30,13 @@ export function getRequestCommand(program: Command): void {
       }
 
       try {
+        // CRITICAL: Validate RequestID format before sending to aggregator
+        // This prevents the CVSS 7.5 DoS vulnerability where malformed RequestIDs crash the service
+        const validationResult = validateRequestId(requestIdStr);
+        if (!validationResult.valid) {
+          throwValidationError(validationResult);
+        }
+
         // Load TrustBase for proof verification (if not in JSON mode)
         let trustBase = null;
         if (!options.json && !options.local) {
