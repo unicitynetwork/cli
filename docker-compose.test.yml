@@ -1,0 +1,215 @@
+version: '3.8'
+
+# =============================================================================
+# Docker Compose Configuration for Unicity CLI Testing
+# =============================================================================
+# Provides complete isolated test environment with:
+# - Local aggregator service
+# - CLI build and test execution
+# - Isolated network and volumes
+# - Health checks
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml up
+#   docker-compose -f docker-compose.test.yml run cli npm test
+#   docker-compose -f docker-compose.test.yml down
+# =============================================================================
+
+services:
+  # =========================================================================
+  # Aggregator Service - Mock/Local Aggregator for Testing
+  # =========================================================================
+  aggregator:
+    image: unicity/aggregator:latest
+    container_name: unicity-aggregator-test
+    ports:
+      - "${AGGREGATOR_PORT:-3000}:3000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: test
+    volumes:
+      # Persist test data during test run
+      - aggregator-data:/app/data
+    networks:
+      - unicity-test
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:3000/health
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: on-failure:3
+    labels:
+      - "service=aggregator"
+      - "environment=test"
+
+  # =========================================================================
+  # CLI Test Service - Runs tests with proper environment
+  # =========================================================================
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        - NODE_VERSION=${NODE_VERSION:-20}
+        - BATS_VERSION=${BATS_VERSION:-1.10.1}
+    container_name: unicity-cli-test
+    working_dir: /app
+    environment:
+      # Test Configuration
+      NODE_ENV: test
+      UNICITY_TEST_DEBUG: ${UNICITY_TEST_DEBUG:-0}
+      UNICITY_TEST_VERBOSE: ${UNICITY_TEST_VERBOSE:-0}
+      UNICITY_TEST_SKIP_EXTERNAL: ${UNICITY_TEST_SKIP_EXTERNAL:-0}
+
+      # Aggregator Configuration
+      AGGREGATOR_ENDPOINT: http://aggregator:3000
+      AGGREGATOR_HOST: aggregator
+      AGGREGATOR_PORT: 3000
+
+      # Test Suite Configuration
+      BATS_TMPDIR: /tmp/bats-tmp
+      TEST_RESULTS_DIR: /app/tests/results
+      TEST_REPORTS_DIR: /app/tests/reports
+
+      # CI/CD Configuration
+      CI: ${CI:-false}
+      CI_PROVIDER: ${CI_PROVIDER:-docker}
+    volumes:
+      # Mount source code for development/testing
+      - .:/app
+      - /app/node_modules  # Prevent host node_modules from being mounted
+      - /app/dist          # Keep compiled artifacts separate
+
+      # Test output volumes
+      - test-results:/app/tests/results
+      - test-reports:/app/tests/reports
+
+      # Temporary test directory
+      - bats-tmp:/tmp/bats-tmp
+    networks:
+      - unicity-test
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    restart: "no"
+    labels:
+      - "service=cli"
+      - "environment=test"
+
+  # =========================================================================
+  # Test Runner Service - Lightweight service for running tests in CI
+  # =========================================================================
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        - NODE_VERSION=${NODE_VERSION:-20}
+        - BATS_VERSION=${BATS_VERSION:-1.10.1}
+    container_name: unicity-test-runner
+    working_dir: /app
+    command: ./tests/run-all-tests.sh --all --reporter json --reporter html
+    environment:
+      # Test Configuration
+      NODE_ENV: test
+      UNICITY_TEST_DEBUG: ${UNICITY_TEST_DEBUG:-0}
+
+      # Aggregator Configuration
+      AGGREGATOR_ENDPOINT: http://aggregator:3000
+
+      # Test Output
+      BATS_TMPDIR: /tmp/bats-tmp
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+      - test-results:/app/tests/results
+      - test-reports:/app/tests/reports
+      - bats-tmp:/tmp/bats-tmp
+    networks:
+      - unicity-test
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    profiles:
+      - ci
+      - test
+    labels:
+      - "service=test-runner"
+      - "environment=test"
+
+  # =========================================================================
+  # Debug Service - Interactive shell for debugging test issues
+  # =========================================================================
+  debug:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        - NODE_VERSION=${NODE_VERSION:-20}
+        - BATS_VERSION=${BATS_VERSION:-1.10.1}
+    container_name: unicity-debug
+    working_dir: /app
+    command: /bin/bash
+    environment:
+      NODE_ENV: test
+      AGGREGATOR_ENDPOINT: http://aggregator:3000
+      BATS_TMPDIR: /tmp/bats-tmp
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - bats-tmp:/tmp/bats-tmp
+    networks:
+      - unicity-test
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    profiles:
+      - debug
+    labels:
+      - "service=debug"
+      - "environment=test"
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  unicity-test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  aggregator-data:
+    driver: local
+    labels:
+      - "type=aggregator-data"
+      - "environment=test"
+  test-results:
+    driver: local
+    labels:
+      - "type=test-results"
+      - "environment=test"
+  test-reports:
+    driver: local
+    labels:
+      - "type=test-reports"
+      - "environment=test"
+  bats-tmp:
+    driver: local
+    labels:
+      - "type=bats-tmp"
+      - "environment=test"

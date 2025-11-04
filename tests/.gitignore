@@ -1,0 +1,11 @@
+# Test output and temporary files
+*.txf
+*.json
+test-output/
+.bats-tmp/
+
+# macOS
+.DS_Store
+
+# Test data directory
+/tmp/unicity-test-data/

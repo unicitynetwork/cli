@@ -1,0 +1,386 @@
+name: Unicity CLI Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - functional
+          - security
+          - edge-cases
+          - unit
+
+env:
+  NODE_VERSION: '20'
+  BATS_VERSION: '1.10.1'
+  CI: true
+
+jobs:
+  # ============================================================================
+  # Quick Checks - Run fast validation before main tests
+  # ============================================================================
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Lint code
+        run: npm run lint
+        continue-on-error: true
+
+  # ============================================================================
+  # Test Discovery - Determine which tests to run
+  # ============================================================================
+  test-discovery:
+    name: Discover Tests
+    runs-on: ubuntu-latest
+    outputs:
+      functional: ${{ steps.discover.outputs.functional }}
+      security: ${{ steps.discover.outputs.security }}
+      edge-cases: ${{ steps.discover.outputs.edge-cases }}
+      unit: ${{ steps.discover.outputs.unit }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Discover test suites
+        id: discover
+        shell: bash
+        run: |
+          # Count tests in each suite
+          functional=$(find tests/functional -name "*.bats" -type f | wc -l)
+          security=$(find tests/security -name "*.bats" -type f | wc -l)
+          edge_cases=$(find tests/edge-cases -name "*.bats" -type f | wc -l)
+          unit=$(find tests/unit -name "*.bats" -type f | wc -l)
+
+          echo "functional=$functional" >> $GITHUB_OUTPUT
+          echo "security=$security" >> $GITHUB_OUTPUT
+          echo "edge-cases=$edge_cases" >> $GITHUB_OUTPUT
+          echo "unit=$unit" >> $GITHUB_OUTPUT
+
+          echo "Test Discovery Results:"
+          echo "  Functional: $functional"
+          echo "  Security: $security"
+          echo "  Edge Cases: $edge_cases"
+          echo "  Unit: $unit"
+
+  # ============================================================================
+  # Setup Test Environment - Start aggregator in background
+  # ============================================================================
+  setup-environment:
+    name: Setup Test Environment
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    services:
+      aggregator:
+        image: unicity/aggregator:latest
+        ports:
+          - 3000:3000
+        options: >-
+          --health-cmd="curl -f http://localhost:3000/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Wait for aggregator
+        run: |
+          echo "Waiting for aggregator to be ready..."
+          max_attempts=30
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if curl -f http://localhost:3000/health > /dev/null 2>&1; then
+              echo "Aggregator is ready!"
+              exit 0
+            fi
+            echo "Attempt $attempt/$max_attempts: Aggregator not ready yet..."
+            sleep 2
+            ((attempt++))
+          done
+          echo "Aggregator failed to start within timeout"
+          exit 1
+
+  # ============================================================================
+  # Main Test Execution - Run tests in matrix strategy
+  # ============================================================================
+  test:
+    name: Test ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    needs: [quick-checks, test-discovery]
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    strategy:
+      matrix:
+        include:
+          - suite: functional
+            timeout: 300
+            critical: true
+          - suite: security
+            timeout: 300
+            critical: true
+          - suite: edge-cases
+            timeout: 400
+            critical: false
+          - suite: unit
+            timeout: 200
+            critical: true
+      fail-fast: false
+    services:
+      aggregator:
+        image: unicity/aggregator:latest
+        ports:
+          - 3000:3000
+        options: >-
+          --health-cmd="curl -f http://localhost:3000/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats jq curl > /dev/null
+
+      - name: Verify BATS installation
+        run: |
+          bats --version
+          which bats
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build CLI
+        run: npm run build
+
+      - name: Wait for aggregator
+        timeout-minutes: 2
+        run: |
+          echo "Waiting for aggregator..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "Aggregator ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30..."
+            sleep 1
+          done
+          echo "Warning: Aggregator may not be ready, continuing with tests..."
+
+      - name: Run ${{ matrix.suite }} tests
+        id: test
+        timeout-minutes: 10
+        env:
+          AGGREGATOR_ENDPOINT: http://localhost:3000
+          UNICITY_TEST_DEBUG: ${{ runner.debug }}
+          BATS_TMPDIR: /tmp/bats-tmp
+        run: |
+          mkdir -p /tmp/bats-tmp tests/results tests/reports
+
+          echo "Running ${{ matrix.suite }} tests..."
+          ./tests/run-all-tests.sh \
+            --${{ matrix.suite }} \
+            --timeout ${{ matrix.timeout }} \
+            --reporter json \
+            --reporter html \
+            || TEST_EXIT_CODE=$?
+
+          echo "TEST_EXIT_CODE=${TEST_EXIT_CODE:-0}" >> $GITHUB_ENV
+          exit ${TEST_EXIT_CODE:-0}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: |
+            tests/results/
+            tests/reports/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Comment PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const suite = '${{ matrix.suite }}';
+            const exitCode = ${{ env.TEST_EXIT_CODE }};
+            const status = exitCode === 0 ? 'PASSED' : 'FAILED';
+            const icon = exitCode === 0 ? '✅' : '❌';
+
+            const comment = `
+            ### Test Results: ${suite} ${icon}
+
+            **Status**: ${status}
+            **Test Suite**: \`${suite}\`
+            **Exit Code**: ${exitCode}
+
+            See artifacts for detailed test results.
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Fail if critical test suite failed
+        if: always() && failure() && matrix.critical == true
+        run: |
+          echo "Critical test suite ${{ matrix.suite }} failed!"
+          exit 1
+
+  # ============================================================================
+  # Test Summary - Consolidate all test results
+  # ============================================================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test]
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-test-results
+
+      - name: Generate consolidated report
+        id: report
+        shell: bash
+        run: |
+          echo "## Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -d "all-test-results" ]; then
+            echo "Test results found:" >> $GITHUB_STEP_SUMMARY
+            find all-test-results -type f -name "*.json" -o -name "*.html" | while read file; do
+              echo "  - $file" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+      - name: Comment PR with summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `
+            ## CI/CD Test Pipeline Summary
+
+            All test suites have completed execution. Check the job summaries above for detailed results.
+
+            **Available Reports**:
+            - Test results artifacts
+            - Coverage reports
+            - Performance metrics
+
+            For local debugging:
+            \`\`\`bash
+            npm test                    # Run all tests
+            npm run test:functional     # Run functional tests only
+            npm run test:security       # Run security tests only
+            npm run test:debug          # Run with debug output
+            \`\`\`
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  # ============================================================================
+  # Final Status Check
+  # ============================================================================
+  ci-status:
+    name: CI Status Check
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [quick-checks, test]
+    steps:
+      - name: Check CI status
+        run: |
+          if [ "${{ needs.quick-checks.result }}" = "failure" ] || \
+             [ "${{ needs.test.result }}" = "failure" ]; then
+            echo "CI pipeline failed!"
+            exit 1
+          fi
+          echo "CI pipeline passed!"
+          exit 0
+
+      - name: Success message
+        if: success()
+        run: |
+          echo "All CI checks passed successfully!"
+          echo "✅ Code quality checks"
+          echo "✅ All test suites"
+          echo "✅ Build verification"

@@ -1,0 +1,112 @@
+# =============================================================================
+# Dockerfile for Unicity CLI Testing
+# =============================================================================
+# Provides complete test environment with all dependencies
+#
+# Build:
+#   docker build -f Dockerfile.test -t unicity-cli-test .
+#
+# Run:
+#   docker run --rm -v $(pwd):/app unicity-cli-test npm test
+# =============================================================================
+
+ARG NODE_VERSION=20
+ARG BATS_VERSION=1.10.1
+
+# Stage 1: Builder with test tools
+FROM node:${NODE_VERSION}-alpine AS builder
+
+ARG BATS_VERSION
+
+# Install system dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    grep \
+    sed \
+    gawk \
+    coreutils \
+    jq \
+    && rm -rf /var/cache/apk/*
+
+# Install BATS from GitHub releases
+RUN curl -sSL \
+    "https://github.com/bats-core/bats-core/releases/download/v${BATS_VERSION}/bats-${BATS_VERSION}.tar.gz" \
+    | tar -xz -C /usr/local \
+    && ls -la /usr/local/bin/bats || true
+
+# Verify BATS installation
+RUN bats --version || echo "Warning: BATS installation verification"
+
+# Stage 2: Runtime environment
+FROM node:${NODE_VERSION}-alpine
+
+# Copy BATS from builder
+COPY --from=builder /usr/local/bin/bats /usr/local/bin/bats
+COPY --from=builder /usr/local/libexec /usr/local/libexec
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    jq \
+    git \
+    grep \
+    sed \
+    gawk \
+    coreutils \
+    parallel \
+    bc \
+    && rm -rf /var/cache/apk/*
+
+# Verify key tools
+RUN echo "Verifying tools..." && \
+    node --version && \
+    npm --version && \
+    bash --version | head -1 && \
+    bats --version && \
+    jq --version && \
+    curl --version | head -1
+
+# Create application directory
+WORKDIR /app
+
+# Create necessary directories
+RUN mkdir -p \
+    /app/tests/results \
+    /app/tests/reports \
+    /tmp/bats-tmp \
+    && chmod -R 777 /app/tests /tmp/bats-tmp
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --prefer-offline --no-audit 2>&1 | grep -v "^npm notice" || true
+
+# Copy entire application
+COPY . .
+
+# Build application
+RUN npm run build 2>&1 | tail -20
+
+# Set environment variables
+ENV NODE_ENV=test \
+    UNICITY_TEST_DEBUG=0 \
+    UNICITY_TEST_VERBOSE=0 \
+    BATS_TMPDIR=/tmp/bats-tmp \
+    PATH=/app/node_modules/.bin:$PATH
+
+# Verify CLI build
+RUN test -f /app/dist/index.js && echo "CLI build successful" || (echo "CLI build failed" && exit 1)
+
+# Verify test files exist
+RUN find /app/tests -name "*.bats" -type f | wc -l && echo "Test files found"
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD test -f /app/dist/index.js || exit 1
+
+# Default command
+CMD ["npm", "test"]
