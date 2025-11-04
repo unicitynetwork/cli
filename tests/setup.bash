@@ -58,8 +58,10 @@ if [[ "${UNICITY_TEST_WAIT_FOR_AGGREGATOR:-1}" == "1" ]]; then
   if [[ "${UNICITY_TEST_SKIP_EXTERNAL:-0}" != "1" ]]; then
     # Only wait if not skipping external services
     if ! wait_for_aggregator; then
-      printf "WARNING: Aggregator not ready at %s\n" "${UNICITY_AGGREGATOR_URL}" >&2
-      printf "Tests requiring aggregator will be skipped\n" >&2
+      printf "ERROR: Aggregator not ready at %s\n" "${UNICITY_AGGREGATOR_URL}" >&2
+      printf "Cannot run tests without aggregator. Tests MUST fail if aggregator unavailable.\n" >&2
+      printf "To skip tests requiring external services, set UNICITY_TEST_SKIP_EXTERNAL=1\n" >&2
+      exit 1
     fi
   fi
 fi
@@ -88,7 +90,9 @@ cleanup_test_suite() {
 
   # Clean up lock files
   if [[ -n "${UNICITY_ID_LOCK_FILE:-}" ]] && [[ -f "$UNICITY_ID_LOCK_FILE" ]]; then
-    rm -f -- "$UNICITY_ID_LOCK_FILE" 2>/dev/null || true
+    if ! rm -f -- "$UNICITY_ID_LOCK_FILE" 2>/dev/null; then
+      printf "WARNING: Failed to remove lock file: %s\n" "$UNICITY_ID_LOCK_FILE" >&2
+    fi
   fi
 }
 

@@ -317,16 +317,26 @@ wait_for_aggregator() {
   done
 }
 
-# Skip test if aggregator is not available
+# Require aggregator to be available - FAIL if not available
 # Usage: Call at the beginning of tests that require aggregator
-skip_if_aggregator_unavailable() {
+# This function will FAIL the test (not skip) if aggregator is unavailable
+# Tests requiring aggregator MUST fail when aggregator is down
+require_aggregator() {
   if [[ "${UNICITY_TEST_SKIP_EXTERNAL:-0}" == "1" ]]; then
     skip "External services disabled (UNICITY_TEST_SKIP_EXTERNAL=1)"
   fi
 
   if ! check_aggregator_health; then
-    skip "Aggregator not available at ${UNICITY_AGGREGATOR_URL}"
+    printf "FATAL: Aggregator required but not available at %s\n" "${UNICITY_AGGREGATOR_URL}" >&2
+    printf "Test requires aggregator. Cannot proceed.\n" >&2
+    return 1  # FAIL the test, do not skip
   fi
+}
+
+# Legacy function for backwards compatibility - now calls require_aggregator
+# DEPRECATED: Use require_aggregator() instead
+skip_if_aggregator_unavailable() {
+  require_aggregator
 }
 
 # -----------------------------------------------------------------------------
