@@ -10,11 +10,31 @@ This CLI provides a convenient interface to the transaction flow engine, allowin
 
 ## Documentation
 
+### User Documentation
 - **[Getting Started Guide](docs/getting-started.md)** - New users start here (15-minute tutorial)
 - **[API Reference](docs/reference/api-reference.md)** - Complete command-line API documentation
 - **[Documentation Index](docs/README.md)** - Full documentation navigation
 - **[Tutorial Series](docs/tutorials/README.md)** - Progressive learning path (beginner to expert)
 - **[Glossary](docs/glossary.md)** - Key terms and concepts
+
+### Developer Documentation
+- **[Developer Guide](.dev/README.md)** - Architecture, analysis, and implementation notes
+- **[Architecture](.dev/architecture/)** - System design and technical architecture
+- **[Codebase Analysis](.dev/codebase-analysis/)** - Dependency analysis and refactoring guides
+- **[Implementation Notes](.dev/implementation-notes/)** - Bug fixes and technical notes
+
+### Test Documentation
+- **[Test Scenarios](test-scenarios/README.md)** - Comprehensive test documentation (313 scenarios)
+- **[Functional Tests](test-scenarios/functional/)** - Command and workflow tests (96 scenarios)
+- **[Security Tests](test-scenarios/security/)** - Security audits and adversarial tests (68 scenarios)
+- **[Edge Cases](test-scenarios/edge-cases/)** - Corner cases and concurrency tests (149 scenarios)
+
+### Local Development Setup
+For local development with the Docker aggregator, see **[TrustBase Loading](.dev/architecture/trustbase-loading.md)** for:
+- How to extract TrustBase from your local Docker aggregator
+- Quick setup guide for development environment
+- Dynamic TrustBase loading configuration
+- Troubleshooting common issues
 
 ## Installation
 
