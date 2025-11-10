@@ -212,18 +212,20 @@ teardown() {
     assert_equals "false" "${has_info}" "Custom type should not have tokenTypeInfo"
 }
 
-# GEN_ADDR-014: Custom Token Type (Text, Hashed)
-@test "GEN_ADDR-014: Generate address with text token type (hashed)" {
-    local custom_text="my-custom-token-type"
+# GEN_ADDR-014: Custom Token Type (Alternative 64-char Hex)
+@test "GEN_ADDR-014: Generate address with alternative 64-char hex token type" {
+    # Use a different 64-char hex than the one in GEN_ADDR-013
+    local custom_hex="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
 
-    run_cli_with_secret "${SECRET}" "gen-address -y ${custom_text}"
+    run_cli_with_secret "${SECRET}" "gen-address -y ${custom_hex}"
     assert_success
     echo "$output" > address.json
 
-    # Should hash the text to 256-bit
+    # Should use the provided hex directly (no hashing)
     local token_type
     token_type=$(extract_json_field ".tokenType")
     assert_set token_type
+    assert_equals "${custom_hex}" "${token_type}"
     is_valid_hex "${token_type}" 64
 
     # No tokenTypeInfo for custom types
