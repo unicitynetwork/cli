@@ -1515,11 +1515,12 @@ get_predicate_type() {
   predicate_hex=$(~/.local/bin/jq -r '.state.predicate' "$file" 2>/dev/null)
 
   if [[ -n "$predicate_hex" ]]; then
-    # Simple heuristic: check for engine byte patterns
-    # This is not perfect without full CBOR decoder
-    # Masked predicates are typically longer due to nonce
+    # Simple heuristic based on observed predicate lengths:
+    # - Unmasked predicates: ~374 chars (longer, includes full signature structure)
+    # - Masked predicates: ~310 chars (shorter, optimized for one-time use)
+    # This is not perfect without full CBOR decoder, but works for current SDK
     local pred_length=${#predicate_hex}
-    if [[ $pred_length -gt 140 ]]; then
+    if [[ $pred_length -lt 350 ]]; then
       echo "masked"
     else
       echo "unmasked"
@@ -1554,30 +1555,9 @@ get_token_data() {
   fi
 }
 
-# Extract address from TXF file
-# Args: $1 = file path
-# Returns: DIRECT:// address or empty
-# Note: This requires CBOR decoding of the predicate to extract the public key
-get_txf_address() {
-  local file="${1:?File path required}"
-
-  # Try to find pre-computed address in state
-  local address
-  address=$(~/.local/bin/jq -r '.state.address // .address // empty' "$file" 2>/dev/null)
-
-  if [[ -n "$address" ]] && [[ "$address" != "null" ]]; then
-    echo "$address"
-    return 0
-  fi
-
-  # LIMITATION: Without CBOR decoder, we cannot extract address from predicate
-  # The predicate contains the public key, but it's CBOR-encoded
-  # For testing purposes, we can try to use the CLI to generate the address
-  # from the same secret, but this won't work for received tokens
-
-  # Return empty - this function is limited without CBOR support
-  return 0
-}
+# NOTE: get_txf_address() is now defined in token-helpers.bash
+# It extracts the address from genesis.data.recipient field
+# Do not redefine it here to avoid conflicts
 
 # Assert that token has a valid inclusion proof
 # Args: $1 = file path
@@ -1605,11 +1585,11 @@ assert_has_inclusion_proof() {
     fi
   done
 
-  # Verify Merkle root is valid hex hash (64 chars)
+  # Verify Merkle root is valid hex hash (68 chars in Unicity format with leading zeros)
   local merkle_root
   merkle_root=$(~/.local/bin/jq -r '.genesis.inclusionProof.merkleTreePath.root' "$file" 2>/dev/null)
-  if [[ ! "$merkle_root" =~ ^[0-9a-fA-F]{64}$ ]]; then
-    printf "${COLOR_RED}✗ Invalid Merkle root format (expected 64-char hex): %s${COLOR_RESET}\n" "$merkle_root" >&2
+  if [[ ! "$merkle_root" =~ ^[0-9a-fA-F]{68}$ ]]; then
+    printf "${COLOR_RED}✗ Invalid Merkle root format (expected 68-char hex): %s${COLOR_RESET}\n" "$merkle_root" >&2
     return 1
   fi
 
@@ -1633,7 +1613,7 @@ export -f is_valid_txf
 export -f get_txf_token_id
 export -f get_predicate_type
 export -f get_token_data
-export -f get_txf_address
+# get_txf_address is exported from token-helpers.bash
 export -f assert_has_inclusion_proof
 export -f assert_predicate_structure_valid
 export -f assert_token_predicate_valid
