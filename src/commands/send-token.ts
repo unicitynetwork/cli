@@ -6,12 +6,13 @@ import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/Sta
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { AddressFactory } from '@unicitylabs/state-transition-sdk/lib/address/AddressFactory.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
+import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
-import { validateAddress, validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
+import { validateAddress, validateSecret, validateFilePath, validateDataHash, throwValidationError } from '../utils/input-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -112,6 +113,7 @@ export function sendTokenCommand(program: Command): void {
     .option('-f, --file <file>', 'Token file (TXF) to send (required)')
     .option('-r, --recipient <address>', 'Recipient address (required)')
     .option('-m, --message <message>', 'Optional transfer message')
+    .option('--recipient-data-hash <hash>', 'SHA256 hash (64-char hex) of recipient state data (optional)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3001)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
@@ -261,13 +263,37 @@ export function sendTokenCommand(program: Command): void {
           console.error('Step 5: No transfer message provided\n');
         }
 
+        // STEP 5.5: Process recipient data hash (if provided)
+        let recipientDataHash: DataHash | null = null;
+        if (options.recipientDataHash) {
+          console.error('Step 5.5: Processing recipient data hash...');
+
+          // Validate format
+          const hashValidation = validateDataHash(options.recipientDataHash);
+          if (!hashValidation.valid) {
+            throwValidationError(hashValidation);
+          }
+
+          // Convert hex string to DataHash object
+          try {
+            recipientDataHash = DataHash.fromJSON(options.recipientDataHash);
+            console.error(`  ✓ Recipient data hash: ${options.recipientDataHash}`);
+            console.error(`  ℹ  Recipient must provide state data matching this hash\n`);
+          } catch (error) {
+            console.error('❌ Invalid recipient data hash format');
+            throw error;
+          }
+        } else {
+          console.error('Step 5.5: No recipient data hash (recipient has full control over state data)\n');
+        }
+
         // STEP 6: Create transfer commitment
         console.error('Step 6: Creating transfer commitment...');
         const transferCommitment = await TransferCommitment.create(
           token,
           recipientAddress,
           salt,
-          null,  // recipientDataHash
+          recipientDataHash,  // Use validated hash instead of null
           messageBytes,
           signingService
         );

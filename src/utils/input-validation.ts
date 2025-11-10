@@ -256,6 +256,50 @@ export function validateAddress(address: string): ValidationResult {
 }
 
 /**
+ * Validate recipient data hash (SHA256 hex string)
+ * Used in send-token to commit to future recipient state data
+ */
+export function validateDataHash(hash: string | undefined, allowEmpty: boolean = true): ValidationResult {
+  // Empty is allowed (optional parameter)
+  if (!hash || hash.trim() === '') {
+    if (allowEmpty) {
+      return { valid: true };
+    }
+    return {
+      valid: false,
+      error: 'Data hash cannot be empty',
+      details: 'Provide a 64-character hexadecimal SHA256 hash'
+    };
+  }
+
+  const trimmed = hash.trim();
+
+  // Check format: must be exactly 64 hex characters (SHA256 = 256 bits = 32 bytes = 64 hex chars)
+  if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    const errors: string[] = [
+      'Recipient data hash must be a 64-character hexadecimal string (SHA256 hash)',
+      `Received: ${trimmed.substring(0, 70)}${trimmed.length > 70 ? '...' : ''} (${trimmed.length} characters)`
+    ];
+
+    if (trimmed.length !== 64) {
+      errors.push(`Expected: 64 characters, Got: ${trimmed.length}`);
+    }
+
+    if (!/^[0-9a-fA-F]+$/.test(trimmed)) {
+      errors.push('Hash must contain only hexadecimal characters (0-9, a-f, A-F)');
+    }
+
+    return {
+      valid: false,
+      error: 'Invalid data hash format',
+      details: errors.join('\n')
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Validate file path exists and is readable
  */
 export function validateFilePath(filePath: string, fileDescription: string = 'File'): ValidationResult {
