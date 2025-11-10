@@ -215,7 +215,7 @@ run_cli() {
   full_cmd+=("${UNICITY_NODE_BIN:-node}" "$cli_path")
 
   # Capture output and exit code
-  # Note: Only capture stdout, not stderr (diagnostic messages go to stderr)
+  # Note: Capture both stdout and stderr for comprehensive output validation
   local exit_code=0
 
   # Handle both array arguments and string arguments
@@ -223,10 +223,10 @@ run_cli() {
   # Otherwise, use array expansion to preserve multi-word arguments
   if [[ $# -eq 1 ]] && [[ "$1" =~ [[:space:]] ]]; then
     # Single string argument with spaces - use eval to parse it
-    output=$(eval "${full_cmd[@]}" "$1") || exit_code=$?
+    output=$(eval "${full_cmd[@]}" "$1" 2>&1) || exit_code=$?
   else
     # Array of arguments - use direct expansion
-    output=$("${full_cmd[@]}" "$@") || exit_code=$?
+    output=$("${full_cmd[@]}" "$@" 2>&1) || exit_code=$?
   fi
 
   # Debug output
