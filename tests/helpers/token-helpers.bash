@@ -38,19 +38,20 @@ export TOKEN_TYPE_EURU="5e160d5e9fdbb03b553fb9c3f6e6c30efa41fa807be39fb4f18e4377
 #   $1: Secret
 #   $2: Preset (optional, default: uct)
 #   $3: Nonce (optional)
-# Returns: 0 on success, 1 on failure
-# Outputs: Sets $GENERATED_ADDRESS with the address string
+#   $4: Output file (optional)
+# Returns: Address string on stdout, 0 on success, 1 on failure
+# Outputs: Prints the generated address to stdout
 generate_address() {
   local secret="${1:?Secret required}"
   local preset="${2:-uct}"
   local nonce="${3:-}"
+  local output_file="${4:-}"
 
   # Build command
-  local -a cmd=(gen-address --preset "$preset")
+  local -a cmd=(gen-address --preset "$preset" --unsafe-secret)
   if [[ -n "$nonce" ]]; then
     cmd+=(--nonce "$nonce")
   fi
-  cmd+=(--endpoint "${UNICITY_AGGREGATOR_URL}")
 
   # Execute command
   local exit_code=0
@@ -72,8 +73,13 @@ generate_address() {
     return 1
   fi
 
-  # Export address
-  export GENERATED_ADDRESS="$address"
+  # Save to file if requested
+  if [[ -n "$output_file" ]]; then
+    printf '{"address":"%s"}\n' "$address" > "$output_file"
+  fi
+
+  # Print address to stdout
+  printf "%s" "$address"
 
   debug "Generated address: $address"
   return 0
@@ -103,10 +109,10 @@ mint_token() {
   fi
 
   # Build command
-  local -a cmd=(mint-token --preset "$preset" --output "$output_file")
+  local -a cmd=(mint-token --preset "$preset" --output "$output_file" --unsafe-secret)
 
   if [[ -n "$data" ]]; then
-    cmd+=(--data "$data")
+    cmd+=(--token-data "$data")
   fi
 
   cmd+=(--endpoint "${UNICITY_AGGREGATOR_URL}")
@@ -149,6 +155,67 @@ mint_token() {
   return 0
 }
 
+# Alias for mint_token with different parameter order (used in tests)
+# Args:
+#   $1: Minter secret
+#   $2: Preset (nft, uct, alpha, usdu, euru)
+#   $3: Data (optional JSON string)
+#   $4: Output file path
+#   $5: Additional mint-token arguments (optional, e.g., "-c 1000000")
+# Returns: 0 on success, 1 on failure
+mint_token_to_address() {
+  local secret="${1:?Minter secret required}"
+  local preset="${2:-nft}"
+  local data="${3:-}"
+  local output_file="${4:?Output file required}"
+  local extra_args="${5:-}"
+
+  # Create output file directory if needed
+  local output_dir
+  output_dir=$(dirname "$output_file")
+  mkdir -p "$output_dir"
+
+  # Build command
+  local -a cmd=(mint-token --preset "$preset" --output "$output_file" --unsafe-secret)
+
+  if [[ -n "$data" ]]; then
+    cmd+=(--token-data "$data")
+  fi
+
+  # Add extra arguments (like -c for coins)
+  if [[ -n "$extra_args" ]]; then
+    # shellcheck disable=SC2206
+    cmd+=($extra_args)
+  fi
+
+  cmd+=(--endpoint "${UNICITY_AGGREGATOR_URL}")
+
+  debug "Minting token to address: preset=$preset, output=$output_file"
+
+  # Execute command
+  local exit_code=0
+  if ! SECRET="$secret" run_cli "${cmd[@]}"; then
+    exit_code=$?
+    error "Failed to mint token (exit code: $exit_code)"
+    return "$exit_code"
+  fi
+
+  # Verify output file was created
+  if [[ ! -f "$output_file" ]]; then
+    error "Mint succeeded but output file not created: $output_file"
+    return 1
+  fi
+
+  # Verify output file contains valid JSON
+  if ! jq empty "$output_file" 2>/dev/null; then
+    error "Mint output file contains invalid JSON: $output_file"
+    return 1
+  fi
+
+  debug "Successfully minted token to: $output_file"
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # Token Sending
 # -----------------------------------------------------------------------------
@@ -181,7 +248,7 @@ send_token_offline() {
   fi
 
   # Build command
-  local -a cmd=(send-token --file "$input_file" --recipient "$recipient" --output "$output_file")
+  local -a cmd=(send-token --file "$input_file" --recipient "$recipient" --output "$output_file" --unsafe-secret)
 
   if [[ -n "$message" ]]; then
     cmd+=(--message "$message")
@@ -252,6 +319,7 @@ send_token_immediate() {
     --submit-now
     --output "$output_file"
     --endpoint "${UNICITY_AGGREGATOR_URL}"
+    --unsafe-secret
   )
 
   debug "Sending token immediately: input=$input_file, recipient=$recipient"
@@ -319,6 +387,7 @@ receive_token() {
     --file "$input_file"
     --output "$output_file"
     --endpoint "${UNICITY_AGGREGATOR_URL}"
+    --unsafe-secret
   )
 
   debug "Receiving token: input=$input_file"

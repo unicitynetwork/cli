@@ -39,7 +39,7 @@ teardown() {
 
     # Verify: Transfer file created
     assert_file_exists "transfer.txf"
-    assert is_valid_txf "transfer.txf"
+    is_valid_txf "transfer.txf"
     assert_offline_transfer_valid "transfer.txf"
 
     # Verify: Has offline transfer section
@@ -128,8 +128,8 @@ teardown() {
     # Verify: Token data preserved
     local data
     data=$(get_token_data "transfer.txf")
-    assert_output_contains "Art NFT"
-    assert_output_contains "Alice"
+    assert_string_contains "$data" "Art NFT"
+    assert_string_contains "$data" "Alice"
 
     # Verify: Token type remains NFT
     assert_token_type "transfer.txf" "nft"
@@ -162,7 +162,7 @@ teardown() {
 
     # Verify: Coin amount correct
     local amount
-    amount=$(jq -r '.genesis.data.coinData[0].amount' transfer.txf)
+    amount=$(jq -r '.genesis.data.coinData[0][1]' transfer.txf)
     assert_equals "5000000000000000000" "${amount}"
 }
 

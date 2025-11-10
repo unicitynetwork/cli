@@ -207,19 +207,26 @@ run_cli() {
 
   # Execute CLI with timeout
   # Increased from 30s to 320s to allow for inclusion proof polling (up to 5 min)
-  local timeout_cmd=""
+  # Build command array to preserve argument quoting
+  local -a full_cmd=()
   if command -v timeout >/dev/null 2>&1; then
-    timeout_cmd="timeout ${UNICITY_CLI_TIMEOUT:-320}"
+    full_cmd=(timeout "${UNICITY_CLI_TIMEOUT:-320}")
   fi
+  full_cmd+=("${UNICITY_NODE_BIN:-node}" "$cli_path")
 
   # Capture output and exit code
   # Note: Only capture stdout, not stderr (diagnostic messages go to stderr)
-  # Handle command string by using eval to properly parse arguments
   local exit_code=0
-  if [[ -n "$timeout_cmd" ]]; then
-    output=$(eval $timeout_cmd "${UNICITY_NODE_BIN:-node}" "$cli_path" "$@") || exit_code=$?
+
+  # Handle both array arguments and string arguments
+  # If $1 contains spaces and $# == 1, it's a command string that needs eval
+  # Otherwise, use array expansion to preserve multi-word arguments
+  if [[ $# -eq 1 ]] && [[ "$1" =~ [[:space:]] ]]; then
+    # Single string argument with spaces - use eval to parse it
+    output=$(eval "${full_cmd[@]}" "$1") || exit_code=$?
   else
-    output=$(eval "${UNICITY_NODE_BIN:-node}" "$cli_path" "$@") || exit_code=$?
+    # Array of arguments - use direct expansion
+    output=$("${full_cmd[@]}" "$@") || exit_code=$?
   fi
 
   # Debug output
@@ -342,6 +349,11 @@ skip_if_aggregator_unavailable() {
   require_aggregator
 }
 
+# Alias for require_aggregator - used by test files
+check_aggregator() {
+  require_aggregator
+}
+
 # -----------------------------------------------------------------------------
 # Output Capture and Validation
 # -----------------------------------------------------------------------------
@@ -363,20 +375,52 @@ save_output_artifact() {
   fi
 }
 
-# Extract JSON field from output
+# Extract JSON field from output, file, or JSON string
 # Args:
-#   $1: JSON path (e.g., ".data.token")
-#   $2: Input JSON (optional, defaults to $output)
+#   $1: File path or JSON path (auto-detected)
+#   $2: JSON path or Input JSON (optional, defaults to $output)
 # Returns: Extracted value
+# Usage:
+#   extract_json_field ".path"                      # from $output
+#   extract_json_field ".path" '{"json":"data"}'    # from JSON string
+#   extract_json_field "file.json" ".path"          # from file
 extract_json_field() {
-  local path="${1:?JSON path required}"
-  local json="${2:-${output:-}}"
+  local arg1="${1:?First argument required}"
+  local arg2="${2:-}"
 
-  if command -v jq >/dev/null 2>&1; then
-    printf "%s" "$json" | jq -r "$path"
+  # Determine usage pattern
+  if [[ -f "$arg1" ]]; then
+    # Pattern: extract_json_field "file.json" ".path"
+    local file="$arg1"
+    local path="$arg2"
+    if [[ -z "$path" ]]; then
+      printf "ERROR: JSON path required when reading from file\n" >&2
+      return 1
+    fi
+    # Ensure path starts with dot for jq
+    if [[ ! "$path" =~ ^\. ]]; then
+      path=".$path"
+    fi
+    if command -v jq >/dev/null 2>&1; then
+      jq -r "$path" "$file"
+    else
+      printf "ERROR: jq not found, cannot extract JSON field\n" >&2
+      return 1
+    fi
   else
-    printf "ERROR: jq not found, cannot extract JSON field\n" >&2
-    return 1
+    # Pattern: extract_json_field ".path" [json_string]
+    local path="$arg1"
+    local json="${arg2:-${output:-}}"
+    # Ensure path starts with dot for jq
+    if [[ ! "$path" =~ ^\. ]]; then
+      path=".$path"
+    fi
+    if command -v jq >/dev/null 2>&1; then
+      printf "%s" "$json" | jq -r "$path"
+    else
+      printf "ERROR: jq not found, cannot extract JSON field\n" >&2
+      return 1
+    fi
   fi
 }
 
@@ -543,7 +587,9 @@ export -f run_cli_expect_success
 export -f run_cli_expect_failure
 export -f check_aggregator_health
 export -f wait_for_aggregator
+export -f require_aggregator
 export -f skip_if_aggregator_unavailable
+export -f check_aggregator
 export -f save_output_artifact
 export -f extract_json_field
 export -f output_contains

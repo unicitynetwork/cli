@@ -1140,17 +1140,18 @@ assert_offline_transfer_valid() {
     fi
   done
   
-  # Validate recipient address format (hex string)
+  # Validate recipient address format (DIRECT:// or hex string)
   local recipient
   recipient=$(~/.local/bin/jq -r '.offlineTransfer.recipient' "$token_file" 2>/dev/null)
-  
+
   if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
     printf "${COLOR_RED}✗ Empty recipient address${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
-  if ! [[ "$recipient" =~ ^[0-9a-fA-F]+$ ]]; then
+
+  # Accept both DIRECT:// format and plain hex
+  if ! [[ "$recipient" =~ ^DIRECT://[0-9a-fA-F]+$ ]] && ! [[ "$recipient" =~ ^[0-9a-fA-F]+$ ]]; then
     printf "${COLOR_RED}✗ Invalid recipient address format${COLOR_RESET}\n" >&2
     printf "  Address: %s\n" "$recipient" >&2
     return 1
