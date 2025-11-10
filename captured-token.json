@@ -1,0 +1,79 @@
+Attempting to extract TrustBase from Docker aggregator...
+Found aggregator container: aggregator-service
+✓ Loaded TrustBase from Docker container: aggregator-service
+{
+  "version": "2.0",
+  "genesis": {
+    "data": {
+      "coinData": [],
+      "reason": null,
+      "recipient": "DIRECT://0000df8350ebe17c129e3d0e8cf6421a154092e885210a9e25ba784a9cef3afb5a147bda9d23",
+      "recipientDataHash": null,
+      "salt": "5e851dbb38ddf7071ca7ac39789a2982f97531dc6fa0f2f55d93d3ec72b278af",
+      "tokenData": "",
+      "tokenId": "4bff8ed356be8bcd13beb780ab2deca2737c2ef949204f29defb35469046e089",
+      "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509"
+    },
+    "inclusionProof": {
+      "authenticator": {
+        "algorithm": "secp256k1",
+        "publicKey": "0239bfeb40fec17ff2c6c2e8bfb90efcd82bec162764597c584d0aa17e48a64ea4",
+        "signature": "8d0d09d9dde50919e81b8f4f409cc03afa580327bd115f06e3be2e806a7a41e50060da2fbcd31652947625d79ab70cc5fb974079ee55ebab2826e14b272375cd00",
+        "stateHash": "0000cbe564de700b9c99b9b61a91c580c24aedf574d30248e7caf9aab2e1383a8cc5"
+      },
+      "merkleTreePath": {
+        "root": "000057e37fd6c1702a32dd9dbba7ae04dcee246feffbc97280e85b371088f568f780",
+        "steps": [
+          {
+            "data": "00002f2bddd443c46291fe798504aedd830373a962b7907df3c5a62011f83abefca4",
+            "path": "29643108126741959369859999595172245711986799265859522365591088636750699438084010"
+          },
+          {
+            "data": "16c6cc75cc6baea88b608e308b2c9ed3932ec16bb83e69e1ba3e7b75f903858b",
+            "path": "2"
+          },
+          {
+            "data": "eb1cbc1ed76d5511a52be374249c5161985b70a3e56db8a316350a4be10c4470",
+            "path": "2"
+          },
+          {
+            "data": "07398b3cc1cb135a891aa9d1d18502dacdc95c93bd28b4d305b122f5109f004a",
+            "path": "3"
+          },
+          {
+            "data": "5575a7f4637a54f316e12da934b4890106c5f05945ebfd9aaeee3f35952ef5f8",
+            "path": "2"
+          },
+          {
+            "data": "f4d956fab4d22f963efbada6931e6643fd5ef2dbb08bea335ebb63c10698e0cc",
+            "path": "2"
+          },
+          {
+            "data": "58fa889bca62996b23bf7ab9cb046a0f3976b0e4793c4dd2f7f44bdd697ef6d5",
+            "path": "2"
+          },
+          {
+            "data": "65e43d7d8795715c6521fd8c63e918f53ad7f9f98b356f69228cae3fedb0b388",
+            "path": "3"
+          },
+          {
+            "data": "bdf2ee07d09229e7ea49b3c6fa7f11294594052fdc8d5d0ac62adc247be72780",
+            "path": "3"
+          },
+          {
+            "data": "dbc06f84ea20b9ade4bc8aa0f5ef97d46c7c3afc8052b01e846506e70a6e4e1a",
+            "path": "1"
+          }
+        ]
+      },
+      "transactionHash": null,
+      "unicityCertificate": "d903ef8701d903f08a0119907d005822000057e37fd6c1702a32dd9dbba7ae04dcee246feffbc97280e85b371088f568f7805822000057e37fd6c1702a32dd9dbba7ae04dcee246feffbc97280e85b371088f568f780401a690ba341f600f658201e54a06e38dba2672eea73364e32847ac04e543913a9e494575fe3aa2298b71c58201c3dd944f15933d76d1b1acd530eb587fdaaded6c6ad57ee469a56a51a49d6f682418080d903f683010780d903e98801031a00036357001a690ba3435820c5c6feda55ce8aae74fc2e56ab2b20c24081786eb52343220955b2aee5c1ed0c58207a9cb2e3b3e616b1577003ac6c56acd172a793e98a9fce66f39c7c8180005b5aa1783531365569753248416d5234385774713247347067436f68585766697a72693466717947646e7a506d58453456625a76694b4831416b58410f284aee326482cf87cc53a5564247cb537abf06dc9cb4435a59ac19075d293922b025aa039353118e3d19d56b60ac2f45bf6145964edd9e39c6d45fde035bb801"
+    }
+  },
+  "state": {
+    "data": "",
+    "predicate": "8300410058b58658204bff8ed356be8bcd13beb780ab2deca2737c2ef949204f29defb35469046e0895820f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe3978675095821036022f7ccbcfbf363c8973520eaac233dfed40bd5dfebcdaa7dd26399b65ebabe69736563703235366b310058401f5df96b77426eab727c1e8b603401955740040d79db9cf12368bcc24610a83679031f4a86aca3c60ad522257a06e84dd73049895f5a5841df26938b3bc86b55"
+  },
+  "transactions": [],
+  "nametags": []
+}

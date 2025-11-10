@@ -1,0 +1,271 @@
+================================================================================
+PROOF VALIDATION FLOW - VISUAL COMPARISON
+================================================================================
+
+EXPECTED FLOW vs CURRENT FLOW
+================================================================================
+
+
+EXPECTED FLOW (Secure):
+=======================
+
+  [1] User runs: npm run mint-token -d '{"test":"data"}'
+      │
+      ├─→ Create SigningService from secret
+      │   • Private key derived from secret
+      │   • Public key computed
+      │
+      ├─→ Create Predicate (Unmasked or Masked)
+      │   • Address derived from predicate
+      │
+      ├─→ Create MintCommitment
+      │   • Contains our authenticator (our signature)
+      │   • Created but NOT used for network validation
+      │
+      ├─→ Submit to Aggregator
+      │   • Network receives commitment
+      │   • Commitment ID = RequestId
+      │
+      └─→ WAIT FOR TREE INCLUSION (201 seconds)
+           • Aggregator adds to Sparse Merkle Tree
+           • BFT consensus reaches agreement
+           • Authenticator field populated by validators
+
+  [2] Call getInclusionProof(commitment)
+      │
+      └─→ Returns Complete InclusionProof:
+           {
+             merkleTreePath: {
+               root: "abc123...",     // ✓ Root of tree
+               steps: [...]           // ✓ Path to root
+             },
+             authenticator: {         // ✓ From BFT validators
+               publicKey: "def456...",
+               algorithm: "ECDSA",
+               signature: "ghi789...",
+               stateHash: "jkl012..."
+             },
+             transactionHash: "mno345...", // ✓ Our commitment hash
+             unicityCertificate: "pqr678..." // ✓ Validator signatures
+           }
+
+  [3] Validate Proof
+      │
+      ├─→ Check authenticator is NOT null ✓
+      │   • Authenticator from network consensus
+      │
+      ├─→ Check transactionHash is NOT null ✓
+      │   • Required for signature verification
+      │
+      ├─→ Verify authenticator.verify(transactionHash) ✓
+      │   • Confirm BFT validators signed our commitment
+      │   • This proves NETWORK confirmed it
+      │
+      ├─→ Call proof.verify(trustBase, requestId) ✓
+      │   • Verify merkle path is valid
+      │   • Verify unicity certificate signed by trust base
+      │   • If NOT_OK, proof is INVALID → ERROR
+      │
+      └─→ All checks passed: ACCEPT TOKEN
+
+  [4] Create Token
+      │
+      └─→ Token includes proof with network validators' signatures
+           • Proof proves network confirmed the state
+           • Token is valid and can be transferred
+
+
+CURRENT FLOW (Insecure):
+=======================
+
+  [1] User runs: npm run mint-token -d '{"test":"data"}'
+      │
+      ├─→ Create SigningService from secret
+      │   • Private key derived from secret
+      │   • Public key computed
+      │
+      ├─→ Create Predicate (Unmasked or Masked)
+      │   • Address derived from predicate
+      │
+      ├─→ Create MintCommitment
+      │   • Contains OUR authenticator (our signature)
+      │   • This will be used as FALLBACK
+      │
+      ├─→ Submit to Aggregator
+      │   • Network receives commitment
+      │   • Commitment ID = RequestId
+      │
+      └─→ START POLLING (waitInclusionProof)
+           • Line 207: while loop starts
+           • Line 210: 60 second timeout (not 201)
+           • Will return as soon as ANY proof exists
+
+
+  [2] Call getInclusionProof(commitment) at ~20 seconds
+      │
+      └─→ Returns Incomplete InclusionProof:
+           {
+             merkleTreePath: { ... },
+             authenticator: null,            // ✗ Not populated yet
+             transactionHash: null,          // ✗ Not populated yet
+             unicityCertificate: { ... }
+           }
+
+
+  [3] IMMEDIATE RETURN (lines 221-226)
+      │
+      ├─→ Check: if (proofResponse && proofResponse.inclusionProof)
+      │   • YES - proof object exists (but incomplete)
+      │
+      └─→ return proof;  // ← RETURNS IMMEDIATELY
+           • Does NOT wait for authenticator
+           • Does NOT wait for transactionHash
+           • Does NOT check if proof is complete
+
+
+  [4] FALLBACK POPULATION (lines 450-453)
+      │
+      ├─→ Check: if (inclusionProof.authenticator === null)
+      │   • YES - authenticator is null
+      │
+      └─→ inclusionProof.authenticator = mintCommitment.authenticator;
+           • Replace null with OUR signature
+           • ✗ Now "proving" ourselves instead of network
+
+
+  [5] Validate Proof
+      │
+      ├─→ Check authenticator is NOT null ✓
+      │   • Passes (because we replaced it)
+      │   • But now it's OUR signature, not network's
+      │
+      ├─→ Check transactionHash (line 54-57)
+      │   • transactionHash is still null ✗
+      │   • Not an error (treated as warning)
+      │
+      ├─→ Try to verify authenticator.verify(transactionHash)
+      │   • Condition: if (... && proof.transactionHash) at line 80
+      │   • Condition fails (transactionHash is null)
+      │   • Signature verification SKIPPED ✗
+      │
+      ├─→ Call proof.verify(trustBase, requestId)
+      │   • Let's say this returns NOT_OK (merkle path incomplete)
+      │   • Line 100: Convert to WARNING
+      │   • ✗ Not treated as error
+      │
+      └─→ Return valid: true
+           • errors array is empty
+           • So function returns valid=true
+           • Despite being unverifiable!
+
+
+  [6] Create Token
+      │
+      └─→ Token includes "proof" that is actually:
+           ✗ No network consensus signature
+           ✗ No verified authenticator signature
+           ✗ No verified merkle path
+           ✗ Just our own commitment hash
+
+
+SIDE-BY-SIDE COMPARISON:
+======================
+
+Validation Check          Expected Flow    Current Flow    Impact
+─────────────────────────────────────────────────────────────────────
+Proof exists              ✓ Yes            ✓ Yes          -
+Proof complete            ✓ Wait + Check   ✗ Return now   Incomplete proofs
+Authenticator present     ✓ Yes (network)  ✓ Yes (ours)   Using own signature
+Authenticator valid       ✓ Network sigs   ✗ Fallback     No network consensus
+transactionHash present   ✓ Yes            ✗ No (null)    Can't verify sig
+Signature verification    ✓ Verified       ✗ Skipped      No sig check
+Merkle path valid         ✓ Verified OK    ✗ Warning      Accept invalid paths
+Proof complete validation ✓ All pass       ✗ Some fail    Invalid treated valid
+
+
+KEY DIFFERENCES:
+================
+
+1. COMPLETENESS CHECKING
+   Expected: Loop until proof has all fields (authenticator, transactionHash)
+   Current:  Return immediately when proof object exists
+
+2. AUTHENTICATOR SOURCE
+   Expected: From network (BFT validators)
+   Current:  From local MintCommitment (our signature)
+
+3. SIGNATURE VERIFICATION
+   Expected: authenticator.verify(transactionHash) called
+   Current:  Skipped because transactionHash is null
+
+4. ERROR HANDLING
+   Expected: Missing critical fields = ERROR
+   Current:  Missing critical fields = WARNING (or ignored)
+
+5. SDK VALIDATION
+   Expected: proof.verify() returning NOT_OK = ERROR
+   Current:  proof.verify() returning NOT_OK = WARNING
+
+
+SECURITY IMPLICATIONS:
+======================
+
+Attack Vector 1: Proof Tampering
+  Expected: Detected by signature verification
+  Current:  Not detected (sig verification skipped)
+
+Attack Vector 2: Merkle Path Substitution
+  Expected: Detected by merkle validation
+  Current:  Not detected (sdk failure is warning)
+
+Attack Vector 3: State Modification
+  Expected: Detected by state hash verification
+  Current:  Not detected (no recomputation check)
+
+Attack Vector 4: RequestId Mismatch
+  Expected: Detected by requestId validation
+  Current:  Not detected (no validation)
+
+
+ROOT CAUSE CHAIN:
+=================
+
+1. SDK returns incomplete proof (authenticator null)
+2. Code assumes this is normal (line 448 comment)
+3. Code returns immediately instead of waiting
+4. Null authenticator triggers fallback (line 450)
+5. Missing transactionHash converted to warning
+6. SDK failure converted to warning
+7. Invalid proof treated as valid
+
+
+WHAT SHOULD HAPPEN:
+
+1. Proof missing authenticator = wait longer (up to 201 seconds)
+2. Proof still missing authenticator = ERROR (not fallback)
+3. Missing transactionHash = ERROR (can't verify)
+4. SDK failure = ERROR (proof validation failed)
+5. All checks pass = ACCEPT
+
+
+FILES WITH ISSUES:
+==================
+
+src/commands/mint-token.ts
+  Line 207-243: waitInclusionProof() - Returns too early
+  Line 450-453: Fallback logic - Replaces network auth with local
+
+src/utils/proof-validation.ts
+  Line 54-57: transactionHash warning - Should be error
+  Line 90: Cannot verify warning - Should be error
+  Line 100: SDK failure warning - Should be error
+
+src/commands/send-token.ts
+  Line 58-93: Same waitInclusionProof issues
+
+src/commands/receive-token.ts
+  Line 61-96: Same waitInclusionProof issues
+
+
+TIMESTAMP OF ANALYSIS: 2025-11-10
+================================================================================

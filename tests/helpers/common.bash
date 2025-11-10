@@ -206,9 +206,10 @@ run_cli() {
   fi
 
   # Execute CLI with timeout
+  # Increased from 30s to 320s to allow for inclusion proof polling (up to 5 min)
   local timeout_cmd=""
   if command -v timeout >/dev/null 2>&1; then
-    timeout_cmd="timeout ${UNICITY_CLI_TIMEOUT:-30}"
+    timeout_cmd="timeout ${UNICITY_CLI_TIMEOUT:-320}"
   fi
 
   # Capture output and exit code
@@ -480,10 +481,14 @@ generate_test_nonce() {
 }
 
 # Run CLI with secret in environment
+# Automatically adds --unsafe-secret flag for test secrets
 run_cli_with_secret() {
   local secret="$1"
   shift
-  SECRET="$secret" run_cli "$@"
+
+  # Add --unsafe-secret flag to bypass secret validation in tests
+  # This allows using simple test secrets like "test-secret-123"
+  SECRET="$secret" run_cli "$@ --unsafe-secret"
 }
 
 # Validate test environment

@@ -22,7 +22,7 @@ import * as readline from 'readline';
  * Get secret from environment variable or prompt user
  * Validates the secret before returning
  */
-async function getSecret(): Promise<Uint8Array> {
+async function getSecret(skipValidation: boolean = false): Promise<Uint8Array> {
   let secret: string;
 
   // Check environment variable first
@@ -46,7 +46,7 @@ async function getSecret(): Promise<Uint8Array> {
   }
 
   // Validate secret (CRITICAL: prevent weak/empty secrets)
-  const validation = validateSecret(secret, 'receive-token');
+  const validation = validateSecret(secret, 'receive-token', skipValidation);
   if (!validation.valid) {
     throwValidationError(validation);
   }
@@ -77,21 +77,19 @@ async function waitInclusionProof(
       if (proofResponse && proofResponse.inclusionProof) {
         const proof = proofResponse.inclusionProof;
 
-        // First time we see the proof
-        if (!proofReceived) {
-          console.error('  ✓ Inclusion proof received');
-          proofReceived = true;
-        }
+        // Check if proof is complete (has authenticator AND transactionHash)
+        // The aggregator populates these fields asynchronously, so we must wait
+        const hasAuth = proof.authenticator !== null && proof.authenticator !== undefined;
+        const hasTxHash = proof.transactionHash !== null && proof.transactionHash !== undefined;
 
-        // Check if authenticator is populated
-        const proofJson = proof.toJSON ? proof.toJSON() : proof;
-
-        if (proofJson.authenticator !== null && proofJson.authenticator !== undefined) {
-          console.error('  ✓ Authenticator populated - proof complete');
+        if (hasAuth && hasTxHash) {
+          console.error('  ✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
           return proof;
-        } else {
-          // Proof exists but authenticator not yet populated
-          console.error('  ⏳ Waiting for authenticator to be populated...');
+        }
+        // If proof exists but is incomplete, continue polling
+        if (!proofReceived) {
+          console.error(`  ⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
+          proofReceived = true;
         }
       }
     } catch (err) {
@@ -107,11 +105,7 @@ async function waitInclusionProof(
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
-  if (proofReceived) {
-    throw new Error(`Timeout waiting for authenticator to be populated after ${timeoutMs}ms`);
-  } else {
-    throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
-  }
+  throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
 }
 
 export function receiveTokenCommand(program: Command): void {
@@ -125,6 +119,7 @@ export function receiveTokenCommand(program: Command): void {
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
+    .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .action(async (options) => {
       try {
         // Validate required options
@@ -223,7 +218,7 @@ export function receiveTokenCommand(program: Command): void {
 
         // STEP 3: Get recipient's secret
         console.error('Step 3: Getting recipient secret...');
-        const secret = await getSecret();
+        const secret = await getSecret(options.unsafeSecret);
         const signingService = await SigningService.createFromSecret(secret);
         console.error(`  ✓ Signing service created`);
         console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);

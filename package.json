@@ -24,6 +24,7 @@
     "test:debug": "./tests/run-all-tests.sh --all --debug --verbose",
     "test:coverage": "./tests/generate-coverage.sh --all",
     "test:docker": "docker-compose -f docker-compose.test.yml run test-runner",
+    "test:aggregator-proof": "npm run build && node dist/tests/manual/test-aggregator-proof-response.js",
     "prepare": "npm run build",
     "get-request": "node dist/index.js get-request",
     "register-request": "node dist/index.js register-request",

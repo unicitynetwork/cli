@@ -1,0 +1,308 @@
+================================================================================
+MINT-TOKEN TEST SUITE FAILURE ANALYSIS
+Executive Summary
+================================================================================
+
+OVERALL STATUS: All 28 tests FAIL with timeout (exit code 124)
+
+TEST FILE: tests/functional/test_mint_token.bats (28 scenarios)
+FAILURE TYPE: Timeout waiting for BFT authenticator
+FAIL POINT: Step 6 - Waiting for inclusion proof (~30 seconds into test)
+
+================================================================================
+FAILURE ROOT CAUSE
+================================================================================
+
+PRIMARY ISSUE (Category A - BLOCKING ALL TESTS):
+  Local aggregator not including BFT authenticator field in inclusion proof
+  response. Tests successfully create transactions and receive initial proofs,
+  but then enter infinite loop waiting for authenticator field to be populated.
+
+  Location: src/commands/mint-token.ts, line 236-244
+  Expected: proof.authenticator contains BFT consensus signatures
+  Actual: proof.authenticator is null/undefined
+  Result: Command waits 300 seconds, BATS kills at 30 seconds (exit code 124)
+
+================================================================================
+ISSUE CATEGORIZATION
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ CATEGORY A: Missing BFT Authenticator (CRITICAL - BLOCKING)               │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Severity:     CRITICAL - Blocks all 28 tests                              │
+│ Tests Affected: MINT_TOKEN-001 through MINT_TOKEN-028 (all)               │
+│ Root Cause:    Aggregator not populating authenticator field              │
+│ Failure Point: Step 6, ~30 seconds into test                              │
+│ Fix Location:  Aggregator Docker configuration/version                    │
+│ Fix Type:      Infrastructure                                             │
+│                                                                            │
+│ Evidence:                                                                  │
+│   - All tests show identical output pattern                               │
+│   - "Waiting for authenticator to be populated..." repeats 30+ times      │
+│   - Test timeout at 30 seconds (BATS limit)                               │
+│   - Command would wait full 300 seconds if not killed by BATS             │
+│                                                                            │
+│ Code Location:                                                             │
+│   File: src/commands/mint-token.ts                                        │
+│   Lines: 236-244                                                          │
+│   Function: waitForInclusionProof()                                       │
+│                                                                            │
+│ Fix Priority: IMMEDIATE (before other fixes can be tested)                │
+│ Estimated Fix Time: 30 min - 2 hours (depends on investigation)           │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ CATEGORY B: JSON Version Type Mismatch (HIGH - HIDDEN)                    │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Severity:     HIGH - Will fail after Category A is fixed                  │
+│ Tests Affected: ~15 tests that check version field                        │
+│ Root Cause:    String vs numeric comparison of JSON version               │
+│ Failure Point: Line 36 in test_mint_token.bats (assertion)                │
+│ Fix Location:  tests/helpers/assertions.bash, line 240-267                │
+│ Fix Type:      Test helper logic                                          │
+│                                                                            │
+│ Issue:                                                                     │
+│   assert_json_field_equals uses jq -r which converts numbers to strings   │
+│   Version field: 2 (number) → "2" (string via -r)                         │
+│   Comparison: "2" != "2.0" (string comparison fails)                      │
+│                                                                            │
+│ Affected Assertions:                                                       │
+│   test_mint_token.bats:36 (MINT_TOKEN-001)                                │
+│   (Similar assertions in other tests)                                      │
+│                                                                            │
+│ Fix Priority: HIGH (enable after Category A is fixed)                     │
+│ Estimated Fix Time: 5 minutes                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ CATEGORY C: Test Timeout Configuration Mismatch (MEDIUM - SECONDARY)      │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Severity:     MEDIUM - Exacerbates Category A                             │
+│ Tests Affected: All 28 tests                                              │
+│ Root Cause:    BATS timeout (30s) < command timeout (300s)                │
+│ Failure Point: Test harness timeout wrapper                               │
+│ Fix Location:  tests/helpers/common.bash, line 211                        │
+│ Fix Type:      Configuration                                              │
+│                                                                            │
+│ Issue:                                                                     │
+│   BATS timeout: timeout 30 (default)                                      │
+│   Command timeout: const timeoutMs = 300000                               │
+│   Result: BATS kills process at 30s with exit code 124                    │
+│   Should allow: Command's 300s timeout to trigger first                   │
+│                                                                            │
+│ Fix:                                                                       │
+│   Change: timeout ${UNICITY_CLI_TIMEOUT:-30}                              │
+│   To: timeout ${UNICITY_CLI_TIMEOUT:-320}  (300s + 20s buffer)            │
+│                                                                            │
+│ Fix Priority: CRITICAL (must do with Category A)                          │
+│ Estimated Fix Time: 2 minutes                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ CATEGORY D: Numeric Field Comparisons (LOW - HIDDEN)                      │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Severity:     LOW - Fragile but usually works                             │
+│ Tests Affected: ~8 tests with coin/transaction counts                     │
+│ Root Cause:    Inconsistent numeric vs string comparison                  │
+│ Failure Point: Lines 49-50, 113-114, 129-130, 354-369, 527-541           │
+│ Fix Location:  test_mint_token.bats, token-helpers.bash                   │
+│ Fix Type:      Test assertions                                            │
+│                                                                            │
+│ Issue:                                                                     │
+│   get_transaction_count() returns: 0 (number via jq)                      │
+│   assert_equals expects: "0" (string)                                     │
+│   Comparison: "0" == "0" (usually works, but fragile)                     │
+│                                                                            │
+│ Affected Assertions:                                                       │
+│   test_mint_token.bats:49-50 (transaction count check)                    │
+│   test_mint_token.bats:113-114, 129-130 (coin count checks)               │
+│   test_mint_token.bats:354-369 (multi-coin amount verification)           │
+│   test_mint_token.bats:527-541 (unique coinId validation)                 │
+│                                                                            │
+│ Fix Priority: MEDIUM (enable after Category B is fixed)                   │
+│ Estimated Fix Time: 10 minutes                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+DETAILED EVIDENCE
+================================================================================
+
+All test output follows identical pattern:
+
+Test Output from MINT_TOKEN-001:
+┌─────────────────────────────────────────────────────────────────────────┐
+│ === Self-Mint Pattern: Minting token to yourself ===                   │
+│                                                                         │
+│ Loading trust base...                                                   │
+│   ✓ Trust base ready (Network ID: 3, Epoch: 1)                        │
+│                                                                         │
+│ Generated random tokenId: [64-char hex]                                │
+│ Using preset token type "nft" (unicity)                                │
+│   TokenType ID: f8aa13834268d29355ff12183066f0cb902003629bbc5eb9e...│
+│   Asset kind: non-fungible                                             │
+│ Salt: [64-char hex]                                                    │
+│                                                                         │
+│ Step 1: Creating predicate...                                          │
+│   ✓ Predicate created                                                  │
+│                                                                         │
+│ Step 2: Deriving address from predicate...                             │
+│   ✓ Address: DIRECT://0000f62130d69ebf280148b8b25764ba7105ee096d...│
+│                                                                         │
+│ Step 3: Creating MintTransactionData...                                │
+│   ✓ MintTransactionData created                                        │
+│                                                                         │
+│ Step 4: Creating mint commitment...                                    │
+│   ✓ Commitment created                                                 │
+│                                                                         │
+│ Step 5: Submitting to network...                                       │
+│   ✓ Transaction submitted                                              │
+│   Request ID: 0000df2fac1f6ed37204812fccbc463329b800135a0bc9489f...│
+│                                                                         │
+│ Step 6: Waiting for inclusion proof...                                 │
+│ Waiting for inclusion proof for commitment...                          │
+│ Inclusion proof received                                               │
+│ Waiting for authenticator to be populated...                           │
+│ Waiting for authenticator to be populated...                           │
+│ Waiting for authenticator to be populated...                           │
+│ [... repeats ~30+ times ...]                                           │
+│ Waiting for authenticator to be populated...                           │
+│ [TIMEOUT - exit code 124]                                              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+This pattern repeats identically for all 28 tests:
+  - MINT_TOKEN-001: Mint NFT with default settings
+  - MINT_TOKEN-002: Mint NFT with JSON metadata
+  - MINT_TOKEN-003: Mint NFT with plain text data
+  - MINT_TOKEN-004: Mint UCT with default coin
+  - ... (all remaining tests follow same pattern)
+
+================================================================================
+RECOMMENDED FIX SEQUENCE
+================================================================================
+
+Phase 1: IMMEDIATE (enables other fixes)
+  [1] Increase test timeout in tests/helpers/common.bash (2 min)
+      Change: timeout ${UNICITY_CLI_TIMEOUT:-30}
+      To: timeout ${UNICITY_CLI_TIMEOUT:-320}
+  
+  [2] Fix aggregator authenticator issue (30 min - 2 hours)
+      Update Docker aggregator or configure to populate authenticator field
+      Location: Aggregator Docker configuration or upgrade
+
+Phase 2: SHORT TERM (after Phase 1)
+  [3] Fix version comparison in tests/helpers/assertions.bash (5 min)
+      Use numeric comparison instead of string comparison
+  
+  [4] Standardize numeric field comparisons in test_mint_token.bats (10 min)
+      Ensure consistent string/numeric handling
+
+Phase 3: VERIFICATION
+  [5] Run full test suite to verify all 28 tests pass
+
+================================================================================
+FILE LOCATIONS REFERENCE
+================================================================================
+
+Source Code:
+  src/commands/mint-token.ts (line 236-244)
+    → Authenticator check loop causing timeout
+
+Test Files:
+  tests/functional/test_mint_token.bats (line 21-565)
+    → All 28 test scenarios with identical failure pattern
+
+Helper Functions:
+  tests/helpers/assertions.bash (line 240-267)
+    → Version comparison with type mismatch issue
+  
+  tests/helpers/common.bash (line 211)
+    → Timeout configuration (needs increase)
+  
+  tests/helpers/token-helpers.bash (line 470-513)
+    → Numeric field return values (fragile comparison)
+
+Configuration:
+  tests/config/test-config.env
+    → Aggregator endpoint and test configuration
+
+Documentation:
+  TEST_FAILURE_ANALYSIS.md (comprehensive 500+ line analysis)
+  MINT_TOKEN_FAILURES_SUMMARY.md (categorized issues with references)
+  IMPLEMENTATION_FIXES.md (step-by-step fix guide with code changes)
+
+================================================================================
+IMPACT ASSESSMENT
+================================================================================
+
+Blocking Status: ALL 28 TESTS BLOCKED BY CATEGORY A
+
+Test Coverage Impact:
+  - Functional tests: 28/28 tests failing (100%)
+  - Security tests: Unaffected (separate suite)
+  - Edge case tests: Unaffected (separate suite)
+
+Severity: CRITICAL
+  - Category A: Blocks all functional testing
+  - Category B: Will fail ~15 tests after Category A is fixed
+  - Category C: Exacerbates Category A (causes early timeout)
+  - Category D: Will cause ~8 tests to fail (lower risk)
+
+Estimated Impact to Test Runs:
+  - Current: 0/28 tests passing (0% success rate)
+  - After Phase 1: ~15/28 tests passing (depends on Category B fix)
+  - After Phase 2: 28/28 tests passing (100% success rate)
+
+================================================================================
+QUICK FIX SUMMARY
+================================================================================
+
+To run tests successfully, you MUST:
+
+1. CRITICAL: Investigate why aggregator doesn't include authenticator
+   - Update aggregator Docker image, OR
+   - Configure aggregator to enable BFT authenticator, OR
+   - Modify mint-token command to accept proofs without authenticator (fallback)
+
+2. CRITICAL: Increase test timeout from 30 to 320 seconds
+   - One-line fix in tests/helpers/common.bash:211
+
+3. IMPORTANT: Fix version comparison logic
+   - Update assertions.bash or test assertions to handle numeric versions
+
+4. IMPORTANT: Fix numeric field comparisons
+   - Ensure consistent string/number handling in assertions
+
+Total Estimated Fix Time: ~1-2 hours
+  - Aggregator investigation: 30 min - 2 hours (primary uncertainty)
+  - Timeout fix: 2 minutes
+  - Version fix: 5 minutes
+  - Numeric fix: 10 minutes
+  - Testing: 10 minutes
+
+================================================================================
+VALIDATION CHECKLIST
+================================================================================
+
+Before running tests:
+
+  [ ] Docker aggregator container is running
+  [ ] Aggregator responds to health check (curl http://localhost:3000/health)
+  [ ] Trust base file exists and is valid (cat ./config/trust-base.json)
+  [ ] Aggregator version supports BFT authenticator in proofs
+  [ ] Test timeout increased to 320 seconds
+  [ ] Version comparison handles numeric/string types
+  [ ] Numeric field comparisons use consistent format
+  [ ] All helper functions updated with new logic
+  [ ] npm run build completes successfully
+  [ ] npm run lint passes
+
+After running tests:
+
+  [ ] All 28 mint-token tests pass (28/28)
+  [ ] No timeouts (exit code 124)
+  [ ] No type mismatch errors
+  [ ] verify-token assertions pass for all tokens
+  [ ] Other test suites unaffected (security, edge-cases)
+
+================================================================================

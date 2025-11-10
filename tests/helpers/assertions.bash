@@ -237,6 +237,7 @@ assert_dir_exists() {
 #   $1: File path
 #   $2: JSON path (e.g., ".version")
 #   $3: Expected value
+# Note: Converts JSON numbers to strings for comparison to handle type coercion
 assert_json_field_equals() {
   local file="${1:?File path required}"
   local field="${2:?JSON field required}"
@@ -248,8 +249,10 @@ assert_json_field_equals() {
     return 1
   fi
 
+  # Use jq to convert value to string explicitly
+  # This handles JSON numbers (2.0) vs strings ("2.0") consistently
   local actual
-  actual=$(~/.local/bin/jq -r "$field" "$file" 2>/dev/null || echo "")
+  actual=$(~/.local/bin/jq -r "$field | tostring" "$file" 2>/dev/null || echo "")
 
   if [[ "$actual" != "$expected" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field mismatch${COLOR_RESET}\n" >&2
@@ -1305,15 +1308,53 @@ assert_set() {
   return 0
 }
 
-# Check if a string is valid hex of specified length
+# Check if a string is valid hex of specified length(s)
+# Args:
+#   $1: Value to check
+#   $2: Expected length (optional, default 64)
+#        Can be single length (64) or comma-separated list (64,68)
+# Returns: 0 if valid, 1 if invalid
+# Examples:
+#   is_valid_hex "$hash"           # Validates 64-char hex (default)
+#   is_valid_hex "$hash" 68        # Validates exactly 68-char hex
+#   is_valid_hex "$hash" "64,68"   # Validates 64 OR 68-char hex
 is_valid_hex() {
   local value="$1"
   local expected_length="${2:-64}"  # Default 64 chars (32 bytes)
 
-  if [[ ! "$value" =~ ^[0-9a-fA-F]{${expected_length}}$ ]]; then
-    printf "${COLOR_RED}✗ Not valid hex of length %d: %s${COLOR_RESET}\n" "$expected_length" "$value" >&2
+  # Check if value contains only hex characters
+  if [[ ! "$value" =~ ^[0-9a-fA-F]+$ ]]; then
+    printf "${COLOR_RED}✗ Not valid hex (contains non-hex characters): %s${COLOR_RESET}\n" "$value" >&2
     return 1
   fi
+
+  local actual_length=${#value}
+
+  # Handle comma-separated list of valid lengths
+  if [[ "$expected_length" == *","* ]]; then
+    # Split by comma and check each valid length
+    IFS=',' read -ra valid_lengths <<< "$expected_length"
+    local found=0
+    for len in "${valid_lengths[@]}"; do
+      len=$(echo "$len" | tr -d ' ')  # Trim whitespace
+      if [[ "$actual_length" -eq "$len" ]]; then
+        found=1
+        break
+      fi
+    done
+
+    if [[ $found -eq 0 ]]; then
+      printf "${COLOR_RED}✗ Not valid hex of expected lengths %s: length is %d${COLOR_RESET}\n" "$expected_length" "$actual_length" >&2
+      return 1
+    fi
+  else
+    # Single length comparison
+    if [[ "$actual_length" -ne "$expected_length" ]]; then
+      printf "${COLOR_RED}✗ Not valid hex of length %d: length is %d${COLOR_RESET}\n" "$expected_length" "$actual_length" >&2
+      return 1
+    fi
+  fi
+
   return 0
 }
 

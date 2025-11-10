@@ -15,12 +15,13 @@ export function registerRequestCommand(program: Command): void {
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3001)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
+    .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .argument('<secret>', 'Secret key for signing the request')
     .argument('<state>', 'State data (will be hashed to derive RequestId)')
     .argument('<transactionData>', 'Transaction data (will be hashed)')
     .action(async (secret: string, state: string, transactionData: string, options) => {
       // Validate secret (CRITICAL: prevent weak/empty secrets)
-      const secretValidation = validateSecret(secret, 'register-request');
+      const secretValidation = validateSecret(secret, 'register-request', options.unsafeSecret);
       if (!secretValidation.valid) {
         throwValidationError(secretValidation);
       }

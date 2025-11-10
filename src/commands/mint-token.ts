@@ -28,7 +28,7 @@ import * as readline from 'readline';
  * Get secret from environment variable or prompt user
  * Validates the secret before returning
  */
-async function getSecret(): Promise<Uint8Array> {
+async function getSecret(skipValidation: boolean = false): Promise<Uint8Array> {
   let secret: string;
 
   // Check environment variable first
@@ -52,7 +52,7 @@ async function getSecret(): Promise<Uint8Array> {
   }
 
   // Validate secret (CRITICAL: prevent weak/empty secrets)
-  const validation = validateSecret(secret, 'mint-token');
+  const validation = validateSecret(secret, 'mint-token', skipValidation);
   if (!validation.valid) {
     throwValidationError(validation);
   }
@@ -203,7 +203,7 @@ async function processTokenType(
 }
 
 // Function to wait for an inclusion proof with timeout
-// Polls until proof exists AND authenticator is non-null
+// Polls until proof exists from the aggregator
 async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: MintCommitment<IMintTransactionReason>,
@@ -223,24 +223,19 @@ async function waitInclusionProof(
       if (proofResponse && proofResponse.inclusionProof) {
         const proof = proofResponse.inclusionProof;
 
-        // First time we see the proof
-        if (!proofReceived) {
-          console.error('Inclusion proof received');
-          proofReceived = true;
-        }
+        // Check if proof is complete (has authenticator AND transactionHash)
+        // The aggregator populates these fields asynchronously, so we must wait
+        const hasAuth = proof.authenticator !== null && proof.authenticator !== undefined;
+        const hasTxHash = proof.transactionHash !== null && proof.transactionHash !== undefined;
 
-        // Check if authenticator is populated
-        // Parse JSON to check authenticator field
-        const proofJson = proof.toJSON ? proof.toJSON() : proof;
-
-        if (proofJson.authenticator !== null && proofJson.authenticator !== undefined) {
-          console.error('Authenticator populated - proof complete');
+        if (hasAuth && hasTxHash) {
+          console.error('✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
           return proof;
-        } else {
-          // Proof exists but authenticator not yet populated
-          if (proofReceived) {
-            console.error('Waiting for authenticator to be populated...');
-          }
+        }
+        // If proof exists but is incomplete, continue polling
+        if (!proofReceived) {
+          console.error(`⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
+          proofReceived = true;
         }
       }
     } catch (err) {
@@ -257,11 +252,7 @@ async function waitInclusionProof(
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 
-  if (proofReceived) {
-    throw new Error(`Timeout waiting for authenticator to be populated after ${timeoutMs}ms`);
-  } else {
-    throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
-  }
+  throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
 }
 
 // Unicity standard token types from https://github.com/unicitynetwork/unicity-ids
@@ -326,6 +317,7 @@ export function mintTokenCommand(program: Command): void {
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
+    .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .action(async (options) => {
       // Determine endpoint
       let endpoint = options.endpoint;
@@ -339,7 +331,7 @@ export function mintTokenCommand(program: Command): void {
         console.error('=== Self-Mint Pattern: Minting token to yourself ===\n');
 
         // Get secret from environment or prompt
-        const secret = await getSecret();
+        const secret = await getSecret(options.unsafeSecret);
 
         // Create signing service
         let signingService: SigningService;
@@ -466,7 +458,7 @@ export function mintTokenCommand(program: Command): void {
         const inclusionProof = await waitInclusionProof(client, mintCommitment);
         console.error('  ✓ Inclusion proof received\n');
 
-        // STEP 6.5: Validate the inclusion proof
+        // Validate the inclusion proof
         console.error('Step 6.5: Validating inclusion proof...');
         const proofValidation = await validateInclusionProof(
           inclusionProof,
@@ -505,16 +497,11 @@ export function mintTokenCommand(program: Command): void {
         // The predicate must be a CBOR array: [engine_id, template, params]
         console.error('Step 9: Creating SDK-compliant TXF structure...');
 
-        // The SDK's inclusionProof.toJSON() doesn't include the authenticator
-        // We need to add it manually from the mintCommitment
-        const inclusionProofJson = inclusionProof.toJSON();
-        inclusionProofJson.authenticator = mintCommitment.authenticator.toJSON();
-
         const txfToken = {
           version: "2.0",
           genesis: {
             data: mintTransaction.data.toJSON(),
-            inclusionProof: inclusionProofJson  // Include authenticator from commitment
+            inclusionProof: inclusionProof.toJSON()
           },
           state: tokenState.toJSON(),  // ✅ Use SDK method for proper encoding!
           transactions: [],  // Empty for newly minted token

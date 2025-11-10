@@ -43,7 +43,7 @@ const UNICITY_TOKEN_TYPES: Record<string, { id: string; name: string; descriptio
 
 // Function to read the secret as a password
 // Validates the secret before returning
-async function readSecret(): Promise<string> {
+async function readSecret(skipValidation: boolean = false): Promise<string> {
   let secret: string;
 
   // Check if SECRET environment variable is set
@@ -67,7 +67,7 @@ async function readSecret(): Promise<string> {
   }
 
   // Validate secret (CRITICAL: prevent weak/empty secrets)
-  const validation = validateSecret(secret, 'gen-address');
+  const validation = validateSecret(secret, 'gen-address', skipValidation);
   if (!validation.valid) {
     throwValidationError(validation);
   }
@@ -163,10 +163,11 @@ export function genAddressCommand(program: Command): void {
     .option('--preset <type>', 'Use preset token type: nft, alpha/uct (default), usdu, euru')
     .option('-y, --token-type <tokenType>', 'Custom token type (hex string or text to be hashed)')
     .option('-n, --nonce <nonce>', 'Nonce value for masked/single-use address (hex string or text to be hashed, omit for unmasked address)')
+    .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .action(async (options) => {
       try {
         // Read the secret (from env var or user input)
-        const secretStr = await readSecret();
+        const secretStr = await readSecret(options.unsafeSecret);
         const secret = new TextEncoder().encode(secretStr);
 
         // Process token type (preset or custom)

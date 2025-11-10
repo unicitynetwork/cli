@@ -51,7 +51,7 @@ export async function validateInclusionProof(
     }
   }
 
-  // 2. Check transaction hash is present
+  // 2. Check transaction hash is present (REQUIRED for complete proof)
   if (proof.transactionHash === null) {
     errors.push('Transaction hash is null - proof is incomplete');
   }
@@ -97,10 +97,16 @@ export async function validateInclusionProof(
       const sdkStatus = await proof.verify(trustBase, requestId);
 
       if (sdkStatus !== InclusionProofVerificationStatus.OK) {
-        warnings.push(`SDK proof.verify() returned: ${sdkStatus} (may be due to UnicityCertificate mismatch in local testing)`);
+        // For local testing, downgrade to warning as UnicityCertificate may not match
+        // In production, this should be an error
+        if (sdkStatus === InclusionProofVerificationStatus.PATH_NOT_INCLUDED) {
+          warnings.push(`SDK proof.verify() returned: ${sdkStatus} (may be due to UnicityCertificate mismatch in local testing)`);
+        } else {
+          errors.push(`SDK proof.verify() returned: ${sdkStatus}`);
+        }
       }
     } catch (err) {
-      warnings.push(`SDK proof.verify() threw error: ${err instanceof Error ? err.message : String(err)}`);
+      errors.push(`SDK proof.verify() threw error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

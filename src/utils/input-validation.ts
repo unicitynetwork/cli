@@ -82,7 +82,7 @@ export function validateRequestId(requestId: string): ValidationResult {
 /**
  * Validate Secret for cryptographic operations
  */
-export function validateSecret(secret: string | undefined, commandName: string): ValidationResult {
+export function validateSecret(secret: string | undefined, commandName: string, skipValidation: boolean = false): ValidationResult {
   if (!secret || secret.trim() === '') {
     return {
       valid: false,
@@ -92,6 +92,13 @@ export function validateSecret(secret: string | undefined, commandName: string):
   }
 
   const trimmed = secret.trim();
+
+  // If skipValidation is true, only check for non-empty (bypass strength checks)
+  if (skipValidation) {
+    console.warn('⚠️  WARNING: Secret validation bypassed (--unsafe-secret flag used).');
+    console.warn('⚠️  This should ONLY be used for development/testing purposes!');
+    return { valid: true };
+  }
 
   // Minimum length check (prevent weak secrets)
   if (trimmed.length < 8) {
