@@ -538,6 +538,76 @@ get_token_status() {
 }
 
 # -----------------------------------------------------------------------------
+# Additional Helper Functions (aliases and data extraction)
+# -----------------------------------------------------------------------------
+
+# Alias for get_token_id for consistency with test naming
+# Args:
+#   $1: Token file path
+# Returns: Token ID
+get_txf_token_id() {
+  get_token_id "$@"
+}
+
+# Extract token data (hex-encoded) from token file
+# Args:
+#   $1: Token file path
+# Returns: Token data as hex string or decoded UTF-8 if possible
+get_token_data() {
+  local token_file="${1:?Token file required}"
+
+  # Try state.data first (current state), then genesis.data.tokenData (original data)
+  local data_hex
+  data_hex=$(jq -r '.state.data // .genesis.data.tokenData // empty' "$token_file" 2>/dev/null)
+
+  if [[ -z "$data_hex" ]] || [[ "$data_hex" == "null" ]]; then
+    echo ""
+    return 0
+  fi
+
+  # Check if it's hex encoded (even length, only hex chars)
+  if [[ ! "$data_hex" =~ ^[0-9a-fA-F]*$ ]] || [[ $((${#data_hex} % 2)) -ne 0 ]]; then
+    # Not hex, return as-is
+    printf "%s" "$data_hex"
+    return 0
+  fi
+
+  # Decode hex to UTF-8 string
+  if command -v xxd >/dev/null 2>&1; then
+    printf "%s" "$data_hex" | xxd -r -p 2>/dev/null || echo "$data_hex"
+  elif command -v perl >/dev/null 2>&1; then
+    printf "%s" "$data_hex" | perl -pe 's/([0-9a-f]{2})/chr hex $1/gie' 2>/dev/null || echo "$data_hex"
+  else
+    # Fallback: return hex if no decoder available
+    echo "$data_hex"
+  fi
+}
+
+# Extract owner address from token state predicate
+# Args:
+#   $1: Token file path
+# Returns: Address from genesis.data.recipient field
+# Note: Extracting address from CBOR predicate requires decoder,
+#       so we use the genesis recipient field as a workaround
+get_txf_address() {
+  local token_file="${1:?Token file required}"
+
+  # For newly minted tokens, the address is in genesis.data.recipient
+  # This is the address the token was minted to
+  local address
+  address=$(jq -r '.genesis.data.recipient // empty' "$token_file" 2>/dev/null)
+
+  if [[ -n "$address" ]] && [[ "$address" != "null" ]]; then
+    printf "%s" "$address"
+    return 0
+  fi
+
+  # If not found, return empty
+  echo ""
+  return 1
+}
+
+# -----------------------------------------------------------------------------
 # Export Functions
 # -----------------------------------------------------------------------------
 
@@ -558,3 +628,6 @@ export -f is_fungible_token
 export -f get_coin_count
 export -f get_total_coin_amount
 export -f get_token_status
+export -f get_txf_token_id
+export -f get_token_data
+export -f get_txf_address

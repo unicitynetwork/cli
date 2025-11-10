@@ -132,6 +132,27 @@ assert_output_not_contains() {
   return 0
 }
 
+# Assert string contains substring
+# Args:
+#   $1: String to check
+#   $2: Expected substring
+assert_string_contains() {
+  local actual="${1:?String required}"
+  local expected="${2:?Expected substring required}"
+
+  if [[ ! "$actual" =~ $expected ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: String does not contain expected substring${COLOR_RESET}\n" >&2
+    printf "  Expected to contain: '%s'\n" "$expected" >&2
+    printf "  Actual string: '%s'\n" "$actual" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ String contains '%s'${COLOR_RESET}\n" "$expected" >&2
+  fi
+  return 0
+}
+
 # Assert output matches regex pattern
 # Args:
 #   $1: Regex pattern
@@ -249,6 +270,11 @@ assert_json_field_equals() {
     return 1
   fi
 
+  # Add leading dot if not present (jq requires it for field paths)
+  if [[ "$field" != .* ]]; then
+    field=".$field"
+  fi
+
   # Use jq to convert value to string explicitly
   # This handles JSON numbers (2.0) vs strings ("2.0") consistently
   local actual
@@ -283,6 +309,11 @@ assert_json_field_exists() {
     return 1
   fi
 
+  # Add leading dot if not present (jq requires it for field paths)
+  if [[ "$field" != .* ]]; then
+    field=".$field"
+  fi
+
   if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field does not exist${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
@@ -308,6 +339,11 @@ assert_json_field_not_exists() {
     printf "${COLOR_RED}✗ Assertion Failed: File not found${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     return 1
+  fi
+
+  # Add leading dot if not present (jq requires it for field paths)
+  if [[ "$field" != .* ]]; then
+    field=".$field"
   fi
 
   if ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
