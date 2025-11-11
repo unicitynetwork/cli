@@ -337,6 +337,7 @@ teardown() {
     run_cli_with_secret "${BOB_SECRET}" \
         "receive-token -f transfer.txf \
          --state-data '${state_data}' \
+         --local \
          -o bob-token.txf"
     assert_success
 
@@ -354,6 +355,9 @@ teardown() {
 # RECV_TOKEN-010: Receive with Wrong State Data (Hash Mismatch)
 @test "RECV_TOKEN-010: Error when state data does not match hash" {
     log_test "Testing hash mismatch detection"
+
+    # Ensure no leftover files
+    rm -f bob-token.txf
 
     # Setup: Compute hash for one value
     local correct_data='{"status":"active"}'
@@ -378,6 +382,7 @@ teardown() {
     run_cli_with_secret "${BOB_SECRET}" \
         "receive-token -f transfer.txf \
          --state-data '{\"status\":\"inactive\"}' \
+         --local \
          -o bob-token.txf" || status=$?
 
     # Verify: Should fail with hash mismatch
@@ -391,6 +396,9 @@ teardown() {
 # RECV_TOKEN-011: Receive with Missing State Data (Hash Present)
 @test "RECV_TOKEN-011: Error when state data required but not provided" {
     log_test "Testing missing state data detection"
+
+    # Ensure no leftover files
+    rm -f bob-token.txf
 
     # Setup: Compute hash
     local state_data='{"status":"active"}'
@@ -414,6 +422,7 @@ teardown() {
     status=0
     run_cli_with_secret "${BOB_SECRET}" \
         "receive-token -f transfer.txf \
+         --local \
          -o bob-token.txf" || status=$?
 
     # Verify: Should fail - state data required
