@@ -72,7 +72,7 @@ teardown() {
     # Check token data preserved
     local data
     data=$(get_token_data "bob-nft.txf")
-    assert_output_contains "Birthday Gift"
+    assert_string_contains "$data" "Birthday Gift"
 
     # Step 9: Verify Alice's old token shows as transferred
     local alice_status
@@ -148,7 +148,7 @@ teardown() {
 
     # Verify coin amount
     local coin_amount
-    coin_amount=$(jq -r '.genesis.data.coinData[0].amount' alice-uct.txf)
+    coin_amount=$(jq -r '.genesis.data.coinData[0][1]' alice-uct.txf)
     assert_equals "100000000000000000000" "${coin_amount}"
 
     # Alice sends to Bob
@@ -165,7 +165,7 @@ teardown() {
     verify_token "bob-uct.txf" "--local"
     assert_success
 
-    coin_amount=$(jq -r '.genesis.data.coinData[0].amount' bob-uct.txf)
+    coin_amount=$(jq -r '.genesis.data.coinData[0][1]' bob-uct.txf)
     assert_equals "100000000000000000000" "${coin_amount}"
 
     # Bob can now spend the UCT
