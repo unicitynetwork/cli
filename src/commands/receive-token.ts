@@ -14,7 +14,7 @@ import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConv
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
-import { validateInclusionProof, validateTokenProofsJson } from '../utils/proof-validation.js';
+import { validateInclusionProof, validateTokenProofsJson, validateTokenProofs } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
 import * as fs from 'fs';
@@ -210,6 +210,51 @@ export function receiveTokenCommand(program: Command): void {
         }
 
         console.error('  ✓ Token proofs validated');
+
+        // STEP 2.6: CRITICAL SECURITY - Perform cryptographic proof validation
+        // This validates signatures, merkle paths, and state integrity from UNTRUSTED token files
+        console.error('\nStep 2.6: Cryptographic proof verification...');
+
+        try {
+          // Parse token with SDK for cryptographic validation
+          const token = await Token.fromJSON(extendedTxf);
+
+          // Load trust base for verification
+          const trustBase = await getCachedTrustBase({
+            filePath: process.env.TRUSTBASE_PATH,
+            useFallback: false
+          });
+
+          // Perform comprehensive cryptographic validation
+          const cryptoValidation = await validateTokenProofs(token, trustBase);
+
+          if (!cryptoValidation.valid) {
+            console.error('\n❌ Cryptographic proof verification failed:');
+            cryptoValidation.errors.forEach(err => console.error(`  - ${err}`));
+            console.error('\nToken has invalid cryptographic proofs - cannot accept this transfer.');
+            console.error('This could indicate:');
+            console.error('  - Tampered genesis or transaction proofs');
+            console.error('  - Invalid signatures');
+            console.error('  - Corrupted merkle paths');
+            console.error('  - Modified state data');
+            process.exit(1);
+          }
+
+          console.error('  ✓ All cryptographic proofs verified');
+          console.error('  ✓ Genesis proof signature valid');
+          console.error('  ✓ Merkle path verification passed');
+          console.error('  ✓ State integrity confirmed');
+
+          if (cryptoValidation.warnings.length > 0) {
+            console.error('  ⚠ Warnings:');
+            cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+          }
+        } catch (err) {
+          console.error('\n❌ Failed to verify token cryptographically:');
+          console.error(`  ${err instanceof Error ? err.message : String(err)}`);
+          console.error('\nCannot accept transfer with unverifiable token.');
+          process.exit(1);
+        }
 
         const offlineTransfer = extendedTxf.offlineTransfer!;
         console.error(`  Sender: ${offlineTransfer.sender.address}`);
