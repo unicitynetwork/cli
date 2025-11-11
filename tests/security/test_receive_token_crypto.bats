@@ -57,11 +57,9 @@ teardown() {
     log_info "Token pre-transfer verification passed"
 
     # Step 3: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    assert_file_exists "${bob_addr_file}"
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
     log_info "Bob's address: ${bob_addr}"
 
     # Step 4: Alice creates transfer to Bob
@@ -121,10 +119,9 @@ teardown() {
     log_info "Alice minted token"
 
     # Step 2: Generate Bob's address and create transfer
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
@@ -173,10 +170,9 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
@@ -220,10 +216,9 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"test\":\"original\"}' -o ${alice_token}"
     assert_success
 
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
@@ -270,10 +265,9 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
@@ -324,10 +318,9 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
@@ -390,10 +383,9 @@ teardown() {
     log_info "Alice minted token"
 
     # Step 2: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
     log_info "Bob's address generated"
 
     # Step 3: Alice creates transfer to Bob

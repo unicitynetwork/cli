@@ -74,10 +74,9 @@ teardown() {
     fi
 
     # Step 4: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 5: Alice attempts to send tampered token - MUST FAIL
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
@@ -123,10 +122,9 @@ teardown() {
     log_info "Merkle root set to all zeros"
 
     # Step 3: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
@@ -167,10 +165,9 @@ teardown() {
     log_info "Authenticator removed"
 
     # Step 3: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
@@ -214,10 +211,9 @@ teardown() {
     log_info "State data modified"
 
     # Step 3: Generate Bob's address
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
@@ -257,15 +253,13 @@ teardown() {
     log_success "Initial token verification passed"
 
     # Step 3: Generate recipient addresses
-    local bob_addr_file="${TEST_TEMP_DIR}/bob-addr.json"
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft -o ${bob_addr_file}"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
-    local bob_addr=$(jq -r '.address' "${bob_addr_file}")
+    local bob_addr=$(echo "${output}" | jq -r '.address')
 
-    local carol_addr_file="${TEST_TEMP_DIR}/carol-addr.json"
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft -o ${carol_addr_file}"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
-    local carol_addr=$(jq -r '.address' "${carol_addr_file}")
+    local carol_addr=$(echo "${output}" | jq -r '.address')
     log_info "Recipient addresses generated"
 
     # Step 4a: VALID CASE - Alice sends valid token to Bob

@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
+import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
 import { TokenType } from '@unicitylabs/state-transition-sdk/lib/token/TokenType.js';
@@ -396,10 +397,20 @@ export function mintTokenCommand(program: Command): void {
 
         // Process token data
         let tokenDataBytes: Uint8Array;
+        let recipientDataHash: DataHash | null = null;
+
         if (options.tokenData) {
           tokenDataBytes = await processInput(options.tokenData, 'token data', { allowEmpty: false });
+
+          // CRITICAL: Compute recipientDataHash to commit to state.data
+          // This is required for SDK verification of tokens with data
+          const hasher = new DataHasher(HashAlgorithm.SHA256);
+          recipientDataHash = await hasher.update(tokenDataBytes).digest();
+
+          console.error(`Serialized JSON token data (${tokenDataBytes.length} bytes)`);
+          console.error(`Computed recipientDataHash: ${HexConverter.encode(recipientDataHash.data)}`);
         } else {
-          // Empty token data
+          // Empty token data (no recipientDataHash needed)
           tokenDataBytes = new Uint8Array(0);
           console.error('Using empty token data');
         }
@@ -441,14 +452,14 @@ export function mintTokenCommand(program: Command): void {
         // STEP 3: Create MintTransactionData using the address
         console.error('Step 3: Creating MintTransactionData...');
         const mintTransactionData = await MintTransactionData.create(
-          tokenId,
-          tokenType,
-          tokenDataBytes,
-          coinData,
-          address,  // Use the IAddress object derived from OUR predicate
-          salt,
-          null,  // Nametag tokens
-          null   // Owner reference
+          tokenId,           // Token identifier
+          tokenType,         // Token type identifier
+          tokenDataBytes,    // Immutable token metadata (genesis.data.tokenData)
+          coinData,          // Fungible coin data, or null
+          address,           // Address of the first owner
+          salt,              // Random salt used to derive predicates
+          recipientDataHash, // Commit to state.data via hash (CRITICAL FIX)
+          null               // Reason (optional)
         );
         console.error('  ✓ MintTransactionData created\n');
 
