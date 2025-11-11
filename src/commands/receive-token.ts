@@ -115,7 +115,7 @@ export function receiveTokenCommand(program: Command): void {
     .description('Receive a token sent via offline transfer package')
     .option('-f, --file <file>', 'Extended TXF file with offline transfer package (required)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3001)')
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')

@@ -115,7 +115,7 @@ export function sendTokenCommand(program: Command): void {
     .option('-m, --message <message>', 'Optional transfer message')
     .option('--recipient-data-hash <hash>', 'SHA256 hash (64-char hex) of recipient state data (optional)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3001)')
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--submit-now', 'Submit to network immediately (Pattern B) instead of creating offline package (Pattern A)')
     .option('-o, --output <file>', 'Output TXF file path')

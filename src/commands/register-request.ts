@@ -13,7 +13,7 @@ export function registerRequestCommand(program: Command): void {
     .command('register-request')
     .description('Register a commitment request at generic abstraction level (no token structures)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3001)')
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .argument('<secret>', 'Secret key for signing the request')

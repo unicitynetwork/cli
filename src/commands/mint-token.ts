@@ -304,7 +304,7 @@ export function mintTokenCommand(program: Command): void {
     .command('mint-token')
     .description('Mint a new token to yourself on the Unicity Network (self-mint pattern)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
-    .option('--local', 'Use local aggregator (http://localhost:3001)')
+    .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('--preset <type>', 'Use preset token type: nft, alpha/uct, usdu, euru')
     .option('-n, --nonce <nonce>', 'Nonce for masked predicate (creates one-time address if provided)')
