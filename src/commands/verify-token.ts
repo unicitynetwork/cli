@@ -197,26 +197,48 @@ function displayGenesis(genesis: any): void {
 export function verifyTokenCommand(program: Command): void {
   program
     .command('verify-token')
-    .description('Verify and display detailed information about a token file')
+    .description(`Verify and display detailed information about a token file
+
+Exit codes:
+  0 - Token is valid and can be used for transfers
+  1 - Verification failed (tampered token, invalid proofs, token spent)
+  2 - File error (file not found, invalid JSON)`)
     .option('-f, --file <file>', 'Token file to verify (required)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--skip-network', 'Skip network ownership verification')
+    .option('--diagnostic', 'Display verification info without failing (always exit 0)')
     .action(async (options) => {
+      // Track exit code throughout execution
+      let exitCode = 0;
       try {
         // Check if file option is provided
         if (!options.file) {
           console.error('Error: --file option is required');
           console.error('Usage: npm run verify-token -- -f <token_file.txf>');
-          process.exit(1);
+          process.exit(2); // File error
         }
 
         console.log('=== Token Verification ===');
         console.log(`File: ${options.file}\n`);
 
         // Read token from file
-        const tokenFileContent = fs.readFileSync(options.file, 'utf8');
-        const tokenJson = JSON.parse(tokenFileContent);
+        let tokenFileContent: string;
+        let tokenJson: any;
+
+        try {
+          tokenFileContent = fs.readFileSync(options.file, 'utf8');
+        } catch (err) {
+          console.error(`Error: Cannot read file: ${err instanceof Error ? err.message : String(err)}`);
+          process.exit(2); // File error
+        }
+
+        try {
+          tokenJson = JSON.parse(tokenFileContent);
+        } catch (err) {
+          console.error(`Error: Invalid JSON in file: ${err instanceof Error ? err.message : String(err)}`);
+          process.exit(2); // File error
+        }
 
         // Display basic info
         console.log('=== Basic Information ===');
@@ -235,6 +257,7 @@ export function verifyTokenCommand(program: Command): void {
         } else {
           console.log('❌ Proof validation failed:');
           jsonProofValidation.errors.forEach(err => console.log(`  - ${err}`));
+          exitCode = 1; // Critical validation failure
         }
 
         if (jsonProofValidation.warnings.length > 0) {
@@ -273,6 +296,7 @@ export function verifyTokenCommand(program: Command): void {
           } else {
             console.log('❌ Cryptographic verification failed:');
             sdkProofValidation.errors.forEach(err => console.log(`  - ${err}`));
+            exitCode = 1; // Critical validation failure
           }
 
           if (sdkProofValidation.warnings.length > 0) {
@@ -282,6 +306,7 @@ export function verifyTokenCommand(program: Command): void {
         } catch (err) {
           console.log('\n⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
           console.log('Displaying raw JSON data...\n');
+          exitCode = 1; // Critical failure - SDK cannot parse token
         }
 
         // Display genesis transaction
@@ -342,6 +367,11 @@ export function verifyTokenCommand(program: Command): void {
               ownershipStatus.details.forEach(detail => {
                 console.log(`  ${detail}`);
               });
+
+              // Token is spent/outdated = cannot be used
+              if (ownershipStatus.scenario === 'outdated') {
+                exitCode = 1;
+              }
             }
           } catch (err) {
             console.log('  ⚠ Cannot verify ownership status');
@@ -399,6 +429,19 @@ export function verifyTokenCommand(program: Command): void {
         } else {
           console.log('\n❌ Token has issues and cannot be used for transfers');
         }
+
+        // Exit with appropriate code
+        if (options.diagnostic) {
+          // Diagnostic mode: always exit 0 for backward compatibility
+          process.exit(0);
+        }
+
+        if (exitCode !== 0) {
+          process.exit(exitCode);
+        }
+
+        // Success - exit 0 (implicit, but explicit for clarity)
+        process.exit(0);
 
       } catch (error) {
         console.error(`\n❌ Error verifying token: ${error instanceof Error ? error.message : String(error)}`);
