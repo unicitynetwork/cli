@@ -52,6 +52,9 @@ npm run test:ci
 # Single test file
 bats tests/functional/test_gen_address.bats
 
+# Filter specific test by name
+bats --filter "GEN_ADDR-001" tests/functional/test_gen_address.bats
+
 # Generate coverage report
 npm run test:coverage
 ```
@@ -60,6 +63,7 @@ npm run test:coverage
 - BATS installed: `sudo apt install bats` or `brew install bats-core`
 - jq installed: `sudo apt install jq` or `brew install jq`
 - Local aggregator running: `docker run -p 3000:3000 unicity/aggregator`
+- Build CLI first: `npm run build`
 
 **Test Documentation:**
 - Quick Reference: `TESTS_QUICK_REFERENCE.md`
@@ -121,6 +125,7 @@ src/
 │   ├── receive-token.ts              # Complete offline transfers
 │   ├── gen-address.ts                # Generate addresses from secrets
 │   ├── verify-token.ts               # Verify and inspect tokens
+│   ├── hash-data.ts                  # Hash data for transfer validation
 │   ├── get-request.ts                # Fetch inclusion proofs from aggregator
 │   └── register-request.ts           # Register state transitions
 ├── utils/
@@ -385,12 +390,66 @@ When updating dependencies:
 3. Update TrustBase if network ID changes
 4. Verify proof validation still works
 
+### Test Infrastructure
+
+The project has a comprehensive BATS test suite with 313+ test scenarios:
+- **Test Helpers** (`tests/helpers/`):
+  - `common.bash` - Core test utilities and CLI execution wrappers
+  - `assertions.bash` - 50+ assertion functions for validation
+  - `id-generation.bash` - Unique ID generation for test isolation
+  - `aggregator-parsing.bash` - Aggregator response parsing utilities
+
+**Key Test Patterns:**
+- **Dual Capture**: Tests capture both stdout and stderr separately using `run_cli()` helper
+- **Unique IDs**: Every test uses `generate_unique_id()` to avoid collisions
+- **Automatic Cleanup**: `setup_test()` and `cleanup_test()` manage temp files
+- **Aggregator Checks**: `skip_if_aggregator_unavailable()` handles offline scenarios
+
+**Test Helper Functions:**
+```bash
+# CLI execution with dual capture
+run_cli command args...              # Captures stdout→$output, stderr→$stderr
+
+# Token operations
+mint_token "$secret" "preset" "$output_file" "$data"
+send_token_offline "$secret" "$input" "$recipient" "$output"
+receive_token "$secret" "$input" "$output"
+
+# Assertions
+assert_valid_token "$file"
+assert_json_field_equals "$file" ".path" "value"
+assert_output_contains "string"
+```
+
+See `tests/QUICK_REFERENCE.md` for complete test infrastructure guide.
+
+**Debugging Test Failures:**
+```bash
+# Run with debug output
+UNICITY_TEST_DEBUG=1 bats tests/functional/test_gen_address.bats
+
+# Keep temp files for inspection
+UNICITY_TEST_KEEP_TMP=1 bats tests/functional/test_gen_address.bats
+
+# Run single test by filter
+bats --filter "GEN_ADDR-005" tests/functional/test_gen_address.bats
+
+# Combine debug options
+UNICITY_TEST_DEBUG=1 UNICITY_TEST_KEEP_TMP=1 \
+  bats tests/functional/test_gen_address.bats
+```
+
+**Common Test Issues:**
+- **CLI not built**: Run `npm run build` before testing
+- **Aggregator unavailable**: Tests skip automatically or use `UNICITY_TEST_SKIP_EXTERNAL=1`
+- **Test output capture**: Tests use dual capture (`run_cli`) - avoid mixing stdout/stderr
+- **File cleanup**: Tests auto-cleanup temp files unless `UNICITY_TEST_KEEP_TMP=1` is set
+
 ### Known Limitations
 
-1. **No automated tests** - All testing is manual using CLI commands
-2. **RC versions** - SDK may have breaking changes between releases
-3. **Local Docker only** - TrustBase fallback only works with standard local Docker setup
-4. **No multi-token support** - Each TXF file contains one token only
+1. **RC versions** - SDK may have breaking changes between releases
+2. **Local Docker only** - TrustBase fallback only works with standard local Docker setup
+3. **No multi-token support** - Each TXF file contains one token only
 
 ## File Naming Conventions
 
@@ -402,8 +461,15 @@ When updating dependencies:
 
 ## Environment Variables
 
+**Runtime Variables:**
 - `SECRET` - User secret for key derivation (cleared after use)
 - `TRUSTBASE_PATH` - Custom path to trust-base.json file (optional)
+
+**Test Variables:**
+- `UNICITY_TEST_DEBUG=1` - Enable debug output in tests
+- `UNICITY_TEST_KEEP_TMP=1` - Preserve temp files after test runs
+- `UNICITY_TEST_SKIP_EXTERNAL=1` - Skip tests requiring aggregator
+- `UNICITY_TEST_VERBOSE_ASSERTIONS=1` - Detailed assertion output
 
 ## Git Workflow
 

@@ -1,0 +1,59 @@
+{
+  "status": "EXCLUSION",
+  "requestId": "000048c028355b5f65f33b115f578e3105520e07a9f4c3255f08fb91ecdefd9de559",
+  "endpoint": "http://127.0.0.1:3000",
+  "proof": {
+    "authenticator": null,
+    "merkleTreePath": {
+      "root": "000007e782076e7bba400198210b0542c967af3a063adc9e062a113a2ce3c5af5f6c",
+      "steps": [
+        {
+          "data": "00008bdbd8a3f4e04e71ee69ad80420830ac0eebe226fd8e1ecaad8a1e3a8ff551c6",
+          "path": "14821431089241204485846239865485426558356650352318843753368912275438968834576428"
+        },
+        {
+          "data": "5a0a08c17c1cf34fe1d730c02969aba8d6ff2c6d464c4865ce2881e00f1912a3",
+          "path": "3"
+        },
+        {
+          "data": "997274483d0604b61c6f998e40397dd85e9e74c9a636e1d4b5456520cdc88fd9",
+          "path": "2"
+        },
+        {
+          "data": "7489e5aeebdcca64b86f5e014f24b2831716f2ee38990528eac5efb7fb011ee4",
+          "path": "3"
+        },
+        {
+          "data": "0f7de2a3147e415595418a21ef832c126cb572b8a294c814945790ae04c6f455",
+          "path": "2"
+        },
+        {
+          "data": "cbfee630d2ba87655426581a3b5ebe38818e1594aab2b5090006c738dbb07e0c",
+          "path": "3"
+        },
+        {
+          "data": "090259bf39588d5906d240a5cac1ce70f0cc7c99e40392160f48ae3e84d03989",
+          "path": "3"
+        },
+        {
+          "data": "9e6b68d29524331dc9a6deabc7ec7504a8e55ce189fcb3a6857f7c7a6474b1a6",
+          "path": "2"
+        },
+        {
+          "data": "16febff9df8829c8085ee05caeb59c5b63ce347aa34db70b4c64edccc8b8b0ae",
+          "path": "2"
+        },
+        {
+          "data": "d631dae29b96d7a89cfb928716f039784f8aed585d967986505bc79e48ec5a17",
+          "path": "3"
+        },
+        {
+          "data": "6d14a6e6d033564205d2bda5a2e9171a15e7b012b3e54f8c3f8c4e342e0c2ab7",
+          "path": "1"
+        }
+      ]
+    },
+    "transactionHash": null,
+    "unicityCertificate": "d903ef8701d903f08a0119280d00582200007555868402bf4446ab58f33e7582abf18a492044a71f50cba9c326eb384569265822000007e782076e7bba400198210b0542c967af3a063adc9e062a113a2ce3c5af5f6c401a691360735822000007e782076e7bba400198210b0542c967af3a063adc9e062a113a2ce3c5af5f6c00f65820db65f245e9e58f401c232bf5dc5fda5bdf60f32782b8d2472c4948dc2cddc7a5582096f7737750149e3d82261ad924dff4a2c28a0f64424ebcd7a7938d368a166b3582418080d903f683010780d903e988010319f067001a691360765820850d7969a587f4fb78e31d13aac4c8e5110e96f424151fad153ce994eda8c231582094516d9fa7494e33ebee2310d12331a8af1f8e9427395cdab6e81b611c9853d1a1783531365569753248416d433674397266317348743834646143794e685a474735737253615761327a415151423744386e6b78617754585841a04f289d55965694f7c622a58e5d9b4a6849400e286b32c33201c71f902e312c521898917fb83907d4dee3ee5d27599a67ab04b82c133bd5219e484259ac1ccb00"
+  }
+}

@@ -47,25 +47,64 @@ teardown() {
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
     assert_set bob_address
 
-    # ATTACK: Bob tries to send Alice's token using his own secret
-    # This should FAIL because Bob's signature won't match Alice's predicate
+    # PHASE 1: Bob creates offline transfer with --skip-validation (thin client mode)
+    # The CLI allows this in thin-client mode - validation happens at SDK layer
     local stolen_transfer="${TEST_TEMP_DIR}/stolen-transfer.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${stolen_transfer}"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${stolen_transfer} --skip-validation"
+    assert_success
+    log_info "Bob created offline transfer (thin client allows this)"
 
-    # Assert that the attack FAILED
+    # PHASE 2: ATTACK - Bob tries to receive his own "stolen" transfer
+    # This is where the attack should FAIL (signature verification at SDK layer)
+    local received="${TEST_TEMP_DIR}/bob-received.txf"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${stolen_transfer} --local -o ${received}"
+
+    # Assert that the attack FAILED at receive stage
     assert_failure
-
-    # Verify error message indicates authentication failure
     assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "Invalid"
 
-    # Verify no transfer file was created (attack was prevented)
-    assert_file_not_exists "${stolen_transfer}"
+    # Verify no file was created (attack was prevented)
+    assert_file_not_exists "${received}"
 
     # Verify Alice's original token is unchanged and still valid
     run_cli "verify-token -f ${alice_token} --local"
     assert_success
 
-    log_success "SEC-AUTH-001: Wrong secret attack successfully prevented"
+    log_success "SEC-AUTH-001: Wrong secret attack successfully prevented at receive stage"
+}
+
+# =============================================================================
+# SEC-AUTH-001-validated: Ownership Validation Prevents Unauthorized Send
+# =============================================================================
+# CRITICAL Security Test (Phase 2 - Validation Mode)
+# Attack Vector: Attacker tries to send token with wrong secret
+# Expected: send-token should FAIL immediately with ownership verification error (default behavior)
+
+@test "SEC-AUTH-001-validated: Ownership validation prevents unauthorized send (default behavior)" {
+    log_test "Testing ownership validation at send stage (Phase 2 feature)"
+
+    # Alice mints a token
+    local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    assert_success
+
+    # Bob generates address
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
+    local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
+
+    # ATTACK: Bob tries to send Alice's token WITHOUT --skip-validation
+    # Default behavior (Phase 2): should fail at send-token stage with ownership check
+    local stolen_transfer="${TEST_TEMP_DIR}/stolen-transfer.txf"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${stolen_transfer}"
+
+    # Should fail immediately (ownership verification)
+    assert_failure
+    assert_output_contains "Ownership verification failed" || assert_output_contains "does not match token owner"
+
+    # No transfer file created
+    assert_file_not_exists "${stolen_transfer}"
+
+    log_success "SEC-AUTH-001-validated: Ownership validation at send stage successful"
 }
 
 # =============================================================================

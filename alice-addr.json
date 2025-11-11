@@ -1,0 +1,10 @@
+{
+  "type": "unmasked",
+  "address": "DIRECT://00009117acae2b08b242a897c5c446061db9e28cc53093dc6fbfd3f559df6bcf407906eb13a2",
+  "tokenType": "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509",
+  "tokenTypeInfo": {
+    "preset": "nft",
+    "name": "unicity",
+    "description": "Unicity testnet NFT token type"
+  }
+}

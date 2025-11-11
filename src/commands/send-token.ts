@@ -12,6 +12,7 @@ import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../type
 import { sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
+import { extractOwnerInfo } from '../utils/ownership-verification.js';
 import { validateAddress, validateSecret, validateFilePath, validateDataHash, throwValidationError } from '../utils/input-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
@@ -106,6 +107,64 @@ async function waitInclusionProof(
   throw new Error(`Timeout waiting for inclusion proof after ${timeoutMs}ms`);
 }
 
+/**
+ * Verify that the provided secret matches the token owner
+ * Extracts owner public key from predicate and compares with derived key
+ */
+async function verifyOwnership(
+  token: Token<any>,
+  tokenJson: any,
+  signingService: SigningService,
+  skipValidation: boolean
+): Promise<void> {
+  if (skipValidation) {
+    console.error('  ⚠️  Ownership verification SKIPPED (--skip-validation flag)\n');
+    return;
+  }
+
+  console.error('Step 3.5: Verifying token ownership...');
+
+  // Extract owner info from token's current state predicate
+  const predicateHex = tokenJson.state?.predicate;
+
+  if (!predicateHex) {
+    throw new Error('Cannot verify ownership: token has no predicate');
+  }
+
+  const ownerInfo = extractOwnerInfo(predicateHex);
+
+  if (!ownerInfo) {
+    throw new Error('Cannot verify ownership: failed to extract owner information from predicate');
+  }
+
+  // Warn if masked predicate (may require nonce)
+  if (ownerInfo.engineId === 5) {
+    console.error('  ⚠️  Masked predicate detected - validation may require nonce');
+    console.error('  ℹ️  If validation fails unexpectedly, provide --nonce flag or use --skip-validation\n');
+  }
+
+  // Get the public key from the provided secret
+  const providedPublicKey = signingService.publicKey;
+
+  // Compare public keys byte-by-byte
+  const ownerPublicKeyHex = ownerInfo.publicKeyHex;
+  const providedPublicKeyHex = HexConverter.encode(providedPublicKey);
+
+  if (ownerPublicKeyHex !== providedPublicKeyHex) {
+    console.error('\n❌ Ownership Verification Failed');
+    console.error(`  Token owner public key: ${ownerPublicKeyHex.substring(0, 16)}...`);
+    console.error(`  Your public key:        ${providedPublicKeyHex.substring(0, 16)}...`);
+    console.error('\nThe secret you provided does not match the token owner\'s secret.');
+    console.error('You cannot send tokens that you do not own.\n');
+    console.error('To bypass this check (for testing/delegation), use --skip-validation flag.\n');
+
+    throw new Error('Ownership verification failed: secret does not match token owner');
+  }
+
+  console.error('  ✓ Ownership verified: secret matches token owner');
+  console.error(`    Public Key: ${providedPublicKeyHex.substring(0, 32)}...\n`);
+}
+
 export function sendTokenCommand(program: Command): void {
   program
     .command('send-token')
@@ -122,6 +181,7 @@ export function sendTokenCommand(program: Command): void {
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
+    .option('--skip-validation', 'Skip ownership verification (for testing/delegation scenarios)')
     .action(async (options) => {
       try {
         // Validate required options
@@ -247,6 +307,9 @@ export function sendTokenCommand(program: Command): void {
         const signingService = await SigningService.createFromSecret(secret);
         console.error(`  ✓ Signing service created`);
         console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+
+        // STEP 3.5: Verify ownership (unless skipped)
+        await verifyOwnership(token, tokenJson, signingService, options.skipValidation || false);
 
         // STEP 4: Generate salt for transfer
         console.error('Step 4: Generating transfer salt...');
