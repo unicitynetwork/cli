@@ -47,9 +47,11 @@ teardown() {
 
   # Generate recipient addresses
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   run generate_address "$CAROL_SECRET" "nft"
+  extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   # Alice creates transfer to Bob
@@ -100,9 +102,11 @@ teardown() {
 
   # Generate recipients
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   run generate_address "$CAROL_SECRET" "nft"
+  extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   # Create offline packages
@@ -162,6 +166,7 @@ teardown() {
   run mint_token "$ALICE_SECRET" "nft" "$alice_token"
 
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   local transfer_pkg=$(create_temp_file "-transfer.txf")
@@ -206,9 +211,11 @@ teardown() {
   run mint_token "$ALICE_SECRET" "nft" "$alice_token"
 
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   run generate_address "$CAROL_SECRET" "nft"
+  extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   # Day 1: Create transfer to Bob (but don't submit)
@@ -253,6 +260,7 @@ teardown() {
   for i in {1..5}; do
     local secret=$(generate_unique_id "recipient${i}")
     run generate_address "$secret" "nft"
+    extract_generated_address
     recipients+=("$GENERATED_ADDRESS")
   done
 
@@ -310,6 +318,7 @@ teardown() {
   run mint_token "$ALICE_SECRET" "nft" "$alice_token"
 
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   local transfer_pkg=$(create_temp_file "-transfer.txf")
@@ -318,6 +327,7 @@ teardown() {
   # Attacker modifies recipient address (but not commitment)
   local attacker_secret=$(generate_unique_id "attacker")
   run generate_address "$attacker_secret" "nft"
+  extract_generated_address
   local attacker_addr="$GENERATED_ADDRESS"
 
   local modified_pkg=$(create_temp_file "-modified.txf")
@@ -361,6 +371,7 @@ teardown() {
     local secret=$(generate_unique_id "recipient${i}")
     secrets+=("$secret")
     run generate_address "$secret" "nft"
+    extract_generated_address
     recipients+=("$GENERATED_ADDRESS")
   done
 
@@ -442,9 +453,11 @@ teardown() {
 
   # Generate recipients
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   run generate_address "$CAROL_SECRET" "nft"
+  extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   # Device 1: Send to Bob
@@ -498,6 +511,7 @@ teardown() {
 
   # Transfer token (device 1)
   run generate_address "$BOB_SECRET" "nft"
+  extract_generated_address
   local bob_addr="$GENERATED_ADDRESS"
 
   local transferred=$(create_temp_file "-transferred.txf")
@@ -509,6 +523,7 @@ teardown() {
 
   # "Days later" - try to use backup copy (stale)
   run generate_address "$CAROL_SECRET" "nft"
+  extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   local stale_result=$(create_temp_file "-stale-result.txf")

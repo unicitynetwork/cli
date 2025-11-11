@@ -207,10 +207,11 @@ teardown() {
 
     # Try to use fake trustbase
     # Note: The CLI may or may not validate trustbase authenticity
-    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local"
+    local exit_code=0
+    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local" || exit_code=$?
 
     # Command may succeed or fail depending on trustbase validation
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         warn "Fake trustbase accepted - trustbase authenticity not validated"
         warn "Recommendation: Validate trustbase signature or checksum"
     else
@@ -228,9 +229,10 @@ teardown() {
     # Set SECRET and check if it leaks into output or files
     export TEST_SECRET="test-secret-12345"
 
-    run_cli_with_secret "${TEST_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/secret-test.txf"
+    local exit_code=0
+    run_cli_with_secret "${TEST_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/secret-test.txf" || exit_code=$?
 
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         # Verify secret is NOT in the token file
         run grep "${TEST_SECRET}" "${TEST_TEMP_DIR}/secret-test.txf"
         assert_failure "Secret must not appear in token file"

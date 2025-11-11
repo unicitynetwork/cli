@@ -49,10 +49,11 @@ teardown() {
   local token_file="${readonly_dir}/token.txf"
 
   # Try to mint to read-only location
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$token_file" || true
+  local exit_code=0
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$token_file" || exit_code=$?
 
   # Should fail with permission error
-  if [[ $status -ne 0 ]]; then
+  if [[ $exit_code -ne 0 ]]; then
     assert_output_contains "Permission denied\|EACCES\|read-only\|EROFS" || true
     info "✓ Read-only directory detected"
   else
@@ -117,13 +118,14 @@ teardown() {
   mkdir -p "$(dirname "$long_path")" || skip "Cannot create deep directory"
 
   # Try to mint to long path
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$long_path" || true
+  local exit_code=0
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$long_path" || exit_code=$?
 
   if [[ -f "$long_path" ]]; then
     info "✓ Long path handled successfully"
     assert_valid_json "$long_path"
   else
-    if [[ $status -ne 0 ]]; then
+    if [[ $exit_code -ne 0 ]]; then
       # May fail with path length error
       info "Long path rejected (may be system limit)"
     fi
@@ -249,9 +251,10 @@ teardown() {
   assert_file_exists "$link_file"
 
   # Verify token through symlink
-  run_cli verify-token --file "$link_file" || true
+  local exit_code=0
+  run_cli verify-token --file "$link_file" || exit_code=$?
 
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     info "✓ Read through symlink successful"
   else
     info "Read through symlink failed"
@@ -259,6 +262,7 @@ teardown() {
 
   # Try to send through symlink
   run generate_address "$(generate_unique_id recipient)" "nft"
+  extract_generated_address
   local recipient="$GENERATED_ADDRESS"
 
   local send_file

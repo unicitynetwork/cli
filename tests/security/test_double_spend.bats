@@ -227,11 +227,12 @@ teardown() {
     # Alice keeps a copy of the original token file (before transfer)
     # ATTACK: Alice tries to send the token AGAIN using her old token file
     local transfer_carol="${TEST_TEMP_DIR}/transfer-carol-attack.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${transfer_carol}"
+    local exit_code=0
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${transfer_carol}" || exit_code=$?
 
     # The send-token might succeed locally (creates offline package)
     # BUT when Carol tries to receive it, the network will reject it
-    if [[ $status -eq 0 ]] && [[ -f "${transfer_carol}" ]]; then
+    if [[ $exit_code -eq 0 ]] && [[ -f "${transfer_carol}" ]]; then
         # Carol tries to receive the stale transfer
         run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-token.txf"
 
@@ -281,10 +282,11 @@ teardown() {
 
     # ATTACK: Bob tries to receive SAME transfer again
     local bob_token2="${TEST_TEMP_DIR}/bob-token-2.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token2}"
+    local exit_code=0
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token2}" || exit_code=$?
 
     # Expected behavior: Either FAILS or is idempotent (returns same state)
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         # If succeeded, verify it's idempotent (same token state)
         assert_file_exists "${bob_token2}"
         assert_token_fully_valid "${bob_token2}"
@@ -366,10 +368,11 @@ teardown() {
     local dave_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local transfer_to_dave="${TEST_TEMP_DIR}/transfer-dave-attack.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${dave_address} --local -o ${transfer_to_dave}"
+    local exit_code=0
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${dave_address} --local -o ${transfer_to_dave}" || exit_code=$?
 
     # Sending might succeed locally, but receiving will fail
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         run_cli_with_secret "${dave_secret}" "receive-token -f ${transfer_to_dave} --local -o ${TEST_TEMP_DIR}/dave-token.txf"
 
         # This MUST fail - Bob's state is outdated

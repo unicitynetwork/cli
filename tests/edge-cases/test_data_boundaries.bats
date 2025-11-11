@@ -47,10 +47,11 @@ teardown() {
   output_file=$(create_temp_file "-addr.json")
 
   # Empty string is different from undefined
-  SECRET="" run_cli gen-address --preset nft || true
+  local exit_code=0
+  SECRET="" run_cli gen-address --preset nft || exit_code=$?
 
   # Should fail or prompt
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     info "⚠ Empty secret accepted (security risk)"
     # Check if generated same as another empty secret (deterministic but weak)
     local addr1
@@ -75,18 +76,20 @@ teardown() {
 
 @test "CORNER-008: Secret with only whitespace characters" {
   # Test with spaces
-  SECRET="     " run_cli gen-address --preset nft || true
+  local exit_code=0
+  SECRET="     " run_cli gen-address --preset nft || exit_code=$?
 
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     info "⚠ Whitespace-only secret accepted"
   else
     info "✓ Whitespace-only secret rejected or prompted"
   fi
 
   # Test with tabs and newlines
-  SECRET=$'\n\t  \n' run_cli gen-address --preset nft || true
+  local exit_code=0
+  SECRET=$'\n\t  \n' run_cli gen-address --preset nft || exit_code=$?
 
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     info "⚠ Whitespace (tabs/newlines) accepted"
   else
     info "✓ Whitespace secret rejected"
@@ -181,9 +184,10 @@ teardown() {
   local secret_with_null
   secret_with_null=$'test\x00secret'
 
-  SECRET="$secret_with_null" run_cli gen-address --preset nft || true
+  local exit_code=0
+  SECRET="$secret_with_null" run_cli gen-address --preset nft || exit_code=$?
 
-  if [[ $status -eq 0 ]]; then
+  if [[ $exit_code -eq 0 ]]; then
     local addr
     addr=$(echo "$output" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 

@@ -194,10 +194,11 @@ teardown() {
         jq 'del(.transactions[0])' "${carol_token}" > "${tampered_chain}"
 
         # Verify tampered chain is detected
-        run_cli "verify-token -f ${tampered_chain} --local"
+        local exit_code=0
+        run_cli "verify-token -f ${tampered_chain} --local" || exit_code=$?
 
         # May succeed or fail depending on whether CLI validates chain integrity
-        if [[ $status -eq 0 ]]; then
+        if [[ $exit_code -eq 0 ]]; then
             warn "Transaction removal not detected - chain validation may be limited"
         else
             log_info "Transaction chain tampering detected"
@@ -298,10 +299,11 @@ teardown() {
         jq '.status = "CONFIRMED"' "${transfer}" > "${wrong_status}"
 
         # This is inconsistent: CONFIRMED status with pending offline transfer
-        run_cli "verify-token -f ${wrong_status} --local"
+        local exit_code=0
+        run_cli "verify-token -f ${wrong_status} --local" || exit_code=$?
 
         # May succeed or fail depending on status validation
-        if [[ $status -eq 0 ]]; then
+        if [[ $exit_code -eq 0 ]]; then
             warn "Status inconsistency not detected"
         else
             log_info "Status inconsistency detected"
@@ -313,10 +315,11 @@ teardown() {
         local no_transfer="${TEST_TEMP_DIR}/no-transfer.txf"
         jq 'del(.offlineTransfer) | .status = "PENDING"' "${alice_token}" > "${no_transfer}"
 
-        run_cli "verify-token -f ${no_transfer} --local"
+        local exit_code=0
+        run_cli "verify-token -f ${no_transfer} --local" || exit_code=$?
 
         # Inconsistent: PENDING status without offline transfer
-        if [[ $status -eq 0 ]]; then
+        if [[ $exit_code -eq 0 ]]; then
             warn "Missing offlineTransfer with PENDING status not detected"
         else
             log_info "Status/transfer mismatch detected"
@@ -327,10 +330,11 @@ teardown() {
     local invalid_status="${TEST_TEMP_DIR}/invalid-status.txf"
     jq '.status = "INVALID_STATUS_VALUE"' "${transfer}" > "${invalid_status}"
 
-    run_cli "verify-token -f ${invalid_status} --local"
+    local exit_code=0
+    run_cli "verify-token -f ${invalid_status} --local" || exit_code=$?
 
     # May accept unknown status or reject it
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         warn "Invalid status value accepted"
     else
         log_info "Invalid status value rejected"

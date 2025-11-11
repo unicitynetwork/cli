@@ -107,9 +107,11 @@ teardown() {
 
   # Generate two different recipients
   run generate_address "$(generate_unique_id recipient1)" "nft"
+  extract_generated_address
   local addr1="$GENERATED_ADDRESS"
 
   run generate_address "$(generate_unique_id recipient2)" "nft"
+  extract_generated_address
   local addr2="$GENERATED_ADDRESS"
 
   # Launch concurrent send operations
@@ -312,6 +314,7 @@ teardown() {
 
   local recipient_secret=$(generate_unique_id "recipient")
   run generate_address "$recipient_secret" "nft"
+  extract_generated_address
   local recipient="$GENERATED_ADDRESS"
 
   local transfer_file=$(create_temp_file "-transfer.txf")

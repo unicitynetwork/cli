@@ -85,6 +85,35 @@ generate_address() {
   return 0
 }
 
+# Extract generated address from BATS $output variable
+# This helper is used to populate $GENERATED_ADDRESS after calling:
+#   run generate_address "$SECRET" "nft"
+# Usage:
+#   run generate_address "$SECRET" "nft"
+#   extract_generated_address
+#   local addr="$GENERATED_ADDRESS"
+# Returns: 0 on success, 1 on failure
+extract_generated_address() {
+  if [[ -z "${output:-}" ]]; then
+    error "No output to extract address from. Did you use 'run' before this call?"
+    return 1
+  fi
+
+  local address
+  address=$(echo "$output" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
+
+  if [[ -z "$address" ]]; then
+    error "Could not extract DIRECT:// address from output. Output was: $output"
+    return 1
+  fi
+
+  export GENERATED_ADDRESS="$address"
+  debug "Extracted GENERATED_ADDRESS: $address"
+  return 0
+}
+
+export -f extract_generated_address
+
 # -----------------------------------------------------------------------------
 # Token Minting
 # -----------------------------------------------------------------------------

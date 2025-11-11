@@ -267,14 +267,15 @@ teardown() {
 
     # But Bob CANNOT receive with same nonce (signature will be different or fail)
     # The network should detect nonce reuse or Bob cannot create valid signature
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer2} --nonce ${bob_nonce} --local -o ${TEST_TEMP_DIR}/bob-token2.txf"
+    local exit_code=0
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer2} --nonce ${bob_nonce} --local -o ${TEST_TEMP_DIR}/bob-token2.txf" || exit_code=$?
 
     # Expected: This should fail or produce error about nonce reuse
     # Note: The exact failure mode depends on SDK implementation
     # Either: Bob can't generate valid signature with reused nonce, OR network rejects it
 
     # At minimum, verify we don't silently succeed with same nonce
-    if [[ $status -eq 0 ]]; then
+    if [[ $exit_code -eq 0 ]]; then
         # If receive succeeded, verify tokens are different or flag warning
         warn "Nonce reuse did not fail - this may be acceptable if tokens differ"
     fi
