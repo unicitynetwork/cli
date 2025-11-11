@@ -765,18 +765,19 @@ assert_token_has_valid_structure() {
   fi
   
   # Check required state fields
-  local required_state_fields=(
-    ".state.data"
-    ".state.predicate"
-  )
+  # Note: .state.data can be null for received tokens, so we check existence only
+  if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing required field: .state.data${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
 
-  for field in "${required_state_fields[@]}"; do
-    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ Missing required field: %s${COLOR_RESET}\n" "$field" >&2
-      printf "  File: %s\n" "$token_file" >&2
-      return 1
-    fi
-  done
+  # .state.predicate must exist and be non-null
+  if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Missing required field: .state.predicate${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
 
   # Check genesis has data (including tokenType)
   if ! ~/.local/bin/jq -e '.genesis.data.tokenType' "$token_file" >/dev/null 2>&1; then
@@ -855,14 +856,14 @@ assert_token_has_valid_state() {
     return 1
   fi
 
-  # Check state data exists
-  if ! ~/.local/bin/jq -e '.state.data' "$token_file" >/dev/null 2>&1; then
+  # Check state data exists (can be null for received tokens)
+  if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
 
-  # Check predicate exists
+  # Check predicate exists and is non-null
   if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
@@ -1539,8 +1540,9 @@ get_token_data() {
   local file="${1:?File path required}"
 
   # Extract hex-encoded data
+  # Try state.data first (current state), then genesis.data.tokenData (original data)
   local hex_data
-  hex_data=$(~/.local/bin/jq -r '.state.data // .genesis.data.data // empty' "$file" 2>/dev/null)
+  hex_data=$(~/.local/bin/jq -r '.state.data // .genesis.data.tokenData // empty' "$file" 2>/dev/null)
 
   if [[ -z "$hex_data" ]] || [[ "$hex_data" == "null" ]]; then
     return 0

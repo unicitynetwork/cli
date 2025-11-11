@@ -6,6 +6,7 @@ import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/Sta
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
+import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
 import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
 import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/bft/RootTrustBase.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
@@ -119,6 +120,7 @@ export function receiveTokenCommand(program: Command): void {
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
+    .option('--state-data <json>', 'State data (JSON string) for the received token - REQUIRED if sender specified recipient data hash')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .action(async (options) => {
       try {
@@ -235,6 +237,64 @@ export function receiveTokenCommand(program: Command): void {
         console.error(`  ✓ Transfer commitment parsed`);
         console.error(`  Request ID: ${transferCommitment.requestId.toJSON()}\n`);
 
+        // STEP 4.5: Validate state data against recipient data hash (CRITICAL SECURITY)
+        console.error('Step 4.5: Validating state data commitment...');
+        let stateData: Uint8Array | null = null;
+
+        // Access recipientDataHash from commitmentJson (before SDK parsing)
+        const recipientDataHash = commitmentJson.transactionData?.recipientDataHash;
+
+        if (recipientDataHash) {
+          // Recipient data hash is present - state data REQUIRED and MUST match
+          console.error('  ℹ  Sender specified recipient data hash commitment');
+
+          if (!options.stateData) {
+            console.error('\n❌ Error: --state-data is REQUIRED');
+            console.error('The sender committed to a specific state data hash.');
+            console.error('You must provide the exact state data that matches this commitment.\n');
+            console.error('Usage: npm run receive-token -- -f transfer.txf --state-data \'{"your":"data"}\'\n');
+            process.exit(1);
+          }
+
+          // Compute hash of provided state data
+          const providedData = new TextEncoder().encode(options.stateData);
+          // Use SHA256 (same as used by send-token)
+          const hasher = new DataHasher(HashAlgorithm.SHA256);
+          const computedHash = await hasher.update(providedData).digest();
+
+          // CRITICAL: Validate exact hash match
+          // recipientDataHash is just the raw 64-char hex hash string from send-token
+          const expectedHashHex = recipientDataHash;
+          const computedHashHex = HexConverter.encode(computedHash.data);
+
+          if (computedHashHex !== expectedHashHex) {
+            console.error('\n❌ SECURITY ERROR: State data hash mismatch!');
+            console.error('The state data you provided does not match the sender\'s commitment.\n');
+            console.error(`Expected hash: ${expectedHashHex}`);
+            console.error(`Computed hash: ${computedHashHex}\n`);
+            console.error('You must provide the exact state data that matches the hash commitment.');
+            process.exit(1);
+          }
+
+          console.error('  ✓ State data hash validated - matches sender commitment');
+          stateData = providedData;
+        } else {
+          // No recipient data hash - state data MUST be null
+          console.error('  ℹ  No recipient data hash commitment');
+
+          if (options.stateData) {
+            console.error('\n❌ Error: Cannot set --state-data');
+            console.error('The sender did NOT commit to a recipient data hash.');
+            console.error('State data must remain null to prevent creating alternative states.\n');
+            console.error('Remove the --state-data option and try again.');
+            process.exit(1);
+          }
+
+          console.error('  ✓ State data validation passed (null as required)');
+          stateData = null;
+        }
+        console.error();
+
         // STEP 5: Load token from TXF to get token ID and type
         console.error('Step 5: Loading token data...');
         const token = await Token.fromJSON(extendedTxf);
@@ -260,7 +320,24 @@ export function receiveTokenCommand(program: Command): void {
           saltBytes
         );
         console.error('  ✓ Recipient predicate created for new state');
-        console.error(`  Intended Recipient: ${offlineTransfer.recipient}\n`);
+
+        // STEP 6.5: Validate that the secret generates the intended recipient address
+        const predicateRef = await recipientPredicate.getReference();
+        const addressObj = await predicateRef.toAddress();
+        const actualAddress = addressObj.address;
+        console.error(`  Generated Address: ${actualAddress}`);
+        console.error(`  Intended Recipient: ${offlineTransfer.recipient}`);
+
+        if (actualAddress !== offlineTransfer.recipient) {
+          console.error('\n❌ Error: Secret does not match intended recipient!');
+          console.error(`\nThe transfer was sent to: ${offlineTransfer.recipient}`);
+          console.error(`Your secret generates:    ${actualAddress}`);
+          console.error('\nYou are not the intended recipient of this transfer.');
+          console.error('Please verify you are using the correct secret.\n');
+          process.exit(1);
+        }
+
+        console.error('  ✓ Address validation passed - you are the intended recipient\n');
 
         // STEP 7: Create network clients
         console.error('Step 7: Connecting to network...');
@@ -325,9 +402,9 @@ export function receiveTokenCommand(program: Command): void {
 
         // STEP 12: Create new token state with recipient's predicate
         console.error('Step 12: Creating new token state with recipient predicate...');
-        const tokenData = token.state.data;  // Preserve token data
-        const newState = new TokenState(recipientPredicate, tokenData);
-        console.error('  ✓ New token state created\n');
+        // Use validated state data (either from hash validation or null)
+        const newState = new TokenState(recipientPredicate, stateData);
+        console.error('  ✓ New token state created with validated data\n');
 
         // STEP 13: Create updated token with recipient's state and transfer transaction
         console.error('Step 13: Creating updated token with new ownership...');

@@ -11,6 +11,7 @@ Complete technical reference for all Unicity CLI commands, options, file formats
   - [verify-token](#verify-token)
   - [send-token](#send-token)
   - [receive-token](#receive-token)
+  - [hash-data](#hash-data)
   - [get-request](#get-request)
   - [register-request](#register-request)
 - [Environment Variables](#environment-variables)
@@ -31,6 +32,7 @@ Complete technical reference for all Unicity CLI commands, options, file formats
 | verify-token | `npm run verify-token -- -f <file>` | Inspect token file | TXF file path | Formatted details |
 | send-token | `npm run send-token -- -f <file> -r <recipient>` | Send token to recipient | TXF, recipient, secret | Extended TXF |
 | receive-token | `npm run receive-token -- -f <file>` | Receive offline token | Extended TXF, secret | TXF (confirmed) |
+| hash-data | `npm run hash-data -- [options]` | Compute deterministic JSON hash | JSON (data/file/stdin) | 68-char hash |
 | get-request | `npm run get-request -- [options] <requestId>` | Query inclusion proof | Request ID | Proof details |
 | register-request | `npm run register-request -- [options] <secret> <state> <transactionData>` | Register state transition | Secret, data | Confirmation |
 
@@ -634,6 +636,188 @@ The command performs these validations:
 - Token state (data) preserved from original token
 - Transaction history includes all previous transfers
 - After confirmation, token is ready for transfer to another recipient
+
+---
+
+### hash-data
+
+Compute deterministic SHA256 hash of JSON data using canonical normalization.
+
+#### Synopsis
+
+```bash
+npm run hash-data [options]
+```
+
+#### Description
+
+Computes a deterministic hash of JSON data by normalizing it to canonical form (sorted keys, compact serialization) before hashing. Primarily used to generate data hashes for the `send-token --recipient-data-hash` option, which allows senders to commit to specific recipient state data without revealing it in the transfer package.
+
+**Normalization Rules:**
+- Object keys are sorted alphabetically (recursively)
+- Array order is preserved
+- Whitespace is removed (compact JSON)
+- Encoding: UTF-8
+- Algorithm: SHA256
+
+#### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `-d, --data <json>` | string | - | JSON string to hash |
+| `-f, --file <path>` | string | - | Read JSON from file |
+| `--raw-hash` | flag | - | Output 64-char hash only (without algorithm prefix) |
+| `--verbose` | flag | - | Show normalization steps and details |
+
+#### Input
+
+Accepts JSON data from three sources (priority order):
+1. `--data` flag: Inline JSON string
+2. `--file` flag: Path to JSON file
+3. **stdin**: Piped JSON data
+
+#### Output
+
+**Default Format (68 characters):**
+```
+0000<64-char-hex-hash>
+```
+- First 4 chars: Algorithm identifier (`0000` = SHA256)
+- Next 64 chars: Hex-encoded hash
+
+**With `--raw-hash` (64 characters):**
+```
+<64-char-hex-hash>
+```
+
+**With `--verbose`:**
+- Input JSON
+- Normalized JSON
+- UTF-8 bytes (hex dump)
+- Algorithm
+- Raw hash
+- Imprint (with prefix)
+- Usage example
+
+#### Examples
+
+**Hash inline JSON:**
+
+```bash
+$ npm run hash-data -- --data '{"key":"value"}'
+0000a1b2c3d4e5f6...
+```
+
+**Hash from file:**
+
+```bash
+$ npm run hash-data -- --file state.json
+0000f1e2d3c4b5a6...
+```
+
+**Hash from stdin:**
+
+```bash
+$ echo '{"key":"value"}' | npm run hash-data
+0000a1b2c3d4e5f6...
+
+$ cat metadata.json | npm run hash-data --verbose
+```
+
+**Deterministic normalization (different inputs, same hash):**
+
+```bash
+# Different key order
+$ npm run hash-data -- --data '{"b":2,"a":1}'
+000043258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777
+
+$ npm run hash-data -- --data '{"a":1,"b":2}'
+000043258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777
+
+# Different whitespace
+$ npm run hash-data -- --data '{ "a" : 1 , "b" : 2 }'
+000043258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777
+```
+
+**Nested objects:**
+
+```bash
+$ npm run hash-data -- --data '{"nested":{"z":3,"a":1},"top":"value"}' --verbose
+Input JSON:      {"nested":{"z":3,"a":1},"top":"value"}
+Normalized JSON: {"nested":{"a":1,"z":3},"top":"value"}
+...
+```
+
+**Arrays preserve order:**
+
+```bash
+$ npm run hash-data -- --data '{"arr":[3,1,2]}' --verbose
+Normalized JSON: {"arr":[3,1,2]}  # Order unchanged
+```
+
+**Use with send-token:**
+
+```bash
+# 1. Compute hash of required data
+$ HASH=$(npm run hash-data -- --data '{"invoice":"INV-001","amount":1000}')
+
+# 2. Send token with data hash
+$ npm run send-token -- \
+    -f token.txf \
+    -r "DIRECT://recipient..." \
+    --recipient-data-hash "$HASH" \
+    --save
+
+# 3. Recipient must provide matching data when receiving
+$ npm run receive-token -- \
+    -f transfer.txf \
+    --data '{"invoice":"INV-001","amount":1000}' \
+    --save
+```
+
+**Pipeline integration:**
+
+```bash
+# Extract and hash token metadata
+$ jq '.state.data' token.txf | npm run hash-data
+0000abc123...
+
+# Generate complex data programmatically
+$ node -e 'console.log(JSON.stringify({
+    timestamp: Date.now(),
+    purpose: "payment"
+  }))' | npm run hash-data --verbose
+```
+
+#### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success - hash computed |
+| 1 | Invalid JSON, file not found, or no input provided |
+
+#### Use Cases
+
+1. **Payment References**: Enforce invoice numbers without revealing them
+2. **Metadata Constraints**: Commit to specific metadata structure
+3. **Auditing**: Link tokens to documents via hash
+4. **Compliance**: Require regulatory data fields
+5. **Data Verification**: Ensure recipient provides expected data
+
+#### Notes
+
+- **Deterministic**: Same JSON structure always produces same hash
+- **Key Order Independent**: `{"a":1,"b":2}` === `{"b":2,"a":1}`
+- **Whitespace Independent**: Formatting doesn't affect hash
+- **Array Order Matters**: `[1,2,3]` !== `[3,2,1]` (intentional)
+- **Nested Objects**: Recursively normalized
+- **Compatible**: Output format matches SDK's `DataHash.toJSON()`
+
+#### See Also
+
+- [send-token](#send-token) - Using `--recipient-data-hash` option
+- [receive-token](#receive-token) - Providing matching state data
+- [hash-data Command Guide](../guides/commands/hash-data.md) - Detailed examples
 
 ---
 

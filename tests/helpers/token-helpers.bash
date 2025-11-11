@@ -376,9 +376,11 @@ receive_token() {
     return 1
   fi
 
-  # Create output file if not provided
+  # Track if output file was auto-generated (for cleanup on failure)
+  local auto_generated_output=0
   if [[ -z "$output_file" ]]; then
     output_file=$(create_temp_file ".txf")
+    auto_generated_output=1
   fi
 
   # Build command
@@ -392,10 +394,15 @@ receive_token() {
 
   debug "Receiving token: input=$input_file"
 
-  # Execute command
+  # Execute command and capture exit code
   local exit_code=0
-  if ! SECRET="$secret" run_cli "${cmd[@]}"; then
-    exit_code=$?
+  SECRET="$secret" run_cli "${cmd[@]}" || exit_code=$?
+
+  if [[ $exit_code -ne 0 ]]; then
+    # Clean up auto-generated output file on failure
+    if [[ $auto_generated_output -eq 1 ]] && [[ -f "$output_file" ]]; then
+      rm -f "$output_file"
+    fi
     error "Failed to receive token (exit code: $exit_code)"
     return "$exit_code"
   fi
@@ -593,14 +600,13 @@ get_total_coin_amount() {
 # Get token status
 # Args:
 #   $1: Token file path
-# Returns: Status string (PENDING, TRANSFERRED, CONFIRMED)
+# Returns: Status string (PENDING, CONFIRMED)
+# Note: PENDING means offline transfer exists, CONFIRMED means transfer completed
 get_token_status() {
   local token_file="${1:?Token file required}"
 
   if has_offline_transfer "$token_file"; then
     echo "PENDING"
-  elif [[ $(get_transaction_count "$token_file") -gt 0 ]]; then
-    echo "TRANSFERRED"
   else
     echo "CONFIRMED"
   fi

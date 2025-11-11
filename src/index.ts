@@ -7,6 +7,7 @@ import { mintTokenCommand } from './commands/mint-token.js';
 import { verifyTokenCommand } from './commands/verify-token.js';
 import { sendTokenCommand } from './commands/send-token.js';
 import { receiveTokenCommand } from './commands/receive-token.js';
+import { hashDataCommand } from './commands/hash-data.js';
 
 // CLI setup
 program
@@ -22,6 +23,7 @@ mintTokenCommand(program);
 verifyTokenCommand(program);
 sendTokenCommand(program);
 receiveTokenCommand(program);
+hashDataCommand(program);
 
 // Parse command line arguments
 program.parse();

@@ -32,7 +32,8 @@
     "mint-token": "node dist/index.js mint-token",
     "verify-token": "node dist/index.js verify-token",
     "send-token": "node dist/index.js send-token",
-    "receive-token": "node dist/index.js receive-token"
+    "receive-token": "node dist/index.js receive-token",
+    "hash-data": "node dist/index.js hash-data"
   },
   "repository": {
     "type": "git",
