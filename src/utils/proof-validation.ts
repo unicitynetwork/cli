@@ -286,10 +286,48 @@ export async function validateTokenProofs(
     }
   }
 
-  // Note: Full inclusion proof verification (merkle path) requires RequestId computation
-  // which is not exposed on Transaction objects. We verify authenticator signatures above.
+  // 6. FULL MERKLE PATH VERIFICATION using RequestId from Authenticator
+  // The authenticator can compute the RequestId (hash of publicKey + stateHash)
   if (trustBase && errors.length === 0) {
-    warnings.push('Cryptographic verification skipped - requires RequestId computation');
+    // Verify genesis proof merkle path
+    if (genesisProof.authenticator && genesisProof.transactionHash) {
+      try {
+        // Calculate RequestId from authenticator
+        const requestId = await genesisProof.authenticator.calculateRequestId();
+
+        // Verify the complete proof including merkle path
+        const verificationStatus = await genesisProof.verify(trustBase, requestId);
+
+        if (verificationStatus !== InclusionProofVerificationStatus.OK) {
+          errors.push(`Genesis proof merkle path verification failed: ${verificationStatus}`);
+        }
+      } catch (err) {
+        errors.push(`Genesis proof merkle verification error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // Verify transaction proofs merkle paths
+    if (token.transactions && token.transactions.length > 0) {
+      for (let i = 0; i < token.transactions.length; i++) {
+        const tx = token.transactions[i];
+
+        if (tx.inclusionProof && tx.inclusionProof.authenticator && tx.inclusionProof.transactionHash) {
+          try {
+            // Calculate RequestId from authenticator
+            const requestId = await tx.inclusionProof.authenticator.calculateRequestId();
+
+            // Verify the complete proof including merkle path
+            const verificationStatus = await tx.inclusionProof.verify(trustBase, requestId);
+
+            if (verificationStatus !== InclusionProofVerificationStatus.OK) {
+              errors.push(`Transaction ${i + 1} proof merkle path verification failed: ${verificationStatus}`);
+            }
+          } catch (err) {
+            errors.push(`Transaction ${i + 1} proof merkle verification error: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+    }
   }
 
   return {
