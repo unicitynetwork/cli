@@ -20,7 +20,7 @@ import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predica
 import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import { validateInclusionProof } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
-import { validateSecret, validateTokenType, validateNonce, throwValidationError } from '../utils/input-validation.js';
+import { validateSecret, validateTokenType, validateNonce, validateFilePath, throwValidationError } from '../utils/input-validation.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -407,8 +407,17 @@ export function mintTokenCommand(program: Command): void {
         // Process coins - handle preset fungible tokens
         let coinData: TokenCoinData;
         if (options.coins) {
-          // Manual coin specification
-          const coinAmounts = options.coins.split(',').map((s: string) => BigInt(s.trim()));
+          // Manual coin specification with validation
+          const coinAmounts = options.coins.split(',').map((s: string) => {
+            const trimmed = s.trim();
+
+            // Validate format - must be numeric (negative values allowed for liabilities)
+            if (!/^-?\d+$/.test(trimmed)) {
+              throw new Error(`Invalid coin amount: "${trimmed}" - must be numeric`);
+            }
+
+            return BigInt(trimmed);
+          });
           const coinsWithIds: [CoinId, bigint][] = coinAmounts.map((amount: bigint) => {
             const coinIdBytes = crypto.getRandomValues(new Uint8Array(32));
             return [new CoinId(coinIdBytes), amount];
@@ -515,7 +524,11 @@ export function mintTokenCommand(program: Command): void {
         let outputFile: string | null = null;
 
         if (options.output) {
-          // Explicit output file specified
+          // Explicit output file specified - validate path
+          const validation = validateFilePath(options.output, 'Output file');
+          if (!validation.valid) {
+            throwValidationError(validation);
+          }
           outputFile = options.output;
         } else if (options.save) {
           // Auto-generate filename
@@ -524,7 +537,8 @@ export function mintTokenCommand(program: Command): void {
           const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
           const timestamp = Date.now();
           const addressBody = address.address.replace(/^[A-Z]+:\/\//, '');
-          const addressPrefix = addressBody.substring(0, 10);
+          // Sanitize address prefix to remove shell metacharacters and special chars
+          const addressPrefix = addressBody.substring(0, 10).replace(/[^a-zA-Z0-9]/g, '');
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${addressPrefix}.txf`;
         }
 
