@@ -221,12 +221,13 @@ run_cli() {
   # Handle both array arguments and string arguments
   # If $1 contains spaces and $# == 1, it's a command string that needs eval
   # Otherwise, use array expansion to preserve multi-word arguments
+  # IMPORTANT: Capture stdout only - stderr goes to terminal for proper JSON output
   if [[ $# -eq 1 ]] && [[ "$1" =~ [[:space:]] ]]; then
     # Single string argument with spaces - use eval to parse it
-    output=$(eval "${full_cmd[@]}" "$1" 2>&1) || exit_code=$?
+    output=$(eval "${full_cmd[@]}" "$1") || exit_code=$?
   else
     # Array of arguments - use direct expansion
-    output=$("${full_cmd[@]}" "$@" 2>&1) || exit_code=$?
+    output=$("${full_cmd[@]}" "$@") || exit_code=$?
   fi
 
   # Debug output
