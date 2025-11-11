@@ -163,6 +163,7 @@ export function genAddressCommand(program: Command): void {
     .option('--preset <type>', 'Use preset token type: nft, alpha/uct (default), usdu, euru')
     .option('-y, --token-type <tokenType>', 'Custom token type (hex string or text to be hashed)')
     .option('-n, --nonce <nonce>', 'Nonce value for masked/single-use address (hex string or text to be hashed, omit for unmasked address)')
+    .option('--local', 'Use local aggregator (http://localhost:3000) [Note: gen-address is local-only, this flag is accepted for CLI consistency]')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .action(async (options) => {
       try {

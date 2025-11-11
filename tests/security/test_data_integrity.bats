@@ -72,7 +72,7 @@ teardown() {
     assert_failure
 
     # Test 4: Try to send corrupted token
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -158,7 +158,7 @@ teardown() {
     assert_success
 
     # Alice → Bob
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -172,7 +172,7 @@ teardown() {
 
     # Bob → Carol
     local carol_secret=$(generate_test_secret "carol-integrity")
-    run_cli_with_secret "${carol_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${carol_secret}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -281,7 +281,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -360,7 +360,7 @@ teardown() {
     log_info "Original token ID: ${original_token_id:0:16}..."
 
     # Transfer to Bob
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 

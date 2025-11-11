@@ -45,7 +45,7 @@ teardown() {
     log_info "Bob can verify Alice's token (expected - verification is public)"
 
     # Generate Carol's address for transfer attempt
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -60,7 +60,7 @@ teardown() {
     assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "Invalid"
 
     # Verify Alice still owns the token (can successfully transfer it)
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${TEST_TEMP_DIR}/valid-transfer.txf"
@@ -116,7 +116,7 @@ teardown() {
         log_info "File is readable (token ID: ${token_id:0:16}...)"
 
         # But Bob still can't transfer it (cryptographic protection)
-        run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+        run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
         local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
         run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o /dev/null"
@@ -181,7 +181,7 @@ teardown() {
     assert_failure
 
     # ATTACK 4: Try to send a modified token
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${modified_token} -r ${bob_address} --local -o /dev/null"
@@ -208,7 +208,7 @@ teardown() {
     # Try to use fake trustbase
     # Note: The CLI may or may not validate trustbase authenticity
     local exit_code=0
-    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local" || exit_code=$?
+    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft" || exit_code=$?
 
     # Command may succeed or fail depending on trustbase validation
     if [[ $exit_code -eq 0 ]]; then
@@ -220,7 +220,7 @@ teardown() {
 
     # Test 2: NODE_PATH override (if applicable)
     # This shouldn't affect security but test anyway
-    NODE_PATH="/tmp/fake-modules" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local"
+    NODE_PATH="/tmp/fake-modules" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
 
     # Should either ignore or handle gracefully
     # No security issue as long as legitimate SDK is used
@@ -238,7 +238,7 @@ teardown() {
         assert_failure "Secret must not appear in token file"
 
         # Verify secret is NOT in any output
-        run_cli_with_secret "${TEST_SECRET}" "gen-address --preset nft --local"
+        run_cli_with_secret "${TEST_SECRET}" "gen-address --preset nft"
         assert_not_output_contains "${TEST_SECRET}"
 
         log_info "✓ SECRET environment variable properly protected"
@@ -265,7 +265,7 @@ teardown() {
     assert_success
 
     # Bob generates address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -279,7 +279,7 @@ teardown() {
     assert_success
 
     # Carol generates address
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -297,7 +297,7 @@ teardown() {
     assert_success
 
     # SECURITY CHECK 3: Bob can no longer transfer (no longer owns)
-    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
     local alice_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${alice_address} --local -o /dev/null"

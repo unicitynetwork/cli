@@ -67,7 +67,7 @@ teardown() {
         assert_output_contains "signature" || assert_output_contains "authenticator" || assert_output_contains "verification"
 
         # Try to send tampered token - MUST FAIL
-        run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+        run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
         assert_success
         local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -144,12 +144,12 @@ teardown() {
     assert_success
 
     # Bob and Carol generate addresses
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local carol_secret=$(generate_test_secret "carol-crypto")
-    run_cli_with_secret "${carol_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${carol_secret}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -235,7 +235,7 @@ teardown() {
 
     # Test with very weak secret (should work but may warn)
     local weak_secret="password"
-    run_cli_with_secret "${weak_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${weak_secret}" "gen-address --preset nft"
 
     # Generation should succeed (no client-side secret validation yet)
     assert_success
@@ -246,7 +246,7 @@ teardown() {
 
     # Test with strong secret
     local strong_secret="MyStr0ng!S3cr3t#2024-$(generate_unique_id)"
-    run_cli_with_secret "${strong_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${strong_secret}" "gen-address --preset nft"
     assert_success
 
     local strong_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
@@ -360,7 +360,7 @@ teardown() {
     assert_success
 
     # Generate recipient address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 

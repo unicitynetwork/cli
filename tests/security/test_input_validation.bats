@@ -166,7 +166,7 @@ teardown() {
 
     # Test 1: Command injection in secret (via env var)
     local malicious_secret='$(whoami); echo "injected"'
-    run_cli_with_secret "${malicious_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${malicious_secret}" "gen-address --preset nft"
 
     # Should succeed (secret is just treated as string)
     assert_success

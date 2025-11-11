@@ -42,7 +42,7 @@ teardown() {
     assert_file_exists "${alice_token}"
 
     # Bob generates his own address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
     assert_set bob_address
@@ -95,7 +95,7 @@ teardown() {
     local alice_predicate=$(jq -r '.state.predicate' "${alice_token}")
 
     # Generate attacker's address to get their public key
-    run_cli_with_secret "${ATTACKER_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${ATTACKER_SECRET}" "gen-address --preset nft"
     assert_success
 
     # Manually corrupt the predicate in the JSON
@@ -110,7 +110,7 @@ teardown() {
     assert_failure
 
     # Try to send the tampered token (should also fail)
-    run_cli_with_secret "${ATTACKER_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${ATTACKER_SECRET}" "gen-address --preset nft"
     local attacker_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     run_cli_with_secret "${ATTACKER_SECRET}" "send-token -f ${tampered_token} -r ${attacker_address} --local -o /dev/null"
@@ -157,7 +157,7 @@ teardown() {
     assert_failure
 
     # Try to use tampered token for transfer
-    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
     local recipient=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
@@ -182,12 +182,12 @@ teardown() {
     assert_success
 
     # Bob and Carol generate addresses
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local carol_secret=$(generate_test_secret "carol-replay")
-    run_cli_with_secret "${carol_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${carol_secret}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -233,7 +233,7 @@ teardown() {
 
     # Bob generates a masked address with specific nonce
     local bob_nonce=$(generate_unique_id "bob-nonce")
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --nonce ${bob_nonce} --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --nonce ${bob_nonce}"
     assert_success
     local bob_masked_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
     assert_set bob_masked_address
@@ -304,7 +304,7 @@ teardown() {
     assert_success
 
     # Generate recipient address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 

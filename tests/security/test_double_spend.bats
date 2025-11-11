@@ -41,11 +41,11 @@ teardown() {
     assert_token_fully_valid "${alice_token}"
 
     # Generate addresses for Bob and Carol
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -125,7 +125,7 @@ teardown() {
     assert_token_fully_valid "${alice_token}"
 
     # Bob generates address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -204,11 +204,11 @@ teardown() {
     assert_token_fully_valid "${alice_token}"
 
     # Bob and Carol generate addresses
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -264,7 +264,7 @@ teardown() {
     assert_success
     assert_token_fully_valid "${alice_token}"
 
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -328,7 +328,7 @@ teardown() {
     assert_token_fully_valid "${alice_token}"
 
     # Bob generates address and receives from Alice
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -343,7 +343,7 @@ teardown() {
     assert_token_fully_valid "${bob_token}"
 
     # Carol generates address and receives from Bob
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset nft"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -363,7 +363,7 @@ teardown() {
     # ATTACK: Bob keeps his intermediate token file and tries to send it
     # This should FAIL because the token has already been transferred to Carol
     local dave_secret=$(generate_test_secret "dave-rollback")
-    run_cli_with_secret "${dave_secret}" "gen-address --preset nft --local"
+    run_cli_with_secret "${dave_secret}" "gen-address --preset nft"
     assert_success
     local dave_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
@@ -408,11 +408,11 @@ teardown() {
     assert_equals "${TOKEN_TYPE_UCT}" "${token_type}"
 
     # Generate recipient addresses
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset uct --local"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset uct"
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset uct --local"
+    run_cli_with_secret "${CAROL_SECRET}" "gen-address --preset uct"
     assert_success
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
