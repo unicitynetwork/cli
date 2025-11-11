@@ -341,6 +341,41 @@ export async function validateTokenProofs(
     }
   }
 
+  // 7. SDK COMPREHENSIVE VERIFICATION
+  // This validates recipient data matches transaction data, catching state.data tampering
+  if (trustBase && errors.length === 0) {
+    try {
+      const sdkVerificationResult = await token.verify(trustBase);
+
+      if (sdkVerificationResult.status !== 0) { // 0 = OK, non-zero = FAIL
+        // Extract error messages from verification result tree
+        const errorMessages: string[] = [];
+
+        function collectErrors(result: any, prefix = ''): void {
+          if (result.message && result.status !== 0) {
+            errorMessages.push(`${prefix}${result.message}`);
+          }
+          if (result.children && Array.isArray(result.children)) {
+            result.children.forEach((child: any, idx: number) => {
+              collectErrors(child, `${prefix}  `);
+            });
+          }
+        }
+
+        collectErrors(sdkVerificationResult);
+
+        if (errorMessages.length > 0) {
+          errors.push('SDK comprehensive verification failed (state data hash mismatch or invalid recipient data):');
+          errors.push(...errorMessages);
+        } else {
+          errors.push(`SDK verification failed with status ${sdkVerificationResult.status} - possible state hash mismatch`);
+        }
+      }
+    } catch (err) {
+      errors.push(`SDK comprehensive verification error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
