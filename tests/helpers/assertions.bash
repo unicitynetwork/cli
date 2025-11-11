@@ -97,32 +97,49 @@ assert_exit_code() {
 # Assert output contains substring
 # Args:
 #   $1: Expected substring
+# Note: For backward compatibility, this checks stdout first, then falls back to stderr
+#       Use assert_stderr_contains() to explicitly check only stderr
 assert_output_contains() {
   local expected="${1:?Expected substring required}"
 
-  if [[ ! "${output:-}" =~ $expected ]]; then
-    printf "${COLOR_RED}✗ Assertion Failed: Output does not contain expected string${COLOR_RESET}\n" >&2
-    printf "  Expected to contain: '%s'\n" "$expected" >&2
-    printf "  Actual output:\n%s\n" "${output}" >&2
-    return 1
+  # Check stdout first
+  if [[ "${output:-}" =~ $expected ]]; then
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Output contains '%s'${COLOR_RESET}\n" "$expected" >&2
+    fi
+    return 0
   fi
 
-  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ Output contains '%s'${COLOR_RESET}\n" "$expected" >&2
+  # Backward compatibility: check stderr as fallback
+  # Many error validation tests expect error messages in output
+  if [[ "${stderr_output:-}" =~ $expected ]]; then
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Output contains '%s' (found in stderr)${COLOR_RESET}\n" "$expected" >&2
+    fi
+    return 0
   fi
-  return 0
+
+  # Not found in either stream
+  printf "${COLOR_RED}✗ Assertion Failed: Output does not contain expected string${COLOR_RESET}\n" >&2
+  printf "  Expected to contain: '%s'\n" "$expected" >&2
+  printf "  Actual stdout:\n%s\n" "${output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  return 1
 }
 
 # Assert output does not contain substring
 # Args:
 #   $1: Unexpected substring
+# Note: For backward compatibility, this checks both stdout and stderr
 assert_output_not_contains() {
   local unexpected="${1:?Unexpected substring required}"
 
-  if [[ "${output:-}" =~ $unexpected ]]; then
+  # Check both stdout and stderr (backward compatibility)
+  if [[ "${output:-}" =~ $unexpected ]] || [[ "${stderr_output:-}" =~ $unexpected ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Output contains unexpected string${COLOR_RESET}\n" >&2
     printf "  Should not contain: '%s'\n" "$unexpected" >&2
-    printf "  Actual output:\n%s\n" "${output}" >&2
+    printf "  Actual stdout:\n%s\n" "${output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
     return 1
   fi
 
@@ -130,6 +147,11 @@ assert_output_not_contains() {
     printf "${COLOR_GREEN}✓ Output does not contain '%s'${COLOR_RESET}\n" "$unexpected" >&2
   fi
   return 0
+}
+
+# Alias for backward compatibility
+assert_not_output_contains() {
+  assert_output_not_contains "$@"
 }
 
 # Assert string contains substring
@@ -156,20 +178,32 @@ assert_string_contains() {
 # Assert output matches regex pattern
 # Args:
 #   $1: Regex pattern
+# Note: For backward compatibility, this checks stdout first, then falls back to stderr
 assert_output_matches() {
   local pattern="${1:?Pattern required}"
 
-  if [[ ! "${output:-}" =~ $pattern ]]; then
-    printf "${COLOR_RED}✗ Assertion Failed: Output does not match pattern${COLOR_RESET}\n" >&2
-    printf "  Pattern: '%s'\n" "$pattern" >&2
-    printf "  Actual output:\n%s\n" "${output}" >&2
-    return 1
+  # Check stdout first
+  if [[ "${output:-}" =~ $pattern ]]; then
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Output matches pattern '%s'${COLOR_RESET}\n" "$pattern" >&2
+    fi
+    return 0
   fi
 
-  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ Output matches pattern '%s'${COLOR_RESET}\n" "$pattern" >&2
+  # Backward compatibility: check stderr as fallback
+  if [[ "${stderr_output:-}" =~ $pattern ]]; then
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Output matches pattern '%s' (found in stderr)${COLOR_RESET}\n" "$pattern" >&2
+    fi
+    return 0
   fi
-  return 0
+
+  # Not found in either stream
+  printf "${COLOR_RED}✗ Assertion Failed: Output does not match pattern${COLOR_RESET}\n" >&2
+  printf "  Pattern: '%s'\n" "$pattern" >&2
+  printf "  Actual stdout:\n%s\n" "${output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  return 1
 }
 
 # Assert output equals exact string
@@ -189,6 +223,121 @@ assert_output_equals() {
     printf "${COLOR_GREEN}✓ Output matches expected value${COLOR_RESET}\n" >&2
   fi
   return 0
+}
+
+# -----------------------------------------------------------------------------
+# Stderr Assertions
+# -----------------------------------------------------------------------------
+
+# Assert stderr contains substring
+# Args:
+#   $1: Expected substring
+assert_stderr_contains() {
+  local expected="${1:?Expected substring required}"
+
+  if [[ ! "${stderr_output:-}" =~ $expected ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Stderr does not contain expected string${COLOR_RESET}\n" >&2
+    printf "  Expected to contain: '%s'\n" "$expected" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Stderr contains '%s'${COLOR_RESET}\n" "$expected" >&2
+  fi
+  return 0
+}
+
+# Assert stderr does not contain substring
+# Args:
+#   $1: Unexpected substring
+assert_stderr_not_contains() {
+  local unexpected="${1:?Unexpected substring required}"
+
+  if [[ "${stderr_output:-}" =~ $unexpected ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Stderr contains unexpected string${COLOR_RESET}\n" >&2
+    printf "  Should not contain: '%s'\n" "$unexpected" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Stderr does not contain '%s'${COLOR_RESET}\n" "$unexpected" >&2
+  fi
+  return 0
+}
+
+# Assert stderr matches regex pattern
+# Args:
+#   $1: Regex pattern
+assert_stderr_matches() {
+  local pattern="${1:?Pattern required}"
+
+  if [[ ! "${stderr_output:-}" =~ $pattern ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Stderr does not match pattern${COLOR_RESET}\n" >&2
+    printf "  Pattern: '%s'\n" "$pattern" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Stderr matches pattern '%s'${COLOR_RESET}\n" "$pattern" >&2
+  fi
+  return 0
+}
+
+# Assert stderr equals exact string
+# Args:
+#   $1: Expected stderr
+assert_stderr_equals() {
+  local expected="${1:?Expected stderr required}"
+
+  if [[ "${stderr_output:-}" != "$expected" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Stderr does not match${COLOR_RESET}\n" >&2
+    printf "  Expected:\n%s\n" "$expected" >&2
+    printf "  Actual:\n%s\n" "${stderr_output}" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Stderr matches expected value${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Assert stderr is empty
+assert_stderr_empty() {
+  if [[ -n "${stderr_output:-}" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Stderr should be empty${COLOR_RESET}\n" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Stderr is empty${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Assert either stdout or stderr contains substring
+# Useful for error messages that might be on either stream
+# Args:
+#   $1: Expected substring
+assert_output_or_stderr_contains() {
+  local expected="${1:?Expected substring required}"
+
+  if [[ "${output:-}" =~ $expected ]] || [[ "${stderr_output:-}" =~ $expected ]]; then
+    if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+      printf "${COLOR_GREEN}✓ Output or stderr contains '%s'${COLOR_RESET}\n" "$expected" >&2
+    fi
+    return 0
+  fi
+
+  printf "${COLOR_RED}✗ Assertion Failed: Neither stdout nor stderr contain expected string${COLOR_RESET}\n" >&2
+  printf "  Expected to contain: '%s'\n" "$expected" >&2
+  printf "  Actual stdout:\n%s\n" "${output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  return 1
 }
 
 # -----------------------------------------------------------------------------
@@ -628,8 +777,15 @@ export -f assert_failure
 export -f assert_exit_code
 export -f assert_output_contains
 export -f assert_output_not_contains
+export -f assert_not_output_contains
 export -f assert_output_matches
 export -f assert_output_equals
+export -f assert_stderr_contains
+export -f assert_stderr_not_contains
+export -f assert_stderr_matches
+export -f assert_stderr_equals
+export -f assert_stderr_empty
+export -f assert_output_or_stderr_contains
 export -f assert_file_exists
 export -f assert_file_not_exists
 export -f assert_dir_exists

@@ -193,7 +193,13 @@ create_artifact_file() {
 # Args:
 #   $@: CLI command and arguments
 # Returns: CLI exit code
-# Outputs: Sets $output variable with command output
+# Outputs: Sets $output variable with stdout, $stderr_output variable with stderr
+# Notes:
+#   - $output contains stdout only (for JSON parsing, etc.)
+#   - $stderr_output contains stderr only (for error messages)
+#   - Both are captured separately for flexible test assertions
+#   - Use assert_output_contains() for stdout checks
+#   - Use assert_stderr_contains() for error message checks
 run_cli() {
   local cli_path
   cli_path="$(get_cli_path)"
@@ -214,31 +220,63 @@ run_cli() {
   fi
   full_cmd+=("${UNICITY_NODE_BIN:-node}" "$cli_path")
 
+  # Create temporary files for capturing stdout and stderr separately
+  # Use TEST_TEMP_DIR to ensure cleanup happens automatically
+  local temp_stdout temp_stderr
+  temp_stdout="${TEST_TEMP_DIR}/cli-stdout-$$-${RANDOM}"
+  temp_stderr="${TEST_TEMP_DIR}/cli-stderr-$$-${RANDOM}"
+
+  # Ensure temp files are created and accessible
+  touch "$temp_stdout" "$temp_stderr" || {
+    printf "ERROR: Failed to create temporary output files\n" >&2
+    return 1
+  }
+
+  # Set up cleanup trap for temp files
+  # Use RETURN trap to ensure cleanup happens when function exits
+  trap 'rm -f -- "$temp_stdout" "$temp_stderr" 2>/dev/null || true' RETURN
+
   # Capture output and exit code
-  # Note: Capture both stdout and stderr for comprehensive output validation
+  # Redirect stdout to temp_stdout, stderr to temp_stderr
   local exit_code=0
 
   # Handle both array arguments and string arguments
   # If $1 contains spaces and $# == 1, it's a command string that needs eval
   # Otherwise, use array expansion to preserve multi-word arguments
-  # IMPORTANT: Capture stdout only - stderr goes to terminal for proper JSON output
   if [[ $# -eq 1 ]] && [[ "$1" =~ [[:space:]] ]]; then
     # Single string argument with spaces - use eval to parse it
-    output=$(eval "${full_cmd[@]}" "$1") || exit_code=$?
+    eval "${full_cmd[@]}" "$1" >"$temp_stdout" 2>"$temp_stderr" || exit_code=$?
   else
     # Array of arguments - use direct expansion
-    output=$("${full_cmd[@]}" "$@") || exit_code=$?
+    "${full_cmd[@]}" "$@" >"$temp_stdout" 2>"$temp_stderr" || exit_code=$?
   fi
+
+  # Read captured output into variables
+  # Use || true to prevent failure if files are empty
+  output=$(cat "$temp_stdout" 2>/dev/null || true)
+  stderr_output=$(cat "$temp_stderr" 2>/dev/null || true)
+
+  # Clean up temporary files
+  rm -f -- "$temp_stdout" "$temp_stderr" 2>/dev/null || true
+  trap - RETURN
+
+  # Set status variable for BATS compatibility
+  # BATS tests use $status to check exit codes with assert_success/assert_failure
+  status=$exit_code
 
   # Debug output
   if [[ "${UNICITY_TEST_DEBUG:-0}" == "1" ]]; then
     printf "=== CLI Execution ===\n" >&2
     printf "Command: %s %s\n" "$cli_path" "$*" >&2
     printf "Exit Code: %d\n" "$exit_code" >&2
-    printf "Output:\n%s\n" "$output" >&2
+    printf "Status: %d\n" "$status" >&2
+    printf "Stdout:\n%s\n" "$output" >&2
+    printf "Stderr:\n%s\n" "$stderr_output" >&2
   fi
 
-  return "$exit_code"
+  # Return success always - tests check $status variable instead
+  # This prevents bash strict mode from stopping test execution on CLI failures
+  return 0
 }
 
 # Run CLI command and expect success
@@ -513,6 +551,21 @@ log_test() {
   fi
 }
 
+# Log success message (always shown)
+log_success() {
+  printf "[SUCCESS] %s\n" "$*" >&2
+}
+
+# Log info message (always shown, uses existing info() function)
+log_info() {
+  info "$*"
+}
+
+# Log debug message (only in debug mode)
+log_debug() {
+  debug "$*"
+}
+
 # Generate test secret with unique suffix
 generate_test_secret() {
   local prefix="${1:-test}"
@@ -601,6 +654,9 @@ export -f info
 export -f warn
 export -f error
 export -f log_test
+export -f log_success
+export -f log_info
+export -f log_debug
 export -f generate_test_secret
 export -f generate_test_nonce
 export -f run_cli_with_secret
