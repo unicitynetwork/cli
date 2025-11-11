@@ -226,6 +226,17 @@ export async function validateTokenProofs(
     errors.push('Genesis proof missing unicity certificate');
   }
 
+  // NOTE: For genesis (mint) transactions, we CANNOT verify state hash by comparing
+  // token.state.calculateHash() with genesis.authenticator.stateHash because:
+  // - authenticator.stateHash = Hash of MintTransactionState (source state: SHA256(tokenId || "MINT"))
+  // - token.state.calculateHash() = Hash of recipient's final TokenState
+  // These are intentionally different - the mint creates a NEW state from an "empty" source.
+  //
+  // State tampering detection for minted tokens relies on:
+  // 1. Signature verification (authenticator.verify) - done in step 4 below
+  // 2. Merkle path verification (proof.verify) - done in step 6 below
+  // 3. Transaction history consistency - covered by transfer validations below
+
   // 3. Validate all transaction proofs
   if (token.transactions && token.transactions.length > 0) {
     for (let i = 0; i < token.transactions.length; i++) {

@@ -305,6 +305,18 @@ Exit codes:
             console.log('⚠ Warnings:');
             sdkProofValidation.warnings.forEach((warn: string) => console.log(`  - ${warn}`));
           }
+
+          // NOTE: We do NOT need to separately compare genesis.data.tokenData with state.data because:
+          // 1. They serve different purposes:
+          //    - genesis.data.tokenData = Static token metadata (immutable, part of transaction)
+          //    - state.data = State-specific data (can change per transfer, part of state)
+          // 2. Both are already cryptographically validated by SDK:
+          //    - authenticator.verify(transactionHash) at line ~82-88 in proof-validation.ts
+          //      protects genesis.data.tokenData via transaction hash signature
+          //    - proof.verify(trustBase, requestId) at line ~97-110 in proof-validation.ts
+          //      protects state.data via state hash in Merkle tree
+          // 3. Comparing them would create false positives on valid tokens where state.data
+          //    legitimately differs (encrypted state, recipient-specific data, etc.)
         } catch (err) {
           console.log('\n⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
           console.log('Displaying raw JSON data...\n');
