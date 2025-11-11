@@ -322,8 +322,22 @@ export function receiveTokenCommand(program: Command): void {
           console.error(`  Creating MASKED predicate (one-time address)`);
           console.error(`  Nonce: ${options.nonce}`);
 
-          // Convert nonce string to Uint8Array
-          const nonceBytes = new TextEncoder().encode(options.nonce);
+          // Process nonce: convert hex or hash string input to 32-byte Uint8Array
+          // CRITICAL: Must match gen-address.ts processNonce() logic for address consistency
+          let nonceBytes: Uint8Array;
+
+          // If it's a valid 32-byte hex string, decode it
+          if (/^(0x)?[0-9a-fA-F]{64}$/.test(options.nonce)) {
+            const hexStr = options.nonce.startsWith('0x') ? options.nonce.slice(2) : options.nonce;
+            nonceBytes = HexConverter.decode(hexStr);
+            console.error(`  Using hex nonce: ${HexConverter.encode(nonceBytes)}`);
+          } else {
+            // Otherwise, hash the input to get 32 bytes (matches gen-address.ts behavior)
+            const hasher = new DataHasher(HashAlgorithm.SHA256);
+            const hash = await hasher.update(new TextEncoder().encode(options.nonce)).digest();
+            nonceBytes = hash.data;
+            console.error(`  Hashed nonce input to: ${HexConverter.encode(nonceBytes)}`);
+          }
 
           // Create SigningService with nonce for masked address derivation
           const maskedSigningService = await SigningService.createFromSecret(secret, nonceBytes);
