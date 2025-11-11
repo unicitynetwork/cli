@@ -267,6 +267,8 @@ Exit codes:
 
         // Try to load with SDK
         let token: Token<any> | null = null;
+        let sdkProofValidation: any = null;
+
         try {
           token = await Token.fromJSON(tokenJson);
           console.log('\n✅ Token loaded successfully with SDK');
@@ -284,7 +286,7 @@ Exit codes:
           console.log(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})`);
           console.log('Verifying proofs with SDK...');
 
-          const sdkProofValidation = await validateTokenProofs(token, trustBase);
+          sdkProofValidation = await validateTokenProofs(token, trustBase);
 
           if (sdkProofValidation.valid) {
             console.log('✅ All proofs cryptographically verified');
@@ -295,13 +297,13 @@ Exit codes:
             }
           } else {
             console.log('❌ Cryptographic verification failed:');
-            sdkProofValidation.errors.forEach(err => console.log(`  - ${err}`));
+            sdkProofValidation.errors.forEach((err: string) => console.log(`  - ${err}`));
             exitCode = 1; // Critical validation failure
           }
 
           if (sdkProofValidation.warnings.length > 0) {
             console.log('⚠ Warnings:');
-            sdkProofValidation.warnings.forEach(warn => console.log(`  - ${warn}`));
+            sdkProofValidation.warnings.forEach((warn: string) => console.log(`  - ${warn}`));
           }
         } catch (err) {
           console.log('\n⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
@@ -422,8 +424,16 @@ Exit codes:
         console.log(`${jsonProofValidation.valid ? '✓' : '✗'} Proof structure valid: ${jsonProofValidation.valid ? 'Yes' : 'No'}`);
         console.log(`${token !== null ? '✓' : '✗'} SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
 
-        if (token && jsonProofValidation.valid) {
+        // Check cryptographic verification if it was performed
+        const cryptoValid = sdkProofValidation ? sdkProofValidation.valid : true;
+        if (sdkProofValidation) {
+          console.log(`${cryptoValid ? '✓' : '✗'} Cryptographic proofs valid: ${cryptoValid ? 'Yes' : 'No'}`);
+        }
+
+        if (token && jsonProofValidation.valid && cryptoValid) {
           console.log('\n✅ This token is valid and can be transferred using the send-token command');
+        } else if (token && !cryptoValid) {
+          console.log('\n❌ Token has cryptographic verification failures - cannot be used for transfers');
         } else if (token && !jsonProofValidation.valid) {
           console.log('\n⚠️  Token loaded but has proof validation issues - transfer may fail');
         } else {

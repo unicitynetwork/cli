@@ -256,10 +256,39 @@ export async function validateTokenProofs(
     }
   }
 
-  // Note: Full cryptographic verification requires RequestId computation
-  // which is not exposed on Transaction objects. The JSON validation
-  // function should be used for pre-SDK validation.
-  if (trustBase) {
+  // 4. Perform cryptographic verification on genesis proof
+  if (trustBase && genesisProof.authenticator && genesisProof.transactionHash) {
+    try {
+      const isValid = await genesisProof.authenticator.verify(genesisProof.transactionHash);
+      if (!isValid) {
+        errors.push('Genesis proof authenticator signature verification failed');
+      }
+    } catch (err) {
+      errors.push(`Genesis proof verification error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // 5. Perform cryptographic verification on transaction proofs
+  if (trustBase && token.transactions && token.transactions.length > 0) {
+    for (let i = 0; i < token.transactions.length; i++) {
+      const tx = token.transactions[i];
+
+      if (tx.inclusionProof && tx.inclusionProof.authenticator && tx.inclusionProof.transactionHash) {
+        try {
+          const isValid = await tx.inclusionProof.authenticator.verify(tx.inclusionProof.transactionHash);
+          if (!isValid) {
+            errors.push(`Transaction ${i + 1} proof authenticator signature verification failed`);
+          }
+        } catch (err) {
+          errors.push(`Transaction ${i + 1} proof verification error: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  }
+
+  // Note: Full inclusion proof verification (merkle path) requires RequestId computation
+  // which is not exposed on Transaction objects. We verify authenticator signatures above.
+  if (trustBase && errors.length === 0) {
     warnings.push('Cryptographic verification skipped - requires RequestId computation');
   }
 
