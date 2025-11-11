@@ -5,6 +5,7 @@ import { TransferCommitment } from '@unicitylabs/state-transition-sdk/lib/transa
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
 import { UnmaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/UnmaskedPredicate.js';
+import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/embedded/MaskedPredicate.js';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
 import { TokenState } from '@unicitylabs/state-transition-sdk/lib/token/TokenState.js';
@@ -115,6 +116,7 @@ export function receiveTokenCommand(program: Command): void {
     .description('Receive a token sent via offline transfer package')
     .option('-f, --file <file>', 'Extended TXF file with offline transfer package (required)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
+    .option('-n, --nonce <nonce>', 'Nonce for masked address (required if receiving at masked address)')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
     .option('-o, --output <file>', 'Output TXF file path')
@@ -309,31 +311,76 @@ export function receiveTokenCommand(program: Command): void {
         const saltBytes = Buffer.from(offlineTransfer.commitment.salt, 'base64');
         console.error(`  Transfer Salt: ${HexConverter.encode(saltBytes)}`);
 
-        // Create UnmaskedPredicate for recipient using the transfer commitment salt
-        // This predicate will be used to create the new token state after transfer
-        // Note: We use the actual token ID and type from the transferred token
-        const recipientPredicate = await UnmaskedPredicate.create(
-          token.id,
-          token.type,
-          signingService,
-          HashAlgorithm.SHA256,
-          saltBytes
-        );
-        console.error('  ✓ Recipient predicate created for new state');
+        // Determine if we need masked or unmasked predicate
+        // If nonce is provided, create masked predicate; otherwise unmasked
+        let recipientPredicate;
+        let predicateType: 'masked' | 'unmasked';
 
-        // STEP 6.5: Validate that the secret generates the intended recipient address
+        if (options.nonce) {
+          // MASKED PREDICATE: One-time address with nonce
+          predicateType = 'masked';
+          console.error(`  Creating MASKED predicate (one-time address)`);
+          console.error(`  Nonce: ${options.nonce}`);
+
+          // Convert nonce string to Uint8Array
+          const nonceBytes = new TextEncoder().encode(options.nonce);
+
+          // Create SigningService with nonce for masked address derivation
+          const maskedSigningService = await SigningService.createFromSecret(secret, nonceBytes);
+
+          // Create MaskedPredicate for recipient
+          // Note: Masked predicates use nonce, NOT salt
+          recipientPredicate = await MaskedPredicate.create(
+            token.id,
+            token.type,
+            maskedSigningService,
+            HashAlgorithm.SHA256,
+            nonceBytes
+          );
+          console.error('  ✓ Masked predicate created for new state');
+        } else {
+          // UNMASKED PREDICATE: Reusable address without nonce
+          predicateType = 'unmasked';
+          console.error(`  Creating UNMASKED predicate (reusable address)`);
+
+          // Create UnmaskedPredicate for recipient using the transfer commitment salt
+          // Note: We use the actual token ID and type from the transferred token
+          recipientPredicate = await UnmaskedPredicate.create(
+            token.id,
+            token.type,
+            signingService,
+            HashAlgorithm.SHA256,
+            saltBytes
+          );
+          console.error('  ✓ Unmasked predicate created for new state');
+        }
+
+        // STEP 6.5: Validate that the secret (and nonce if provided) generates the intended recipient address
         const predicateRef = await recipientPredicate.getReference();
         const addressObj = await predicateRef.toAddress();
         const actualAddress = addressObj.address;
-        console.error(`  Generated Address: ${actualAddress}`);
+        console.error(`  Generated Address (${predicateType}): ${actualAddress}`);
         console.error(`  Intended Recipient: ${offlineTransfer.recipient}`);
 
         if (actualAddress !== offlineTransfer.recipient) {
           console.error('\n❌ Error: Secret does not match intended recipient!');
           console.error(`\nThe transfer was sent to: ${offlineTransfer.recipient}`);
           console.error(`Your secret generates:    ${actualAddress}`);
+
+          if (predicateType === 'masked') {
+            console.error('\n⚠️  This is a MASKED address. Make sure you are using:');
+            console.error('   1. The correct secret');
+            console.error('   2. The SAME nonce that was used to generate the address');
+            console.error('\nBoth the secret AND nonce must match exactly.');
+            console.error(`\nUsage: npm run receive-token -- -f transfer.txf -n "${options.nonce}"`);
+          } else {
+            console.error('\n⚠️  This appears to be a masked address but no --nonce was provided.');
+            console.error('   If the token was sent to a masked address, you MUST provide the nonce:');
+            console.error('\nUsage: npm run receive-token -- -f transfer.txf -n "<your-nonce>"');
+          }
+
           console.error('\nYou are not the intended recipient of this transfer.');
-          console.error('Please verify you are using the correct secret.\n');
+          console.error('Please verify you are using the correct secret and nonce (if applicable).\n');
           process.exit(1);
         }
 

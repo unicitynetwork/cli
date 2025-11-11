@@ -363,12 +363,14 @@ send_token_immediate() {
 #   $1: Receiver secret
 #   $2: Input transfer file path
 #   $3: Output file path (optional)
+#   $4: Nonce (optional, for masked addresses)
 # Returns: 0 on success, 1 on failure
 # Outputs: Sets $RECEIVE_OUTPUT_FILE with path to received token file
 receive_token() {
   local secret="${1:?Receiver secret required}"
   local input_file="${2:?Input transfer file required}"
   local output_file="${3:-}"
+  local nonce="${4:-}"
 
   # Validate input file
   if [[ ! -f "$input_file" ]]; then
@@ -391,6 +393,11 @@ receive_token() {
     --endpoint "${UNICITY_AGGREGATOR_URL}"
     --unsafe-secret
   )
+
+  # Add nonce if provided (for masked addresses)
+  if [[ -n "$nonce" ]]; then
+    cmd+=(--nonce "$nonce")
+  fi
 
   debug "Receiving token: input=$input_file"
 

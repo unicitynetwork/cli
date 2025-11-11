@@ -231,7 +231,6 @@ teardown() {
 
 # RECV_TOKEN-007: Receive to Masked Address
 @test "RECV_TOKEN-007: Receive token at masked (one-time) address" {
-    skip "TODO: Masked address support not implemented in receive-token yet"
     log_test "Receiving at masked address"
 
     # Bob generates masked address
@@ -252,8 +251,7 @@ teardown() {
     assert_offline_transfer_valid "transfer.txf"
 
     # Bob receives with same secret + nonce
-    # Note: CLI should automatically derive the same masked address
-    receive_token "${BOB_SECRET}" "transfer.txf" "bob-token.txf"
+    receive_token "${BOB_SECRET}" "transfer.txf" "bob-token.txf" "${nonce}"
     assert_success
 
     # Verify: Token received successfully
@@ -265,7 +263,7 @@ teardown() {
     tx_count=$(get_transaction_count "bob-token.txf")
     assert_equals "1" "${tx_count}"
 
-    # Verify: Bob's predicate is masked (engine ID 1)
+    # Verify: Bob's predicate is masked (engine ID 5)
     # Note: The token state after receive should reflect the masked predicate
     local current_addr
     current_addr=$(get_txf_address "bob-token.txf")
