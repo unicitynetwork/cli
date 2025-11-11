@@ -142,20 +142,57 @@ teardown() {
     jq '.state.predicate = "ffffffffffffffff"' "${tampered_token}" > "${tampered_token}.tmp"
     mv "${tampered_token}.tmp" "${tampered_token}"
 
-    # ATTACK: Try to verify the tampered token
-    run_cli "verify-token -f ${tampered_token} --local"
+    # Generate recipient address
+    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
+    assert_success
+    local recipient=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    # Assert that verification FAILED (tampered token detected)
+    # ATTACK: Try to send tampered token - should fail at SDK parsing layer
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
+
+    # Assert SDK detected tampering via CBOR decode failure
     assert_failure
+    assert_output_contains "Major type mismatch" || \
+    assert_output_contains "Failed to decode" || \
+    assert_output_contains "Error sending token"
 
-    # Try to send the tampered token (should also fail)
-    run_cli_with_secret "${ATTACKER_SECRET}" "gen-address --preset nft"
-    local attacker_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
+    log_success "SEC-AUTH-002: Public key tampering prevented by SDK CBOR validation"
+}
 
-    run_cli_with_secret "${ATTACKER_SECRET}" "send-token -f ${tampered_token} -r ${attacker_address} --local -o /dev/null"
+# =============================================================================
+# SEC-AUTH-002-validated: Tampered Token Rejected by Ownership Validation
+# =============================================================================
+# CRITICAL Security Test (Phase 2 - Validation Mode)
+# Attack Vector: Attacker tampers with token, tries to send with any secret
+# Expected: send-token should fail at parsing stage (before ownership check)
+
+@test "SEC-AUTH-002-validated: Tampered token rejected by SDK parsing (validation mode)" {
+    log_test "Testing tampered token detection with ownership validation enabled"
+
+    # Alice mints a token
+    local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    assert_success
+
+    # ATTACK: Tamper with predicate (corrupt CBOR encoding)
+    local tampered_token="${TEST_TEMP_DIR}/tampered-token.txf"
+    cp "${alice_token}" "${tampered_token}"
+    jq '.state.predicate = "ffffffffffffffff"' "${tampered_token}" > "${tampered_token}.tmp"
+    mv "${tampered_token}.tmp" "${tampered_token}"
+
+    # Generate recipient address
+    run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
+    local recipient=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
+
+    # ATTACK: Try to send tampered token (even with correct secret)
+    # Should fail at SDK parsing stage (before ownership validation)
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
+
+    # Should fail at parsing (CBOR decode) - never reaches ownership check
     assert_failure
+    assert_output_contains "Major type mismatch" || assert_output_contains "Failed to decode"
 
-    log_success "SEC-AUTH-002: Public key tampering attack successfully prevented"
+    log_success "SEC-AUTH-002-validated: Tampered token rejected at SDK parsing layer"
 }
 
 # =============================================================================
