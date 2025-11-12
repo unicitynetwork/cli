@@ -1,0 +1,227 @@
+================================================================================
+                    TOKEN DATA COVERAGE ANALYSIS - VISUAL REFERENCE
+================================================================================
+
+COMBINATION MATRIX:
+────────────────────────────────────────────────────────────────────────────
+
+                    Genesis Data (tokenData)
+                    ┌──────────────┬──────────────┐
+                    │    NO        │     YES      │
+        ┌───────────┼──────────────┼──────────────┤
+        │    NO     │  C1: NO-NO   │  C2: DATA    │
+STATE   │           │  (28 tests)  │  (2 tests)   │
+DATA    ├───────────┤              │              │
+        │    YES    │  C3: GENESIS │  C4: BOTH    │
+        │           │  (0 tests)   │  (0 tests)   │
+        └───────────┴──────────────┴──────────────┘
+
+COVERAGE BY COMBINATION:
+────────────────────────────────────────────────────────────────────────────
+
+C1 (No Data):                28 tests ✅ EXCELLENT
+████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+100% (All cryptographic validations, proofs, signatures covered)
+
+C2 (State Data Only):         2 tests ⚠️ INADEQUATE  
+████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+17% (Only state data tampering tested)
+
+C3 (Genesis Data Only):       0 tests ❌ MISSING
+░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+ 0% (Genesis data immutability not tested at all)
+
+C4 (Both Data Types):         0 tests ❌ MISSING
+░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+ 0% (Dual protection mechanisms not tested)
+
+────────────────────────────────────────────────────────────────────────────
+TOTAL: 30/58 scenarios (52%)  |  TARGET: 50+/58 scenarios (90%+)
+
+
+TAMPERING SCENARIO COVERAGE:
+────────────────────────────────────────────────────────────────────────────
+
+Tampering Target              Status    Tests    Combinations Covered
+────────────────────────────────────────────────────────────────────────────
+Genesis Proof Signature       ✅ GOOD     5      C1 only
+Merkle Tree Path              ✅ GOOD     5      C1 only
+Authenticator (null/empty)    ✅ GOOD     5      C1 only
+State Data Modification       ⚠️ PARTIAL  2      C2 only (need C1,C4)
+Genesis tokenData             ❌ MISSING  0      None
+RecipientDataHash             ❌ MISSING  0      None
+RecipientDataHash=null        ❌ MISSING  0      None
+RecipientDataHash Mismatch    ❌ MISSING  0      None
+Genesis Data Immutability     ⚠️ PARTIAL  1      tokenType only (need tokenData)
+Hash Commitment Binding       ❌ MISSING  0      None
+State Presence Validation     ❌ MISSING  0      None
+Cross-Field Tampering        ⚠️ PARTIAL  1      Limited to multi-sig test
+
+────────────────────────────────────────────────────────────────────────────
+SCORE: 18/27 tampering scenarios (67%)
+
+
+CRITICAL GAPS RANKED BY SEVERITY:
+────────────────────────────────────────────────────────────────────────────
+
+SEVERITY │ GAP                              │ IMPACT        │ TESTS NEEDED
+─────────┼──────────────────────────────────┼───────────────┼──────────────
+CRITICAL │ RecipientDataHash tampering      │ State theft   │ 6-8 tests
+CRITICAL │ C3 combination (genesis only)    │ Feature test  │ 5-6 tests
+CRITICAL │ C4 combination (both types)      │ Real-world    │ 6-8 tests
+─────────┼──────────────────────────────────┼───────────────┼──────────────
+HIGH     │ Genesis.data.tokenData tampering │ Metadata theft│ 3-4 tests
+HIGH     │ C2 insufficient coverage         │ Data variants │ 6-8 tests
+HIGH     │ Proof validation on data tokens  │ Proof binding │ 3-4 tests
+─────────┼──────────────────────────────────┼───────────────┼──────────────
+MEDIUM   │ Cross-field tampering expanded   │ Attack detect │ 2-3 tests
+MEDIUM   │ Data presence validation         │ Field injection│ 2-3 tests
+MEDIUM   │ Boundary/special case tests      │ Edge cases    │ 2-3 tests
+
+────────────────────────────────────────────────────────────────────────────
+TOTAL TESTS NEEDED: 36-47 tests  |  IMPLEMENTATION TIME: 3 weeks
+
+
+PROTECTION MECHANISMS VALIDATION:
+────────────────────────────────────────────────────────────────────────────
+
+Mechanism                    Protection Level    Current Coverage
+────────────────────────────────────────────────────────────────────
+Transaction Signature        Genesis Data        ⚠️ Covered on C1 only
+  └─ Protects: genesis.data.tokenData
+
+State Hash Commitment        State Data          ⚠️ Covered on C2 only  
+  └─ Protects: state.data via recipientDataHash
+
+Merkle Tree Proof            Full History        ✅ Well covered
+  └─ Protects: Inclusion in blockchain
+
+────────────────────────────────────────────────────────────────────────────
+
+Each mechanism MUST be tested on tokens that actually have the data it protects.
+Currently missing: Testing with actual data present (C2, C3, C4 tokens).
+
+
+TEST SUITE BREAKDOWN:
+────────────────────────────────────────────────────────────────────────────
+
+EXISTING TESTS (28 total):
+  ├─ test_receive_token_crypto.bats        7 tests → C1 focus, 1x C2
+  ├─ test_send_token_crypto.bats           5 tests → C1 focus, 1x C2
+  ├─ test_data_integrity.bats              7 tests → C1 focus
+  ├─ test_cryptographic.bats               8 tests → C1 focus
+  └─ Other input validation               1+ tests → Data format tests
+
+MISSING TEST SUITES (needed for 90% coverage):
+  ├─ test_recipientDataHash_tampering.bats  6 tests → C2, C4 hash validation
+  ├─ test_data_c3_genesis_only.bats         5 tests → C3 combination
+  ├─ test_data_c4_both.bats                 6 tests → C4 combination
+  └─ Enhanced variants (existing tests)     8 tests → C1/C4 variants
+
+────────────────────────────────────────────────────────────────────────────
+CURRENT: 28 existing tests
+PROPOSED: +20-25 new tests
+TARGET:   48-53 total tests (90%+ coverage)
+
+
+TOKEN CREATION COMMANDS:
+────────────────────────────────────────────────────────────────────────────
+
+C1 Token (No Data):
+  SECRET="alice" npm run mint-token -- --preset nft --local -o alice.txf
+  
+  Structure:
+    genesis.data.tokenData ≈ empty/minimal
+    state.data ≈ empty/minimal
+
+C2 Token (State Data Only):
+  SECRET="alice" npm run mint-token -- --preset nft --local -d '{"meta":"val"}' -o alice.txf
+  
+  Structure:
+    genesis.data.tokenData = hex-encoded JSON
+    state.data = same as genesis (not transferred yet)
+    genesis.transaction.recipientDataHash = SHA256(state.data)
+
+C3 Token (Genesis Data Only):
+  Same creation as C2, but token is STORED WITHOUT TRANSFER
+  
+  Structure:
+    genesis.data.tokenData = hex-encoded JSON (preserved)
+    state.data = same as genesis (never changed)
+
+C4 Token (Both Data Types):
+  1. SECRET="alice" npm run mint-token -- --preset nft --local -d '{"meta":"val"}' -o alice.txf
+  2. SECRET="bob" npm run gen-address -- --preset nft
+  3. SECRET="alice" npm run send-token -- -f alice.txf -r BOB_ADDR --local -o transfer.txf
+  4. SECRET="bob" npm run receive-token -- -f transfer.txf --local -o bob.txf
+  
+  Result (bob.txf = C4):
+    genesis.data.tokenData = Alice's metadata (preserved)
+    state.data = (may change in subsequent transfers)
+    genesis.transaction.recipientDataHash = SHA256(original state)
+    transactions[] = transfer history
+
+
+VERIFICATION COMMANDS:
+────────────────────────────────────────────────────────────────────────────
+
+# Identify token combination:
+jq '.genesis.data.tokenData' token.txf  # If "00" or empty → C1
+jq '.state.data' token.txf              # If "00" or empty → Check genesis.data
+jq '.genesis.transaction.recipientDataHash' token.txf  # If present → has state data
+
+# Test tampering detection:
+jq '.genesis.data.tokenData = "deadbeef"' token.txf > tampered.txf
+SECRET="test" npm run verify-token -- -f tampered.txf --local  # Should FAIL
+
+jq '.state.data = "deadbeef"' token.txf > tampered.txf
+SECRET="test" npm run verify-token -- -f tampered.txf --local  # Should FAIL
+
+jq '.genesis.transaction.recipientDataHash = "0000..."' token.txf > tampered.txf
+SECRET="test" npm run verify-token -- -f tampered.txf --local  # Should FAIL
+
+
+RECOMMENDATIONS SUMMARY:
+────────────────────────────────────────────────────────────────────────────
+
+IMMEDIATE (Week 1):
+  ☐ Create test_recipientDataHash_tampering.bats (6 tests)
+  ☐ Create test_data_c3_genesis_only.bats (5 tests)
+  ☐ Create test_data_c4_both.bats (6 tests)
+  
+  Result: 30 → 47 tests, closes critical gaps
+
+FOLLOW-UP (Week 2):
+  ☐ Add C1/C4 variants to SEC-RECV-CRYPTO-004
+  ☐ Add C1/C4 variants to SEC-SEND-CRYPTO-004
+  ☐ Add recipientDataHash to SEC-INTEGRITY-002
+  
+  Result: 47 → 52 tests, improves coverage further
+
+POLISH (Week 3):
+  ☐ Document combination level in test names
+  ☐ Update test suite README
+  ☐ Generate coverage report
+
+  Result: Complete documentation, 90%+ coverage achieved
+
+
+EXPECTED IMPACT:
+────────────────────────────────────────────────────────────────────────────
+
+Coverage:          52% → 90%+ (38% improvement)
+Tests:             30 → 52+ tests (+22 tests)
+Gaps Closed:       3 critical gaps
+Confidence Level:  From moderate to high on data field protection
+
+Security:
+  ✅ Genesis data immutability validated
+  ✅ State data protection verified
+  ✅ Hash commitment binding tested
+  ✅ Cross-field tampering detected
+  ✅ Real-world scenarios (C3, C4) covered
+
+
+================================================================================
+END OF VISUAL REFERENCE
+================================================================================
