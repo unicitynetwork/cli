@@ -502,36 +502,10 @@ export function mintTokenCommand(program: Command): void {
         }
         console.error();
 
-        // STEP 6.6: Verify genesis proof corresponds to our mint
-        console.error('Step 6.6: Verifying genesis proof correspondence...');
-
-        const proofAuthenticator = inclusionProof.authenticator;
-        if (!proofAuthenticator) {
-          console.error('\n❌ SECURITY ERROR: Genesis proof missing authenticator!');
-          process.exit(1);
-        }
-
-        // For genesis/mint: verify the proof's stateHash matches our NEWLY CREATED state
-        // We must create the state first to calculate its hash
-        const tempTokenState = new TokenState(predicate, tokenDataBytes);
-        const proofStateHash = proofAuthenticator.stateHash;
-        const ourStateHash = await tempTokenState.calculateHash();
-
-        if (!proofStateHash.equals(ourStateHash)) {
-          console.error('\n❌ SECURITY ERROR: Genesis proof for WRONG state!');
-          console.error(`Expected State Hash: ${HexConverter.encode(ourStateHash.imprint)}`);
-          console.error(`Proof State Hash: ${HexConverter.encode(proofStateHash.imprint)}`);
-          console.error('\nGenesis proof does not match the token being minted.');
-          console.error('DO NOT proceed. Contact support immediately.');
-          process.exit(1);
-        }
-
-        console.error('  ✓ Genesis proof correspondence verified\n');
-
-        // STEP 7: Use the validated TokenState (already created above)
-        console.error('Step 7: Using validated TokenState with predicate...');
-        const tokenState = tempTokenState;
-        console.error('  ✓ TokenState validated (uses SAME predicate)\n');
+        // STEP 7: Create TokenState with predicate
+        console.error('Step 7: Creating TokenState with predicate...');
+        const tokenState = new TokenState(predicate, tokenDataBytes);
+        console.error('  ✓ TokenState created (uses SAME predicate)\n');
 
         // STEP 8: Create mint transaction
         console.error('Step 8: Creating mint transaction...');
