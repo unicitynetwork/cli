@@ -531,14 +531,51 @@ export function receiveTokenCommand(program: Command): void {
 
         // STEP 8: Submit transfer commitment to network
         console.error('Step 8: Submitting transfer to network...');
+        let submitResponse;
         try {
-          await client.submitTransferCommitment(transferCommitment);
+          submitResponse = await client.submitTransferCommitment(transferCommitment);
+
+          // CRITICAL SECURITY: Validate response status
+          // The aggregator returns status codes for duplicate/invalid submissions
+          // Without validation, we'd treat failures as success (SECURITY BUG)
+          if (submitResponse.status !== 'SUCCESS') {
+            if (submitResponse.status === 'REQUEST_ID_EXISTS') {
+              // Duplicate submission - another process already submitted this commitment
+              console.error('\n❌ Double-Spend Prevention - Transfer Already Submitted');
+              console.error(`\nAnother process has already submitted this transfer commitment.`);
+              console.error(`Request ID: ${transferCommitment.requestId.toJSON()}`);
+              console.error(`\nThis can happen when:`);
+              console.error(`  1. Multiple concurrent receive attempts for the same transfer`);
+              console.error(`  2. You already received this transfer in a previous attempt`);
+              console.error(`\nThe token has already been transferred. Check your wallet for the received token.`);
+              console.error();
+              process.exit(1);
+            } else {
+              // Other non-success status
+              console.error(`\n❌ Transfer Submission Failed`);
+              console.error(`\nStatus: ${submitResponse.status}`);
+              console.error(`Request ID: ${transferCommitment.requestId.toJSON()}`);
+              console.error();
+              process.exit(1);
+            }
+          }
+
           console.error('  ✓ Transfer submitted to network\n');
         } catch (err) {
-          // Check for specific error types
+          // Check for specific error types (exceptions)
           if (err instanceof Error) {
             if (err.message.includes('already exists')) {
-              console.error('  ℹ Transfer already submitted (continuing...)\n');
+              // CRITICAL: RequestId already submitted by another process
+              // This is the aggregator's double-spend prevention - EXIT instead of continuing
+              console.error('\n❌ Double-Spend Prevention - Transfer Already Submitted');
+              console.error(`\nAnother process has already submitted this transfer commitment.`);
+              console.error(`\nThis can happen when:`);
+              console.error(`  1. Multiple concurrent receive attempts for the same transfer`);
+              console.error(`  2. You already received this transfer in a previous attempt`);
+              console.error(`\nThe aggregator enforces single-spend by rejecting duplicate RequestIds.`);
+              console.error(`Only one process can successfully complete this transfer.`);
+              console.error();
+              process.exit(1);
             } else if (
               err.message.includes('spent') ||
               err.message.includes('SPENT') ||
@@ -593,6 +630,65 @@ export function receiveTokenCommand(program: Command): void {
         console.error('Step 10: Creating transfer transaction...');
         const transferTransaction = transferCommitment.toTransaction(inclusionProof);
         console.error('  ✓ Transfer transaction created\n');
+
+        // STEP 10.5: CRITICAL SECURITY - Verify proof corresponds to our transaction
+        // This is the KEY double-spend detection mechanism in Unicity Network:
+        // - All concurrent recipients compute the SAME RequestId (from source state)
+        // - Aggregator accepts ALL submissions but stores only the FIRST txHash
+        // - Aggregator returns the SAME proof (with FIRST txHash) to ALL recipients
+        // - Each recipient MUST verify: proof.txHash == myTransaction.hash
+        // - Only the FIRST recipient's hash will match → all others detect double-spend
+        console.error('Step 10.5: Verifying proof corresponds to our transaction...');
+
+        const proofTxHash = inclusionProof.transactionHash;
+
+        if (!proofTxHash) {
+          console.error('\n❌ SECURITY ERROR: Proof is missing transaction hash!');
+          console.error('\nThe inclusion proof does not contain a transaction hash.');
+          console.error('This indicates an incomplete or invalid proof from the aggregator.');
+          console.error('\nCannot verify proof correspondence without transaction hash.');
+          console.error();
+          process.exit(1);
+        }
+
+        // Calculate OUR transaction hash from the commitment data
+        const ourTxHash = await transferCommitment.transactionData.calculateHash();
+
+        // Convert both to hex for comparison
+        const proofTxHashHex = HexConverter.encode(proofTxHash.imprint);
+        const ourTxHashHex = HexConverter.encode(ourTxHash.imprint);
+
+        console.error(`  Proof Transaction Hash: ${proofTxHashHex}`);
+        console.error(`  Our Transaction Hash:   ${ourTxHashHex}`);
+
+        // CRITICAL: Verify exact match
+        if (proofTxHashHex !== ourTxHashHex) {
+          // DOUBLE-SPEND DETECTED!
+          // The proof corresponds to a DIFFERENT transaction (from a concurrent recipient)
+          console.error('\n❌ DOUBLE-SPEND DETECTED - Proof Mismatch!');
+          console.error('\nThe inclusion proof does NOT correspond to our transaction.');
+          console.error('This means another recipient submitted their transfer FIRST.');
+          console.error('\nDetails:');
+          console.error(`  - Request ID: ${transferCommitment.requestId.toJSON()}`);
+          console.error(`  - Expected Transaction Hash: ${ourTxHashHex}`);
+          console.error(`  - Proof Transaction Hash:    ${proofTxHashHex}`);
+          console.error('\nWhat happened:');
+          console.error('  1. The sender created multiple offline transfers from the same token');
+          console.error('  2. Multiple recipients submitted their transfers concurrently');
+          console.error('  3. The aggregator accepted the FIRST submission');
+          console.error('  4. Our submission arrived AFTER another recipient');
+          console.error('\nResult:');
+          console.error('  - The aggregator stored the other recipient\'s transaction in the tree');
+          console.error('  - The proof you received is for THEIR transaction, not yours');
+          console.error('  - You cannot claim this token (already transferred to someone else)');
+          console.error('\nAction Required:');
+          console.error('  Contact the sender and request a fresh token that hasn\'t been double-spent.');
+          console.error();
+          process.exit(1);
+        }
+
+        console.error('  ✓ Proof correspondence verified - this proof is for our transaction');
+        console.error('  ✓ No double-spend detected\n');
 
         // STEP 12: Create new token state with recipient's predicate
         console.error('Step 12: Creating new token state with recipient predicate...');
