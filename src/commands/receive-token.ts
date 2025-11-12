@@ -14,6 +14,7 @@ import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConv
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
+import { checkOwnershipStatus, extractOwnerInfo } from '../utils/ownership-verification.js';
 import { validateInclusionProof, validateTokenProofsJson, validateTokenProofs } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
@@ -459,15 +460,102 @@ export function receiveTokenCommand(program: Command): void {
         });
         console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
 
+        // STEP 7.8: CRITICAL SECURITY - Check if source state has already been spent
+        // This prevents attempting to transfer a token that's already been transferred elsewhere
+        console.error('Step 7.8: Checking source state for double-spend prevention...');
+
+        try {
+          // Extract the source state predicate from the commitment's transaction data
+          const sourceStateData = commitmentJson.transactionData?.sourceState;
+          const sourcePredicateHex = sourceStateData?.predicate || '';
+
+          if (sourcePredicateHex) {
+            // Extract owner info from the source predicate
+            const sourceOwnerInfo = extractOwnerInfo(sourcePredicateHex);
+
+            if (sourceOwnerInfo) {
+              // Create a minimal token-like object representing the source state
+              const sourceTokenJson = {
+                genesis: extendedTxf.genesis,
+                state: {
+                  data: sourceStateData?.data || null,
+                  predicate: sourcePredicateHex
+                },
+                transactions: [],
+                status: 'UNSPENT' as TokenStatus
+              };
+
+              // Query aggregator to check if this state is already spent
+              const sourceStatus = await checkOwnershipStatus(
+                token,
+                sourceTokenJson,
+                client,
+                trustBase
+              );
+
+              // Check the on-chain spent status
+              if (sourceStatus.onChainSpent === true) {
+                // This state has already been spent - DOUBLE-SPEND ATTEMPT DETECTED
+                console.error('\n❌ DOUBLE-SPEND PREVENTION - Transfer Rejected');
+                console.error(`\nThe source token has already been spent (transferred elsewhere).`);
+                console.error(`\nDetails:`);
+                console.error(`  - Current Owner: ${sourceStatus.currentOwner}`);
+                console.error(`  - On-Chain Status: SPENT`);
+                console.error(`\nThis can happen if:`);
+                console.error(`  1. The sender created multiple transfers from the same token`);
+                console.error(`  2. Another recipient already claimed this transfer`);
+                console.error(`  3. The token was spent from another device/client`);
+                console.error(`\nYou cannot complete this transfer. Request a fresh token from the sender.`);
+                console.error();
+                process.exit(1);
+              } else if (sourceStatus.onChainSpent === false) {
+                console.error('  ✓ Source state is UNSPENT - safe to proceed\n');
+              } else {
+                // Status unknown (network issue) - allow retry but warn
+                console.error('  ⚠ Source state status unknown (network unavailable)\n');
+                console.error('  ℹ Cannot verify double-spend status. Proceeding with submission...\n');
+              }
+            } else {
+              // Could not extract owner info - continue but note this
+              console.error('  ⚠ Could not verify source state status (proceeding cautiously)\n');
+            }
+          } else {
+            console.error('  ⚠ No source predicate found (proceeding cautiously)\n');
+          }
+        } catch (err) {
+          // Error checking status - log it but don't block (network might be temporarily unavailable)
+          console.error('  ⚠ Warning: Could not verify source state status');
+          console.error(`  Reason: ${err instanceof Error ? err.message : String(err)}`);
+          console.error('  Proceeding with submission (aggregator will enforce single-spend)\n');
+        }
+
         // STEP 8: Submit transfer commitment to network
         console.error('Step 8: Submitting transfer to network...');
         try {
           await client.submitTransferCommitment(transferCommitment);
           console.error('  ✓ Transfer submitted to network\n');
         } catch (err) {
-          // Check if already submitted (acceptable error)
-          if (err instanceof Error && err.message.includes('already exists')) {
-            console.error('  ℹ Transfer already submitted (continuing...)\n');
+          // Check for specific error types
+          if (err instanceof Error) {
+            if (err.message.includes('already exists')) {
+              console.error('  ℹ Transfer already submitted (continuing...)\n');
+            } else if (
+              err.message.includes('spent') ||
+              err.message.includes('SPENT') ||
+              err.message.includes('double') ||
+              err.message.includes('duplicate') ||
+              err.message.toLowerCase().includes('already')
+            ) {
+              // Aggregator rejected due to double-spend
+              console.error('\n❌ Double-Spend Prevention - Aggregator Rejected Transfer');
+              console.error(`\nError: ${err.message}`);
+              console.error(`\nThe aggregator detected that this token was already transferred.`);
+              console.error(`This is expected protection against double-spending.`);
+              console.error();
+              process.exit(1);
+            } else {
+              throw err;
+            }
           } else {
             throw err;
           }

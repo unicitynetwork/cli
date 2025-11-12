@@ -71,33 +71,35 @@ teardown() {
     local carol_received="${TEST_TEMP_DIR}/carol-token.txf"
 
     # Submit both transfers (first to reach network wins)
-    local bob_exit=0
-    local carol_exit=0
+    local bob_exit carol_exit
 
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${bob_received}" || bob_exit=$?
-    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${carol_received}" || carol_exit=$?
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${bob_received}"
+    bob_exit=$status
+
+    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${carol_received}"
+    carol_exit=$status
 
     # Verify EXACTLY ONE succeeded and ONE failed
     local success_count=0
     local failure_count=0
 
     if [[ $bob_exit -eq 0 ]]; then
-        ((success_count++))
+        : $((success_count++))
         assert_file_exists "${bob_received}"
         assert_token_fully_valid "${bob_received}"
         log_info "Bob successfully received token"
     else
-        ((failure_count++))
+        : $((failure_count++))
         log_info "Bob's receive failed (expected for double-spend)"
     fi
 
     if [[ $carol_exit -eq 0 ]]; then
-        ((success_count++))
+        : $((success_count++))
         assert_file_exists "${carol_received}"
         assert_token_fully_valid "${carol_received}"
         log_info "Carol successfully received token"
     else
-        ((failure_count++))
+        : $((failure_count++))
         log_info "Carol's receive failed (expected for double-spend)"
     fi
 
@@ -167,9 +169,9 @@ teardown() {
         if [[ -f "${TEST_TEMP_DIR}/exit-${i}.txt" ]]; then
             local exit_code=$(cat "${TEST_TEMP_DIR}/exit-${i}.txt")
             if [[ $exit_code -eq 0 ]]; then
-                ((success_count++))
+                : $((success_count++))
             else
-                ((failure_count++))
+                : $((failure_count++))
             fi
         fi
     done
@@ -282,8 +284,8 @@ teardown() {
 
     # ATTACK: Bob tries to receive SAME transfer again
     local bob_token2="${TEST_TEMP_DIR}/bob-token-2.txf"
-    local exit_code=0
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token2}" || exit_code=$?
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token2}"
+    local exit_code=$status
 
     # Expected behavior: Either FAILS or is idempotent (returns same state)
     if [[ $exit_code -eq 0 ]]; then
@@ -435,12 +437,14 @@ teardown() {
     local bob_received=0
     local carol_received=0
 
-    if run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-uct.txf"; then
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-uct.txf"
+    if [[ $status -eq 0 ]]; then
         bob_received=1
         assert_token_fully_valid "${TEST_TEMP_DIR}/bob-uct.txf"
     fi
 
-    if run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-uct.txf"; then
+    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-uct.txf"
+    if [[ $status -eq 0 ]]; then
         carol_received=1
         assert_token_fully_valid "${TEST_TEMP_DIR}/carol-uct.txf"
     fi
