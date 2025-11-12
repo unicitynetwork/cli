@@ -387,6 +387,89 @@ export function sendTokenCommand(program: Command): void {
           const inclusionProof = await waitInclusionProof(client, transferCommitment);
           console.error();
 
+          // STEP 8.5: CRITICAL SECURITY - Verify proof corresponds to our transfer
+          // This is the KEY security check in Unicity Network:
+          // The proof MUST correspond to the SOURCE STATE being spent and our TRANSACTION
+          // We verify BOTH:
+          //   1. Source state correspondence (proof is for the right source state)
+          //   2. Transaction hash match (proof is for our specific transaction)
+          console.error('Step 8.5: Verifying proof corresponds to our transfer...');
+
+          // VERIFICATION 1: Source State Correspondence (CRITICAL)
+          // The proof's authenticator.stateHash must match our source state hash
+          // This ensures the proof is for the correct SOURCE STATE being spent
+          const proofAuthenticator = inclusionProof.authenticator;
+
+          if (!proofAuthenticator) {
+            console.error('\n❌ SECURITY ERROR: Proof is missing authenticator!');
+            console.error('\nThe inclusion proof does not contain an authenticator.');
+            console.error('This indicates an incomplete or invalid proof from the aggregator.');
+            console.error();
+            process.exit(1);
+          }
+
+          const proofSourceStateHash = proofAuthenticator.stateHash;
+          const ourSourceState = transferCommitment.transactionData.sourceState;
+          const ourSourceStateHash = await ourSourceState.calculateHash();
+
+          // Compare source state hashes
+          if (!proofSourceStateHash.equals(ourSourceStateHash)) {
+            console.error('\n❌ SECURITY ERROR: Proof is for WRONG source state!');
+            console.error('\nThe inclusion proof does NOT correspond to our source state.');
+            console.error('This indicates a serious security issue (Byzantine aggregator or corrupted proof).');
+            console.error('\nDetails:');
+            console.error(`  - Expected Source State Hash: ${HexConverter.encode(ourSourceStateHash.imprint)}`);
+            console.error(`  - Proof Source State Hash:    ${HexConverter.encode(proofSourceStateHash.imprint)}`);
+            console.error('\nThis should NEVER happen with a correct aggregator.');
+            console.error('DO NOT proceed. Contact support immediately.');
+            console.error();
+            process.exit(1);
+          }
+
+          console.error('  ✓ Source state correspondence verified');
+
+          // VERIFICATION 2: Transaction Hash Match
+          // The proof's transactionHash must match our transaction hash
+          // This ensures the proof is for OUR specific transaction
+          const proofTxHash = inclusionProof.transactionHash;
+
+          if (!proofTxHash) {
+            console.error('\n❌ SECURITY ERROR: Proof is missing transaction hash!');
+            console.error('\nThe inclusion proof does not contain a transaction hash.');
+            console.error('This indicates an incomplete or invalid proof from the aggregator.');
+            console.error();
+            process.exit(1);
+          }
+
+          const ourTxHash = await transferCommitment.transactionData.calculateHash();
+          const proofTxHashHex = HexConverter.encode(proofTxHash.imprint);
+          const ourTxHashHex = HexConverter.encode(ourTxHash.imprint);
+
+          console.error(`  Proof Transaction Hash: ${proofTxHashHex}`);
+          console.error(`  Our Transaction Hash:   ${ourTxHashHex}`);
+
+          if (proofTxHashHex !== ourTxHashHex) {
+            console.error('\n❌ SECURITY ERROR: Proof is for DIFFERENT transaction!');
+            console.error('\nThe inclusion proof is for the correct source state,');
+            console.error('but corresponds to a DIFFERENT transaction.');
+            console.error('\nThis should NEVER happen in send-token with --submit-now.');
+            console.error('\nDetails:');
+            console.error(`  - Request ID: ${transferCommitment.requestId.toJSON()}`);
+            console.error(`  - Expected Transaction Hash: ${ourTxHashHex}`);
+            console.error(`  - Proof Transaction Hash:    ${proofTxHashHex}`);
+            console.error('\nPossible causes:');
+            console.error('  1. Byzantine aggregator returning wrong proof');
+            console.error('  2. Race condition with concurrent submission');
+            console.error('  3. Network corruption or man-in-the-middle attack');
+            console.error('\nAction Required:');
+            console.error('  DO NOT proceed. Contact support immediately.');
+            console.error();
+            process.exit(1);
+          }
+
+          console.error('  ✓ Transaction hash match verified - this proof is for our transaction');
+          console.error('  ✓ Proof correspondence verified\n');
+
           // Create transfer transaction
           console.error('Step 9: Creating transfer transaction...');
           const transferTransaction = transferCommitment.toTransaction(inclusionProof);

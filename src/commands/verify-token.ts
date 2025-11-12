@@ -306,6 +306,71 @@ Exit codes:
             sdkProofValidation.warnings.forEach((warn: string) => console.log(`  - ${warn}`));
           }
 
+          // Verify proof correspondence (diagnostic check)
+          console.log('\n=== Proof Correspondence Verification ===');
+          console.log('Verifying proofs correspond to token states...');
+
+          let correspondenceValid = true;
+
+          // Genesis proof verification:
+          // For genesis (mint), the proof's stateHash represents the CREATED state (recipient's first state)
+          // We cannot verify this without reconstructing the state, which requires the recipient's predicate
+          // The cryptographic verification above already confirms the proof is valid and signed
+          // Transaction proofs below verify source state correspondence for all transfers
+          console.log('  ℹ Genesis proof verified cryptographically (see above)');
+          console.log('    Note: Genesis creates initial state, no source state to verify');
+
+          // Check transaction proofs correspondence
+          if (token.transactions && token.transactions.length > 0) {
+            console.log(`  Checking ${token.transactions.length} transfer proof${token.transactions.length !== 1 ? 's' : ''}...`);
+
+            for (let i = 0; i < token.transactions.length; i++) {
+              const tx = token.transactions[i];
+              const txNum = i + 1;
+
+              if (tx.inclusionProof?.authenticator) {
+                const proofSourceHash = tx.inclusionProof.authenticator.stateHash;
+                const txSourceHash = await tx.data.sourceState.calculateHash();
+
+                if (proofSourceHash.equals(txSourceHash)) {
+                  console.log(`  ✓ Transfer ${txNum} proof corresponds to source state`);
+                } else {
+                  console.log(`  ⚠ WARNING: Transfer ${txNum} proof MISMATCH!`);
+                  console.log(`    Expected: ${HexConverter.encode(txSourceHash.imprint)}`);
+                  console.log(`    Got: ${HexConverter.encode(proofSourceHash.imprint)}`);
+                  correspondenceValid = false;
+                  exitCode = 1;
+                }
+              } else {
+                console.log(`  ⚠ WARNING: Transfer ${txNum} proof missing authenticator`);
+                correspondenceValid = false;
+                exitCode = 1;
+              }
+
+              // Also verify transaction hash if present
+              if (tx.inclusionProof?.transactionHash) {
+                const proofTxHash = tx.inclusionProof.transactionHash;
+                const actualTxHash = await tx.data.calculateHash();
+
+                if (HexConverter.encode(proofTxHash.imprint) === HexConverter.encode(actualTxHash.imprint)) {
+                  console.log(`  ✓ Transfer ${txNum} transaction hash matches proof`);
+                } else {
+                  console.log(`  ⚠ WARNING: Transfer ${txNum} transaction hash mismatch!`);
+                  console.log(`    Expected: ${HexConverter.encode(actualTxHash.imprint)}`);
+                  console.log(`    Got: ${HexConverter.encode(proofTxHash.imprint)}`);
+                  correspondenceValid = false;
+                  exitCode = 1;
+                }
+              }
+            }
+          }
+
+          if (correspondenceValid) {
+            console.log('  ✓ All proofs correspond to their states');
+          } else {
+            console.log('  ❌ Some proofs do NOT correspond to states - token may be corrupted');
+          }
+
           // NOTE: We do NOT need to separately compare genesis.data.tokenData with state.data because:
           // 1. They serve different purposes:
           //    - genesis.data.tokenData = Static token metadata (immutable, part of transaction)
