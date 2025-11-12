@@ -631,43 +631,76 @@ export function receiveTokenCommand(program: Command): void {
         const transferTransaction = transferCommitment.toTransaction(inclusionProof);
         console.error('  ✓ Transfer transaction created\n');
 
-        // STEP 10.5: CRITICAL SECURITY - Verify proof corresponds to our transaction
+        // STEP 10.5: CRITICAL SECURITY - Verify proof corresponds to our source state
         // This is the KEY double-spend detection mechanism in Unicity Network:
-        // - All concurrent recipients compute the SAME RequestId (from source state)
-        // - Aggregator accepts ALL submissions but stores only the FIRST txHash
-        // - Aggregator returns the SAME proof (with FIRST txHash) to ALL recipients
-        // - Each recipient MUST verify: proof.txHash == myTransaction.hash
-        // - Only the FIRST recipient's hash will match → all others detect double-spend
-        console.error('Step 10.5: Verifying proof corresponds to our transaction...');
+        // The proof MUST correspond to the SOURCE STATE being spent (cryptographic verification)
+        // We verify BOTH:
+        //   1. Source state correspondence (proof is for the right source state)
+        //   2. Transaction hash match (proof is for our specific transaction)
+        console.error('Step 10.5: Verifying proof corresponds to our source state and transaction...');
 
+        // VERIFICATION 1: Source State Correspondence (CRITICAL)
+        // The proof's authenticator.stateHash must match our source state hash
+        // This ensures the proof is for the correct SOURCE STATE being spent
+        const proofAuthenticator = inclusionProof.authenticator;
+
+        if (!proofAuthenticator) {
+          console.error('\n❌ SECURITY ERROR: Proof is missing authenticator!');
+          console.error('\nThe inclusion proof does not contain an authenticator.');
+          console.error('This indicates an incomplete or invalid proof from the aggregator.');
+          console.error();
+          process.exit(1);
+        }
+
+        const proofSourceStateHash = proofAuthenticator.stateHash;
+        const ourSourceState = transferCommitment.transactionData.sourceState;
+        const ourSourceStateHash = await ourSourceState.calculateHash();
+
+        // Compare source state hashes
+        if (!proofSourceStateHash.equals(ourSourceStateHash)) {
+          console.error('\n❌ SECURITY ERROR: Proof is for WRONG source state!');
+          console.error('\nThe inclusion proof does NOT correspond to our source state.');
+          console.error('This indicates a serious security issue (Byzantine aggregator or corrupted proof).');
+          console.error('\nDetails:');
+          console.error(`  - Expected Source State Hash: ${HexConverter.encode(ourSourceStateHash.imprint)}`);
+          console.error(`  - Proof Source State Hash:    ${HexConverter.encode(proofSourceStateHash.imprint)}`);
+          console.error('\nThis should NEVER happen with a correct aggregator.');
+          console.error('DO NOT proceed. Contact support immediately.');
+          console.error();
+          process.exit(1);
+        }
+
+        console.error('  ✓ Source state correspondence verified');
+
+        // VERIFICATION 2: Transaction Hash Match (Double-Spend Detection)
+        // The proof's transactionHash must match our transaction hash
+        // Different recipients create different transaction hashes (different target addresses)
+        // If hashes don't match → another recipient got to the aggregator first
         const proofTxHash = inclusionProof.transactionHash;
 
         if (!proofTxHash) {
           console.error('\n❌ SECURITY ERROR: Proof is missing transaction hash!');
           console.error('\nThe inclusion proof does not contain a transaction hash.');
           console.error('This indicates an incomplete or invalid proof from the aggregator.');
-          console.error('\nCannot verify proof correspondence without transaction hash.');
           console.error();
           process.exit(1);
         }
 
-        // Calculate OUR transaction hash from the commitment data
         const ourTxHash = await transferCommitment.transactionData.calculateHash();
-
-        // Convert both to hex for comparison
         const proofTxHashHex = HexConverter.encode(proofTxHash.imprint);
         const ourTxHashHex = HexConverter.encode(ourTxHash.imprint);
 
         console.error(`  Proof Transaction Hash: ${proofTxHashHex}`);
         console.error(`  Our Transaction Hash:   ${ourTxHashHex}`);
 
-        // CRITICAL: Verify exact match
         if (proofTxHashHex !== ourTxHashHex) {
           // DOUBLE-SPEND DETECTED!
-          // The proof corresponds to a DIFFERENT transaction (from a concurrent recipient)
-          console.error('\n❌ DOUBLE-SPEND DETECTED - Proof Mismatch!');
-          console.error('\nThe inclusion proof does NOT correspond to our transaction.');
-          console.error('This means another recipient submitted their transfer FIRST.');
+          // The proof is for the correct source state, but a DIFFERENT transaction
+          // This means another recipient submitted their transfer FIRST
+          console.error('\n❌ DOUBLE-SPEND DETECTED - Transaction Mismatch!');
+          console.error('\nThe inclusion proof is for the correct source state,');
+          console.error('but corresponds to a DIFFERENT transaction (different recipient).');
+          console.error('\nThis means another recipient submitted their transfer FIRST.');
           console.error('\nDetails:');
           console.error(`  - Request ID: ${transferCommitment.requestId.toJSON()}`);
           console.error(`  - Expected Transaction Hash: ${ourTxHashHex}`);
@@ -676,7 +709,7 @@ export function receiveTokenCommand(program: Command): void {
           console.error('  1. The sender created multiple offline transfers from the same token');
           console.error('  2. Multiple recipients submitted their transfers concurrently');
           console.error('  3. The aggregator accepted the FIRST submission');
-          console.error('  4. Our submission arrived AFTER another recipient');
+          console.error('  4. Your submission arrived AFTER another recipient');
           console.error('\nResult:');
           console.error('  - The aggregator stored the other recipient\'s transaction in the tree');
           console.error('  - The proof you received is for THEIR transaction, not yours');
@@ -687,7 +720,7 @@ export function receiveTokenCommand(program: Command): void {
           process.exit(1);
         }
 
-        console.error('  ✓ Proof correspondence verified - this proof is for our transaction');
+        console.error('  ✓ Transaction hash match verified - this proof is for our transaction');
         console.error('  ✓ No double-spend detected\n');
 
         // STEP 12: Create new token state with recipient's predicate
