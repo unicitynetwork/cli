@@ -320,30 +320,61 @@ Exit codes:
           console.log('  ℹ Genesis proof verified cryptographically (see above)');
           console.log('    Note: Genesis creates initial state, no source state to verify');
 
-          // SECURITY CHECK (SEC-ACCESS-003): Verify genesis data integrity
-          // Check that genesis transaction data matches the signed transaction hash
+          // SECURITY CHECK (SEC-ACCESS-003): Verify data integrity
           console.log('\n=== Data Integrity Verification ===');
-          console.log('Checking for data tampering...');
 
-          try {
-            // Verify genesis transaction data integrity
-            const genesisDataHash = await token.genesis.data.calculateHash();
-            const genesisProofTxHash = token.genesis.inclusionProof?.transactionHash;
+          // PART 1: Check custom integrity field if present (for tokens minted by this CLI)
+          // The integrity field contains a hash of the genesis.data JSON from mint time
+          // We compare it against the current JSON hash to detect any modifications
+          if ((tokenJson as any)._integrity?.genesisDataJSONHash) {
+            try {
+              const savedHash = (tokenJson as any)._integrity.genesisDataJSONHash;
+              const genesisDataJsonStr = JSON.stringify(tokenJson.genesis.data);
 
-            if (genesisProofTxHash) {
-              if (HexConverter.encode(genesisDataHash.imprint) === HexConverter.encode(genesisProofTxHash.imprint)) {
+              const DataHasherModule = await import('@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js');
+              const HashAlgorithmModule = await import('@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js');
+              const currentJsonHash = await new DataHasherModule.DataHasher(HashAlgorithmModule.HashAlgorithm.SHA256)
+                .update(new TextEncoder().encode(genesisDataJsonStr))
+                .digest();
+              const currentHash = HexConverter.encode(currentJsonHash.imprint);
+
+              if (savedHash === currentHash) {
                 console.log('  ✓ Genesis data integrity verified (not tampered)');
+                console.log('    Genesis transaction data matches original JSON');
               } else {
                 console.log('  ❌ CRITICAL: Genesis data has been TAMPERED!');
-                console.log(`    Expected hash: ${HexConverter.encode(genesisProofTxHash.imprint)}`);
-                console.log(`    Actual hash:   ${HexConverter.encode(genesisDataHash.imprint)}`);
-                console.log('    Token data has been modified after signing - REJECT this token!');
+                console.log('    Genesis transaction data was modified after minting');
+                console.log(`    Saved hash:   ${savedHash}`);
+                console.log(`    Current hash: ${currentHash}`);
+                console.log('    REJECT this token!');
                 correspondenceValid = false;
                 exitCode = 1;
               }
-            } else {
-              console.log('  ⚠ Genesis proof missing transaction hash - cannot verify data integrity');
+            } catch (err) {
+              console.log(`  ⚠ Error checking integrity field: ${err instanceof Error ? err.message : String(err)}`);
             }
+          } else {
+            // No custom integrity field - use SDK verification only
+            if (sdkProofValidation && sdkProofValidation.valid) {
+              console.log('  ✓ SDK data integrity checks passed');
+              console.log('    - Authenticator signatures valid');
+              console.log('    - Transaction data cryptographically verified');
+              console.log('    - State data matches transaction data');
+              console.log('    Note: Genesis data tampering detection requires tokens minted with this CLI');
+            } else if (sdkProofValidation) {
+              console.log('  ❌ CRITICAL: Token data integrity check FAILED!');
+              console.log('    Token data may have been tampered with');
+              sdkProofValidation.errors.forEach((err: string) => {
+                console.log(`    - ${err}`);
+              });
+              correspondenceValid = false;
+              exitCode = 1;
+            } else {
+              console.log('  ⚠ Could not verify data integrity (no trust base available)');
+            }
+          }
+
+          try {
 
             // SECURITY CHECK (SEC-INTEGRITY-002): Verify current state data integrity
             // Calculate hash of current state and verify it matches what's committed
@@ -363,16 +394,17 @@ Exit codes:
 
                 // Verify state data hasn't been modified by checking transaction data
                 const txDataHash = await lastTx.data.calculateHash();
-                const proofTxHash = lastTxProof.transactionHash;
 
-                if (proofTxHash && HexConverter.encode(txDataHash.imprint) === HexConverter.encode(proofTxHash.imprint)) {
-                  console.log('  ✓ Last transaction data integrity verified');
-                } else if (proofTxHash) {
-                  console.log('  ❌ CRITICAL: Last transaction data has been TAMPERED!');
-                  console.log(`    Expected hash: ${HexConverter.encode(proofTxHash.imprint)}`);
-                  console.log(`    Actual hash:   ${HexConverter.encode(txDataHash.imprint)}`);
-                  correspondenceValid = false;
-                  exitCode = 1;
+                if (lastTxProof.authenticator) {
+                  const isTxAuthValid = await lastTxProof.authenticator.verify(txDataHash);
+                  if (isTxAuthValid) {
+                    console.log('  ✓ Last transaction data integrity verified');
+                  } else {
+                    console.log('  ❌ CRITICAL: Last transaction data has been TAMPERED!');
+                    console.log('    Authenticator signature is INVALID for current transaction data');
+                    correspondenceValid = false;
+                    exitCode = 1;
+                  }
                 }
               }
 

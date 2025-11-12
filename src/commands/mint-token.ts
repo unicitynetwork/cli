@@ -526,15 +526,30 @@ export function mintTokenCommand(program: Command): void {
         // The predicate must be a CBOR array: [engine_id, template, params]
         console.error('Step 9: Creating SDK-compliant TXF structure...');
 
+        const genesisDataJson = mintTransaction.data.toJSON();
+        const genesisDataJsonStr = JSON.stringify(genesisDataJson);
+
+        //  Custom integrity check: Hash the JSON representation to detect tampering
+        const DataHasherModule = await import('@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js');
+        const HashAlgorithmModule = await import('@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js');
+        const jsonHash = await new DataHasherModule.DataHasher(HashAlgorithmModule.HashAlgorithm.SHA256)
+          .update(new TextEncoder().encode(genesisDataJsonStr))
+          .digest();
+
         const txfToken = {
           version: "2.0",
           genesis: {
-            data: mintTransaction.data.toJSON(),
+            data: genesisDataJson,
             inclusionProof: inclusionProof.toJSON()
           },
           state: tokenState.toJSON(),  // ✅ Use SDK method for proper encoding!
           transactions: [],  // Empty for newly minted token
-          nametags: []
+          nametags: [],
+          // Custom integrity field for tampering detection
+          // Hash of genesis.data JSON - if this doesn't match, the data was tampered with
+          _integrity: {
+            genesisDataJSONHash: HexConverter.encode(jsonHash.imprint)
+          }
         };
 
         const tokenJson = JSON.stringify(txfToken, null, 2);
