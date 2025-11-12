@@ -422,12 +422,21 @@ export function mintTokenCommand(program: Command): void {
           const coinAmounts = options.coins.split(',').map((s: string) => {
             const trimmed = s.trim();
 
-            // Validate format - must be numeric (negative values allowed for liabilities)
+            // Validate format - must be numeric
             if (!/^-?\d+$/.test(trimmed)) {
               throw new Error(`Invalid coin amount: "${trimmed}" - must be numeric`);
             }
 
-            return BigInt(trimmed);
+            const amount = BigInt(trimmed);
+
+            // SECURITY: Reject negative coin amounts (SEC-INPUT-005)
+            if (amount < 0n) {
+              console.error('❌ Error: Coin amount cannot be negative');
+              console.error(`  Provided: ${amount}`);
+              process.exit(1);
+            }
+
+            return amount;
           });
           const coinsWithIds: [CoinId, bigint][] = coinAmounts.map((amount: bigint) => {
             const coinIdBytes = crypto.getRandomValues(new Uint8Array(32));
