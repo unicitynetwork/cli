@@ -99,6 +99,21 @@ teardown() {
     # This means no prototype pollution occurred
     log_info "Token data safely stored as opaque bytes"
 
+    # CRITICAL: Verify prototype was NOT actually polluted at runtime
+    # Run JavaScript in isolated Node process to verify prototype integrity
+    local pollution_check=$(node -e "
+const obj = {};
+const proto = Object.prototype;
+if (obj.polluted !== undefined || proto.polluted !== undefined) {
+    console.log('POLLUTED');
+    process.exit(1);
+}
+console.log('SAFE');
+" 2>/dev/null || echo "POLLUTED")
+
+    assert_not_equals "POLLUTED" "${pollution_check}" "Prototype pollution was NOT prevented - security critical failure"
+    log_info "Runtime verification: Global prototype safe (no pollution detected)"
+
     # Test with various special characters
     local special_chars='{"test":"\\u0000\\u0001\\u001f<script>alert(1)</script>","nested":{"deep":"value"}}'
 

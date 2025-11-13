@@ -352,8 +352,11 @@ teardown() {
 
     # At minimum, verify we don't silently succeed with same nonce
     if [[ $exit_code -eq 0 ]]; then
-        # If receive succeeded, verify tokens are different or flag warning
-        warn "Nonce reuse did not fail - this may be acceptable if tokens differ"
+        # If receive succeeded, it MUST produce different token state
+        # (masked address derives new signature with same nonce - should fail)
+        printf "${COLOR_RED}CRITICAL: Nonce reuse succeeded - masked address security broken!${COLOR_RESET}\n" >&2
+        printf "Nonce should not be reusable for same masked address\n" >&2
+        return 1
     fi
 
     log_success "SEC-AUTH-005: Nonce reuse detection complete"

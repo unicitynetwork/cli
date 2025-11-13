@@ -119,8 +119,8 @@ teardown() {
 # Expected: ALL submissions succeed (idempotent - same source → same destination)
 # Note: This is NOT a double-spend (which would be same source → different destinations)
 
-@test "SEC-DBLSPEND-002: Concurrent submissions - exactly ONE succeeds" {
-    log_test "Testing fault tolerance: idempotent receipt of same transfer"
+@test "SEC-DBLSPEND-002: Idempotent offline receipt - ALL concurrent receives succeed" {
+    log_test "Testing fault tolerance: idempotent receipt of same transfer (NOT double-spend)"
 
     # Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
@@ -236,18 +236,21 @@ teardown() {
     # Alice keeps a copy of the original token file (before transfer)
     # ATTACK: Alice tries to send the token AGAIN using her old token file
     local transfer_carol="${TEST_TEMP_DIR}/transfer-carol-attack.txf"
-    local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${transfer_carol}" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${transfer_carol}"
 
     # The send-token might succeed locally (creates offline package)
-    # BUT when Carol tries to receive it, the network will reject it
-    if [[ $exit_code -eq 0 ]] && [[ -f "${transfer_carol}" ]]; then
-        # Carol tries to receive the stale transfer
-        run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-token.txf"
+    # BUT when Carol tries to receive it, the network MUST reject it
 
-        # This MUST fail - token already spent
-        assert_failure
-        assert_output_contains "spent" || assert_output_contains "invalid" || assert_output_contains "outdated"
+    # Carol tries to receive the stale transfer
+    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_carol} --local -o ${TEST_TEMP_DIR}/carol-token.txf"
+
+    # This MUST fail - token already spent
+    # CRITICAL: This assertion must ALWAYS execute to verify double-spend prevention
+    assert_failure "Re-spending must be rejected by network"
+
+    # Verify error message indicates the token was already spent
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(spent|invalid|outdated|already)"); then
+        fail "Expected error message about spent/invalid token, got: ${output}"
     fi
 
     # Verify Bob still has the token (legitimate owner)
@@ -294,7 +297,8 @@ teardown() {
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token2}"
     local exit_code=$status
 
-    # Expected behavior: Either FAILS or is idempotent (returns same state)
+    # Expected behavior: MUST FAIL or be idempotent (returns same state)
+    # Cannot silently accept both success and failure - must have consistent semantics
     if [[ $exit_code -eq 0 ]]; then
         # If succeeded, verify it's idempotent (same token state)
         assert_file_exists "${bob_token2}"
@@ -303,14 +307,15 @@ teardown() {
         local token1_id=$(jq -r '.genesis.data.tokenId' "${bob_token1}")
         local token2_id=$(jq -r '.genesis.data.tokenId' "${bob_token2}")
 
-        assert_equals "${token1_id}" "${token2_id}" "Token IDs should match (idempotent receive)"
+        assert_equals "${token1_id}" "${token2_id}" "Token IDs must match if idempotent (same offline package produces same result)"
 
         # Both should represent the same token state
-        log_info "Second receive was idempotent (acceptable)"
+        log_info "Second receive was idempotent (fault tolerance working)"
     else
-        # If failed, verify error indicates already processed
+        # If failed, must indicate it's a duplicate submission
+        assert_failure "Second receive of same offline package must either succeed (idempotent) or fail consistently"
         assert_output_contains "already" || assert_output_contains "submitted" || assert_output_contains "duplicate"
-        log_info "Second receive rejected as duplicate (expected)"
+        log_info "Second receive rejected as duplicate (expected behavior)"
     fi
 
     # Verify Bob's first token is valid

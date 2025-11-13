@@ -193,16 +193,9 @@ teardown() {
         local tampered_chain="${TEST_TEMP_DIR}/tampered-chain.txf"
         jq 'del(.transactions[0])' "${carol_token}" > "${tampered_chain}"
 
-        # Verify tampered chain is detected
-        local exit_code=0
-        run_cli "verify-token -f ${tampered_chain} --local" || exit_code=$?
-
-        # May succeed or fail depending on whether CLI validates chain integrity
-        if [[ $exit_code -eq 0 ]]; then
-            warn "Transaction removal not detected - chain validation may be limited"
-        else
-            log_info "Transaction chain tampering detected"
-        fi
+        # Verify tampered chain is detected - MUST FAIL
+        run_cli "verify-token -f ${tampered_chain} --local"
+        assert_failure "Chain integrity verification must be mandatory - transaction removal must be detected"
     fi
 
     # Verify complete chain is valid
@@ -299,15 +292,9 @@ teardown() {
         jq '.status = "CONFIRMED"' "${transfer}" > "${wrong_status}"
 
         # This is inconsistent: CONFIRMED status with pending offline transfer
-        local exit_code=0
-        run_cli "verify-token -f ${wrong_status} --local" || exit_code=$?
-
-        # May succeed or fail depending on status validation
-        if [[ $exit_code -eq 0 ]]; then
-            warn "Status inconsistency not detected"
-        else
-            log_info "Status inconsistency detected"
-        fi
+        # Status validation MUST be mandatory
+        run_cli "verify-token -f ${wrong_status} --local"
+        assert_failure "Status field consistency is mandatory - CONFIRMED with pending transfer is invalid"
     fi
 
     # ATTACK 2: Remove offlineTransfer but keep PENDING status
