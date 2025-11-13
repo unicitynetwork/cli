@@ -57,7 +57,9 @@ teardown() {
     assert_failure
 
     # Error should indicate signature/authentication problem
-    assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "Invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(signature|verification|invalid)"); then
+        fail "Expected error message containing one of: signature, verification, invalid. Got: ${output}"
+    fi
 
     # Verify Alice still owns the token (can successfully transfer it)
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -157,7 +159,9 @@ teardown() {
     # Verification should fail (state hash mismatch with genesis proof)
     run_cli "verify-token -f ${modified_token} --local"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|mismatch|invalid)"); then
+        fail "Expected error message containing one of: hash, mismatch, invalid. Got: ${output}"
+    fi
 
     # ATTACK 2: Modify token type
     local modified_type="${TEST_TEMP_DIR}/modified-type.txf"

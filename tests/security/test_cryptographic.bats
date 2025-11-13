@@ -64,7 +64,9 @@ teardown() {
         assert_failure
 
         # Error should mention signature or authenticator
-        assert_output_contains "signature" || assert_output_contains "authenticator" || assert_output_contains "verification"
+        if ! (echo "${output}${stderr_output}" | grep -qiE "(signature|authenticator|verification)"); then
+            fail "Expected error message containing one of: signature, authenticator, verification. Got: ${output}"
+        fi
 
         # Try to send tampered token - MUST FAIL
         run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -120,7 +122,9 @@ teardown() {
         assert_failure
 
         # Should mention merkle or proof validation
-        assert_output_contains "merkle" || assert_output_contains "proof" || assert_output_contains "invalid"
+        if ! (echo "${output}${stderr_output}" | grep -qiE "(merkle|proof|invalid)"); then
+            fail "Expected error message containing one of: merkle, proof, invalid. Got: ${output}"
+        fi
 
         log_success "SEC-CRYPTO-002: Tampered merkle path correctly rejected"
     else
@@ -174,7 +178,9 @@ teardown() {
     assert_failure
 
     # Should mention signature verification failure
-    assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(signature|verification|invalid)"); then
+        fail "Expected error message containing one of: signature, verification, invalid. Got: ${output}"
+    fi
 
     # Verify original transfer to Bob still works
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-token.txf"
@@ -319,7 +325,9 @@ teardown() {
 
     run_cli "verify-token -f ${null_auth_token} --local"
     assert_failure
-    assert_output_contains "authenticator" || assert_output_contains "null" || assert_output_contains "invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(authenticator|null|invalid)"); then
+        fail "Expected error message containing one of: authenticator, null, invalid. Got: ${output}"
+    fi
 
     # ATTACK 2: Set authenticator to empty object
     local empty_auth_token="${TEST_TEMP_DIR}/empty-auth.txf"

@@ -37,7 +37,9 @@ teardown() {
 
     run_cli "verify-token -f ${incomplete_json} --local"
     assert_failure
-    assert_output_contains "JSON" || assert_output_contains "parse" || assert_output_contains "invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(JSON|parse|invalid)"); then
+        fail "Expected error message containing one of: JSON, parse, invalid. Got: ${output}"
+    fi
 
     # Test 2: Invalid JSON (trailing comma)
     local invalid_json="${TEST_TEMP_DIR}/invalid.txf"
@@ -219,7 +221,9 @@ console.log('SAFE');
 
         # Should fail with invalid address format (not execute command)
         assert_failure
-        assert_output_contains "address" || assert_output_contains "invalid"
+        if ! (echo "${output}${stderr_output}" | grep -qiE "(address|invalid)"); then
+            fail "Expected error message containing one of: address, invalid. Got: ${output}"
+        fi
     fi
 
     log_success "SEC-INPUT-004: Command injection successfully prevented"
@@ -260,7 +264,9 @@ console.log('SAFE');
 
     # Should fail - negative amounts are invalid
     assert_failure
-    assert_output_contains "negative" || assert_output_contains "invalid" || assert_output_contains "amount"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(negative|invalid|amount)"); then
+        fail "Expected error message containing one of: negative, invalid, amount. Got: ${output}"
+    fi
 
     # Test 3: Zero amount
     local exit_code=0

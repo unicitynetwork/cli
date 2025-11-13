@@ -314,7 +314,9 @@ teardown() {
     else
         # If failed, must indicate it's a duplicate submission
         assert_failure "Second receive of same offline package must either succeed (idempotent) or fail consistently"
-        assert_output_contains "already" || assert_output_contains "submitted" || assert_output_contains "duplicate"
+        if ! (echo "${output}${stderr_output}" | grep -qiE "(already|submitted|duplicate)"); then
+            fail "Expected error message containing one of: already, submitted, duplicate. Got: ${output}"
+        fi
         log_info "Second receive rejected as duplicate (expected behavior)"
     fi
 

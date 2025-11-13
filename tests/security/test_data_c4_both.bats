@@ -202,7 +202,9 @@ teardown() {
     # Try to verify - MUST FAIL (state hash mismatch with recipientDataHash)
     run_cli "verify-token -f ${tampered} --local"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "state" || assert_output_contains "mismatch" || assert_output_contains "invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|state|mismatch|invalid)"); then
+        fail "Expected error message containing one of: hash, state, mismatch, invalid. Got: ${output}"
+    fi
     log_info "verify-token rejected state data tampering via hash mismatch"
 
     log_success "C4-003: State data tampering correctly detected on C4 token"
@@ -260,7 +262,9 @@ teardown() {
     # Try to verify - MUST FAIL
     run_cli "verify-token -f ${tampered} --local"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "commitment" || assert_output_contains "mismatch"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|commitment|mismatch)"); then
+        fail "Expected error message containing one of: hash, commitment, mismatch. Got: ${output}"
+    fi
     log_info "verify-token rejected recipientDataHash tampering"
 
     log_success "C4-004: RecipientDataHash tampering correctly detected on C4 token"

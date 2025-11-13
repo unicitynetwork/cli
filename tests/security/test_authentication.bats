@@ -61,7 +61,9 @@ teardown() {
 
     # Assert that the attack FAILED at receive stage
     assert_failure
-    assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "Invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(signature|verification|invalid)"); then
+        fail "Expected error message containing one of: signature, verification, invalid. Got: ${output}"
+    fi
 
     # Verify no file was created (attack was prevented)
     assert_file_not_exists "${received}"
@@ -99,7 +101,9 @@ teardown() {
 
     # Should fail immediately (ownership verification)
     assert_failure
-    assert_output_contains "Ownership verification failed" || assert_output_contains "does not match token owner"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(ownership verification failed|does not match token owner)"); then
+        fail "Expected error message about ownership verification. Got: ${output}"
+    fi
 
     # No transfer file created
     assert_file_not_exists "${stolen_transfer}"
@@ -152,9 +156,9 @@ teardown() {
 
     # Assert SDK detected tampering via CBOR decode failure
     assert_failure
-    assert_output_contains "Major type mismatch" || \
-    assert_output_contains "Failed to decode" || \
-    assert_output_contains "Error sending token"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(major type mismatch|failed to decode|error sending token)"); then
+        fail "Expected error message containing one of: major type mismatch, failed to decode, error sending token. Got: ${output}"
+    fi
 
     log_success "SEC-AUTH-002: Public key tampering prevented by SDK CBOR validation"
 }
@@ -288,7 +292,9 @@ teardown() {
 
     # Assert that receive FAILED (signature doesn't match modified recipient)
     assert_failure
-    assert_output_contains "signature" || assert_output_contains "verification" || assert_output_contains "Invalid"
+    if ! (echo "${output}${stderr_output}" | grep -qiE "(signature|verification|invalid)"); then
+        fail "Expected error message containing one of: signature, verification, invalid. Got: ${output}"
+    fi
 
     # Verify original transfer to Bob is still valid
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-token.txf"
