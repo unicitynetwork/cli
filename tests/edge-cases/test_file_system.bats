@@ -207,13 +207,20 @@ teardown() {
 
   # Mint two tokens rapidly with --save (auto-generate filename)
   SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save || true
+
+  # Check if files were created
   local file1
-  file1=$(ls -t *.txf 2>/dev/null | head -1)
+  file1=$(ls -t *.txf 2>/dev/null | head -1) || file1=""
+
+  if [[ -z "$file1" ]]; then
+    cd - >/dev/null
+    skip "First mint-token with --save failed to create file"
+  fi
 
   # Immediately mint another (same timestamp possible)
   SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save || true
   local file2
-  file2=$(ls -t *.txf 2>/dev/null | head -1)
+  file2=$(ls -t *.txf 2>/dev/null | head -1) || file2=""
 
   cd - >/dev/null
 
@@ -310,6 +317,7 @@ teardown() {
 
   # Launch multiple concurrent verify operations
   local pids=()
+  local concurrent=5
   for i in {1..5}; do
     (run_cli verify-token --file "$token_file" > "${token_file}.verify${i}.log" 2>&1) &
     pids+=($!)

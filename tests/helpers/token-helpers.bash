@@ -636,15 +636,22 @@ get_total_coin_amount() {
 # Get token status
 # Args:
 #   $1: Token file path
-# Returns: Status string (PENDING, CONFIRMED)
-# Note: PENDING means offline transfer exists, CONFIRMED means transfer completed
+# Returns: Status string (PENDING, TRANSFERRED, CONFIRMED)
+# Note: PENDING means offline transfer exists, TRANSFERRED means has transactions, CONFIRMED means unchanged
 get_token_status() {
   local token_file="${1:?Token file required}"
 
   if has_offline_transfer "$token_file"; then
     echo "PENDING"
   else
-    echo "CONFIRMED"
+    # Check if there are transactions (indicating a transfer)
+    local tx_count
+    tx_count=$(get_transaction_count "$token_file" 2>/dev/null || echo "0")
+    if [[ "$tx_count" -gt 0 ]]; then
+      echo "TRANSFERRED"
+    else
+      echo "CONFIRMED"
+    fi
   fi
 }
 
