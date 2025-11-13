@@ -549,39 +549,119 @@ verify_token_on_aggregator() {
 # -----------------------------------------------------------------------------
 
 # Extract token type from token file
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: Token type
+# Returns: Token type or error code 1
 get_token_type() {
   local token_file="${1:?Token file required}"
-  jq -r '.genesis.data.tokenType' "$token_file" 2>/dev/null || echo ""
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local token_type
+  token_type=$(jq -r '.genesis.data.tokenType // empty' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract token type from token file"
+    return 1
+  fi
+
+  echo "$token_type"
 }
 
 # Extract token ID from token file
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: Token ID
+# Returns: Token ID or error code 1
 get_token_id() {
   local token_file="${1:?Token file required}"
-  jq -r '.genesis.data.tokenId // empty' "$token_file" 2>/dev/null || echo ""
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local token_id
+  token_id=$(jq -r '.genesis.data.tokenId // empty' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract token ID from token file"
+    return 1
+  fi
+
+  echo "$token_id"
 }
 
 # Extract recipient address from token file
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: Recipient address
+# Returns: Recipient address or error code 1
 get_token_recipient() {
   local token_file="${1:?Token file required}"
-  jq -r '.genesis.data.recipient // empty' "$token_file" 2>/dev/null || echo ""
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local recipient
+  recipient=$(jq -r '.genesis.data.recipient // empty' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract recipient from token file"
+    return 1
+  fi
+
+  echo "$recipient"
 }
 
 # Get number of transactions in token file
+# CRITICAL: Fails if file doesn't exist or JSON is invalid, fails on error (not defaults to 0)
 # Args:
 #   $1: Token file path
-# Returns: Transaction count
+# Returns: Transaction count or error code 1
 get_transaction_count() {
   local token_file="${1:?Token file required}"
-  jq '.transactions | length' "$token_file" 2>/dev/null || echo "0"
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local tx_count
+  tx_count=$(jq '.transactions | length // 0' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract transaction count from token file"
+    return 1
+  fi
+
+  echo "$tx_count"
 }
 
 # Check if token has offline transfer section
@@ -596,63 +676,224 @@ has_offline_transfer() {
 }
 
 # Check if token is NFT (no coinData or empty coinData)
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: 0 if NFT, 1 if not
+# Returns: 0 if NFT, 1 if not (or error code on failure)
 is_nft_token() {
   local token_file="${1:?Token file required}"
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
   local coin_data_length
-  coin_data_length=$(jq '.genesis.data.coinData | length' "$token_file" 2>/dev/null || echo "0")
+  coin_data_length=$(jq '.genesis.data.coinData | length // 0' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to determine if token is NFT"
+    return 1
+  fi
+
   [[ "$coin_data_length" -eq 0 ]]
 }
 
 # Check if token is fungible (has coinData)
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: 0 if fungible, 1 if not
+# Returns: 0 if fungible, 1 if not (or error code on failure)
 is_fungible_token() {
   local token_file="${1:?Token file required}"
-  ! is_nft_token "$token_file"
+
+  if ! is_nft_token "$token_file"; then
+    # is_nft_token failed with error, propagate the error
+    if [[ $? -ne 1 ]]; then
+      return $?
+    fi
+    # is_nft_token returned 1, meaning it's fungible
+    return 0
+  fi
+
+  # is_nft_token returned 0, meaning it's not fungible
+  return 1
 }
 
 # Get coin count
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: Number of coins
+# Returns: Number of coins or error code 1
 get_coin_count() {
   local token_file="${1:?Token file required}"
-  jq '.genesis.data.coinData | length' "$token_file" 2>/dev/null || echo "0"
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local coin_count
+  coin_count=$(jq '.genesis.data.coinData | length // 0' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract coin count from token file"
+    return 1
+  fi
+
+  echo "$coin_count"
 }
 
 # Get total coin amount (sum of all coins)
+# CRITICAL: Fails if file doesn't exist or JSON is invalid
 # Args:
 #   $1: Token file path
-# Returns: Total amount
+# Returns: Total amount or error code 1
 get_total_coin_amount() {
   local token_file="${1:?Token file required}"
-  jq '[.genesis.data.coinData[].amount | tonumber] | add' "$token_file" 2>/dev/null || echo "0"
+
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  local total_amount
+  total_amount=$(jq '[.genesis.data.coinData[].amount | tonumber] | add // 0' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to calculate total coin amount from token file"
+    return 1
+  fi
+
+  echo "$total_amount"
 }
 
-# Get token status
+# Get token status by querying REAL aggregator (not local files)
+# CRITICAL: This function MUST query the blockchain aggregator
 # Args:
 #   $1: Token file path
-# Returns: Status string (PENDING, TRANSFERRED, CONFIRMED)
-# Note: PENDING means offline transfer exists, TRANSFERRED means has transactions, CONFIRMED means unchanged
+#   $2: Aggregator URL (optional, defaults to $UNICITY_AGGREGATOR_URL)
+# Returns: Status string (CONFIRMED, UNSPENT, PENDING, TRANSFERRED)
+#          Also returns error code 1 if aggregator unavailable
+# Note: PENDING means offline transfer exists locally, UNSPENT means not yet submitted
+#       CONFIRMED means found on blockchain, TRANSFERRED means has transactions
+# CRITICAL: Must query real aggregator and fail properly on errors
 get_token_status() {
   local token_file="${1:?Token file required}"
+  local aggregator_url="${2:-${UNICITY_AGGREGATOR_URL:-http://127.0.0.1:3000}}"
 
-  if has_offline_transfer "$token_file"; then
-    echo "PENDING"
-  else
-    # Check if there are transactions (indicating a transfer)
+  # Validate file exists
+  if [[ ! -f "$token_file" ]]; then
+    error "Token file not found: $token_file"
+    return 1
+  fi
+
+  # Validate JSON
+  if ! jq empty "$token_file" 2>/dev/null; then
+    error "Invalid JSON in token file: $token_file"
+    return 1
+  fi
+
+  # Extract RequestId from token
+  local request_id
+  request_id=$(jq -r '.genesis.inclusionProof.requestId // empty' "$token_file" 2>&1)
+
+  if [[ $? -ne 0 ]]; then
+    error "Failed to extract RequestId from token file"
+    return 1
+  fi
+
+  if [[ -z "$request_id" ]] || [[ "$request_id" == "null" ]]; then
+    # No RequestId yet - check if has offline transfer
+    if has_offline_transfer "$token_file"; then
+      echo "PENDING"
+      return 0
+    fi
+
+    # Check local transaction count as fallback for newly created tokens
     local tx_count
-    tx_count=$(get_transaction_count "$token_file" 2>/dev/null || echo "0")
+    tx_count=$(jq -r '.transactions | length // 0' "$token_file" 2>/dev/null)
+
     if [[ "$tx_count" -gt 0 ]]; then
       echo "TRANSFERRED"
     else
-      echo "CONFIRMED"
+      echo "UNSPENT"
     fi
+    return 0
   fi
+
+  # Query aggregator for inclusion proof
+  local response http_code
+  local temp_response="${TEST_TEMP_DIR}/token-status-response-$$-${RANDOM}"
+
+  # Make HTTP request to aggregator
+  http_code=$(curl -s -w "%{http_code}" -o "$temp_response" \
+    "${aggregator_url}/api/v1/requests/${request_id}" 2>&1)
+  local curl_exit=$?
+
+  if [[ $curl_exit -ne 0 ]]; then
+    rm -f "$temp_response" 2>/dev/null || true
+    error "Failed to connect to aggregator at ${aggregator_url} (curl exit: $curl_exit)"
+    return 1
+  fi
+
+  # Read response body
+  response=$(cat "$temp_response" 2>/dev/null || echo "")
+  rm -f "$temp_response" 2>/dev/null || true
+
+  # Interpret aggregator response
+  case "$http_code" in
+    200)
+      # Found in aggregator - token is confirmed/spent
+      if echo "$response" | jq -e '.proof' >/dev/null 2>&1; then
+        echo "CONFIRMED"
+      else
+        # Has response but no proof yet
+        echo "TRANSFERRED"
+      fi
+      return 0
+      ;;
+    404)
+      # Not found in aggregator - check local state
+      if has_offline_transfer "$token_file"; then
+        echo "PENDING"
+      else
+        # Check transactions array
+        local tx_count
+        tx_count=$(jq -r '.transactions | length // 0' "$token_file" 2>/dev/null)
+
+        if [[ "$tx_count" -gt 0 ]]; then
+          echo "TRANSFERRED"
+        else
+          echo "UNSPENT"
+        fi
+      fi
+      return 0
+      ;;
+    503|500|502)
+      error "Aggregator error (HTTP $http_code): ${response}"
+      return 1
+      ;;
+    *)
+      error "Unexpected aggregator response: HTTP $http_code"
+      return 1
+      ;;
+  esac
 }
 
 # -----------------------------------------------------------------------------

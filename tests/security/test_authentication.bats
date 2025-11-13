@@ -34,10 +34,11 @@ teardown() {
 
 @test "SEC-AUTH-001: Attempt to spend token with wrong secret should FAIL" {
     log_test "Testing unauthorized transfer with wrong secret"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
 
@@ -50,14 +51,14 @@ teardown() {
     # PHASE 1: Bob creates offline transfer with --skip-validation (thin client mode)
     # The CLI allows this in thin-client mode - validation happens at SDK layer
     local stolen_transfer="${TEST_TEMP_DIR}/stolen-transfer.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${stolen_transfer} --skip-validation"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${stolen_transfer} --skip-validation"
     assert_success
     log_info "Bob created offline transfer (thin client allows this)"
 
     # PHASE 2: ATTACK - Bob tries to receive his own "stolen" transfer
     # This is where the attack should FAIL (signature verification at SDK layer)
     local received="${TEST_TEMP_DIR}/bob-received.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${stolen_transfer} --local -o ${received}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${stolen_transfer} -o ${received}"
 
     # Assert that the attack FAILED at receive stage
     assert_failure
@@ -69,7 +70,7 @@ teardown() {
     assert_file_not_exists "${received}"
 
     # Verify Alice's original token is unchanged and still valid
-    run_cli "verify-token -f ${alice_token} --local"
+    run_cli "verify-token -f ${alice_token}"
     assert_success
 
     log_success "SEC-AUTH-001: Wrong secret attack successfully prevented at receive stage"
@@ -84,10 +85,11 @@ teardown() {
 
 @test "SEC-AUTH-001-validated: Ownership validation prevents unauthorized send (default behavior)" {
     log_test "Testing ownership validation at send stage (Phase 2 feature)"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # Bob generates address
@@ -97,7 +99,7 @@ teardown() {
     # ATTACK: Bob tries to send Alice's token WITHOUT --skip-validation
     # Default behavior (Phase 2): should fail at send-token stage with ownership check
     local stolen_transfer="${TEST_TEMP_DIR}/stolen-transfer.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${stolen_transfer}"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${stolen_transfer}"
 
     # Should fail immediately (ownership verification)
     assert_failure
@@ -120,10 +122,11 @@ teardown() {
 
 @test "SEC-AUTH-002: Signature forgery with modified public key should FAIL" {
     log_test "Testing public key tampering attack"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # Attacker copies the token and modifies the predicate public key
@@ -152,7 +155,7 @@ teardown() {
     local recipient=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     # ATTACK: Try to send tampered token - should fail at SDK parsing layer
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} -o /dev/null"
 
     # Assert SDK detected tampering via CBOR decode failure
     assert_failure
@@ -172,10 +175,11 @@ teardown() {
 
 @test "SEC-AUTH-002-validated: Tampered token rejected by SDK parsing (validation mode)" {
     log_test "Testing tampered token detection with ownership validation enabled"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # ATTACK: Tamper with predicate (corrupt CBOR encoding)
@@ -190,7 +194,7 @@ teardown() {
 
     # ATTACK: Try to send tampered token (even with correct secret)
     # Should fail at SDK parsing stage (before ownership validation)
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} -o /dev/null"
 
     # Should fail at parsing (CBOR decode) - never reaches ownership check
     assert_failure
@@ -208,17 +212,18 @@ teardown() {
 
 @test "SEC-AUTH-003: Predicate engine ID tampering should FAIL" {
     log_test "Testing predicate engine ID modification attack"
+    fail_if_aggregator_unavailable
 
     # Create a masked address token with nonce
     local test_nonce=$(generate_unique_id "nonce")
     local masked_token="${TEST_TEMP_DIR}/masked-token.txf"
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --nonce ${test_nonce} --local -o ${masked_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --nonce ${test_nonce} -o ${masked_token}"
     assert_success
     assert_file_exists "${masked_token}"
 
     # Verify the token is valid with masked predicate
-    run_cli "verify-token -f ${masked_token} --local"
+    run_cli "verify-token -f ${masked_token}"
     assert_success
 
     # ATTACK: Attacker copies token and tries to modify the predicate structure
@@ -233,14 +238,14 @@ teardown() {
     mv "${tampered_token}.tmp" "${tampered_token}"
 
     # Try to verify tampered token
-    run_cli "verify-token -f ${tampered_token} --local"
+    run_cli "verify-token -f ${tampered_token}"
     assert_failure
 
     # Try to use tampered token for transfer
     run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
     local recipient=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} --local -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${recipient} -o /dev/null"
     assert_failure
 
     log_success "SEC-AUTH-003: Engine ID tampering attack successfully prevented"
@@ -255,10 +260,11 @@ teardown() {
 
 @test "SEC-AUTH-004: Replay attack with old signature should FAIL" {
     log_test "Testing replay attack prevention"
+    fail_if_aggregator_unavailable
 
     # Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # Bob and Carol generate addresses
@@ -273,7 +279,7 @@ teardown() {
 
     # Alice creates valid transfer to Bob
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer_bob}"
     assert_success
     assert_file_exists "${transfer_bob}"
 
@@ -288,7 +294,7 @@ teardown() {
     mv "${replayed_transfer}.tmp" "${replayed_transfer}"
 
     # Carol tries to receive the replayed/modified transfer
-    run_cli_with_secret "${carol_secret}" "receive-token -f ${replayed_transfer} --local -o /dev/null"
+    run_cli_with_secret "${carol_secret}" "receive-token -f ${replayed_transfer} -o /dev/null"
 
     # Assert that receive FAILED (signature doesn't match modified recipient)
     assert_failure
@@ -297,7 +303,7 @@ teardown() {
     fi
 
     # Verify original transfer to Bob is still valid
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-token.txf"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} -o ${TEST_TEMP_DIR}/bob-token.txf"
     assert_success
 
     log_success "SEC-AUTH-004: Replay attack successfully prevented"
@@ -312,6 +318,7 @@ teardown() {
 
 @test "SEC-AUTH-005: Nonce reuse on masked addresses should be prevented" {
     log_test "Testing masked address nonce reuse prevention"
+    fail_if_aggregator_unavailable
 
     # Bob generates a masked address with specific nonce
     local bob_nonce=$(generate_unique_id "bob-nonce")
@@ -324,27 +331,27 @@ teardown() {
     local token1="${TEST_TEMP_DIR}/token1.txf"
     local token2="${TEST_TEMP_DIR}/token2.txf"
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token1}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token1}"
     assert_success
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token2}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token2}"
     assert_success
 
     # Alice sends first token to Bob's masked address
     local transfer1="${TEST_TEMP_DIR}/transfer1.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token1} -r ${bob_masked_address} --local -o ${transfer1}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token1} -r ${bob_masked_address} -o ${transfer1}"
     assert_success
 
     # Bob receives first token (this should succeed)
     local bob_token1="${TEST_TEMP_DIR}/bob-token1.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer1} --nonce ${bob_nonce} --local -o ${bob_token1}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer1} --nonce ${bob_nonce} -o ${bob_token1}"
     assert_success
     assert_file_exists "${bob_token1}"
 
     # ATTACK: Alice tries to send second token to SAME masked address
     # This should be allowed at send time (Alice doesn't know Bob used the nonce)
     local transfer2="${TEST_TEMP_DIR}/transfer2.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token2} -r ${bob_masked_address} --local -o ${transfer2}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token2} -r ${bob_masked_address} -o ${transfer2}"
     assert_success  # Send succeeds (sender doesn't know nonce was used)
 
     # Bob tries to receive second token with same nonce
@@ -352,7 +359,7 @@ teardown() {
     # The masked address + nonce combination creates a unique predicate
     # Different tokens to same masked address with same nonce should work
     local exit_code=0
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer2} --nonce ${bob_nonce} --local -o ${TEST_TEMP_DIR}/bob-token2.txf" || exit_code=$?
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer2} --nonce ${bob_nonce} -o ${TEST_TEMP_DIR}/bob-token2.txf" || exit_code=$?
 
     # Expected: This SHOULD SUCCEED
     # Rationale: Nonce reuse is fine when:
@@ -386,15 +393,16 @@ teardown() {
 
 @test "SEC-AUTH-006: Cross-token-type signature reuse should FAIL" {
     log_test "Testing signature domain separation between token types"
+    fail_if_aggregator_unavailable
 
     # Alice mints NFT
     local nft_token="${TEST_TEMP_DIR}/nft-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${nft_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${nft_token}"
     assert_success
 
     # Alice mints UCT
     local uct_token="${TEST_TEMP_DIR}/uct-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct --local -o ${uct_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -o ${uct_token}"
     assert_success
 
     # Generate recipient address
@@ -404,7 +412,7 @@ teardown() {
 
     # Create valid NFT transfer
     local nft_transfer="${TEST_TEMP_DIR}/nft-transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${nft_token} -r ${bob_address} --local -o ${nft_transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${nft_token} -r ${bob_address} -o ${nft_transfer}"
     assert_success
 
     # ATTACK: Try to extract signature from NFT transfer and apply to UCT transfer
@@ -420,12 +428,12 @@ teardown() {
     assert_not_equals "${nft_type}" "${uct_type}"
 
     # Verify NFT transfer works correctly
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${nft_transfer} --local -o ${TEST_TEMP_DIR}/bob-nft.txf"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${nft_transfer} -o ${TEST_TEMP_DIR}/bob-nft.txf"
     assert_success
 
     # Create separate UCT transfer (should use different signature)
     local uct_transfer="${TEST_TEMP_DIR}/uct-transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${uct_token} -r ${bob_address} --local -o ${uct_transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${uct_token} -r ${bob_address} -o ${uct_transfer}"
     assert_success
 
     # Verify signatures are different (domain separation working)

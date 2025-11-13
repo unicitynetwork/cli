@@ -382,6 +382,21 @@ require_aggregator() {
   fi
 }
 
+# CRITICAL: Fail test immediately if aggregator is unavailable (for security tests)
+# This function MUST be called at the beginning of security tests
+# Security tests CANNOT use --local or mocks - they require real aggregator
+# If aggregator is down, test FAILS (not skips)
+fail_if_aggregator_unavailable() {
+  # Security tests MUST NOT allow UNICITY_TEST_SKIP_EXTERNAL bypass
+  if [[ "${UNICITY_TEST_SKIP_EXTERNAL:-0}" == "1" ]]; then
+    fail "CRITICAL: Security tests require real aggregator. UNICITY_TEST_SKIP_EXTERNAL=1 not allowed for security tests."
+  fi
+
+  if ! check_aggregator_health; then
+    fail "CRITICAL: Aggregator required for security test but unavailable at ${UNICITY_AGGREGATOR_URL}. Security tests cannot run without real aggregator - no mocks, no fallbacks allowed."
+  fi
+}
+
 # Legacy function for backwards compatibility - now calls require_aggregator
 # DEPRECATED: Use require_aggregator() instead
 skip_if_aggregator_unavailable() {
@@ -642,6 +657,7 @@ export -f run_cli_expect_failure
 export -f check_aggregator_health
 export -f wait_for_aggregator
 export -f require_aggregator
+export -f fail_if_aggregator_unavailable
 export -f skip_if_aggregator_unavailable
 export -f check_aggregator
 export -f save_output_artifact

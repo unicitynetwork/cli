@@ -32,15 +32,16 @@ teardown() {
 
 @test "SEC-ACCESS-001: Cannot transfer token not owned by user" {
     log_test "Testing ownership enforcement via cryptographic signatures"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
 
     # Bob tries to verify Alice's token (should succeed - verification is public)
-    run_cli "verify-token -f ${alice_token} --local"
+    run_cli "verify-token -f ${alice_token}"
     assert_success
     log_info "Bob can verify Alice's token (expected - verification is public)"
 
@@ -51,7 +52,7 @@ teardown() {
 
     # ATTACK: Bob tries to send Alice's token to Carol using Bob's secret
     # This should FAIL because Bob's signature won't match Alice's predicate
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${carol_address} --local -o ${TEST_TEMP_DIR}/stolen.txf"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${carol_address} -o ${TEST_TEMP_DIR}/stolen.txf"
 
     # Must fail - Bob doesn't own the token
     assert_failure
@@ -65,7 +66,7 @@ teardown() {
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${TEST_TEMP_DIR}/valid-transfer.txf"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${TEST_TEMP_DIR}/valid-transfer.txf"
     assert_success
     log_info "Alice can still transfer her token (rightful owner)"
 
@@ -91,10 +92,11 @@ teardown() {
 
 @test "SEC-ACCESS-002: Cryptographic ownership is primary defense (file perms secondary)" {
     log_test "Testing cryptographic ownership enforcement - file permissions are secondary"
+    fail_if_aggregator_unavailable
 
     # Alice creates a token
     local alice_token="${TEST_TEMP_DIR}/alice-private-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # Check file permissions as informational only
@@ -129,7 +131,7 @@ teardown() {
         run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
         local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-        run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o /dev/null"
+        run_cli_with_secret "${BOB_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o /dev/null"
         assert_failure "Bob cannot transfer despite file access"
         log_info "Bob CANNOT transfer: Signature verification fails (cryptographic ownership)"
     fi
@@ -146,14 +148,15 @@ teardown() {
 
 @test "SEC-ACCESS-003: Token file modification detection" {
     log_test "Testing detection of unauthorized token modifications"
+    fail_if_aggregator_unavailable
 
     # Alice mints a token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
 
     # Verify original token is valid
-    run_cli "verify-token -f ${alice_token} --local"
+    run_cli "verify-token -f ${alice_token}"
     assert_success
 
     # ATTACK 1: Modify token data
@@ -165,7 +168,7 @@ teardown() {
     mv "${modified_token}.tmp" "${modified_token}"
 
     # Verification should fail (state hash mismatch with genesis proof)
-    run_cli "verify-token -f ${modified_token} --local"
+    run_cli "verify-token -f ${modified_token}"
     assert_failure
     if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|mismatch|invalid)"); then
         fail "Expected error message containing one of: hash, mismatch, invalid. Got: ${output}"
@@ -179,7 +182,7 @@ teardown() {
         "${modified_type}" > "${modified_type}.tmp"
     mv "${modified_type}.tmp" "${modified_type}"
 
-    run_cli "verify-token -f ${modified_type} --local"
+    run_cli "verify-token -f ${modified_type}"
     assert_failure
 
     # ATTACK 3: Modify state predicate
@@ -189,14 +192,14 @@ teardown() {
     jq '.state.predicate = "ffff"' "${modified_pred}" > "${modified_pred}.tmp"
     mv "${modified_pred}.tmp" "${modified_pred}"
 
-    run_cli "verify-token -f ${modified_pred} --local"
+    run_cli "verify-token -f ${modified_pred}"
     assert_failure
 
     # ATTACK 4: Try to send a modified token
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${modified_token} -r ${bob_address} --local -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${modified_token} -r ${bob_address} -o /dev/null"
     assert_failure
 
     log_success "SEC-ACCESS-003: All token modifications detected by cryptographic integrity checks"
@@ -211,6 +214,7 @@ teardown() {
 
 @test "SEC-ACCESS-004: Trustbase authenticity must be validated" {
     log_test "Testing trustbase authenticity validation"
+    fail_if_aggregator_unavailable
 
     # Test 1: TRUSTBASE_PATH override with fake trustbase
     # Create a fake trustbase file (missing cryptographic signatures)
@@ -245,7 +249,7 @@ teardown() {
     export TEST_SECRET="test-secret-12345"
 
     local exit_code=0
-    run_cli_with_secret "${TEST_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/secret-test.txf" || exit_code=$?
+    run_cli_with_secret "${TEST_SECRET}" "mint-token --preset nft -o ${TEST_TEMP_DIR}/secret-test.txf" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
         # Verify secret is NOT in the token file
@@ -270,13 +274,14 @@ teardown() {
 
 @test "SEC-ACCESS-EXTRA: Complete multi-user transfer chain maintains security" {
     log_test "Testing security across multiple transfers"
+    fail_if_aggregator_unavailable
 
     # Create a transfer chain: Alice → Bob → Carol
     # Verify only rightful owners can transfer at each step
 
     # Alice mints token
     local token="${TEST_TEMP_DIR}/token-chain.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token}"
     assert_success
 
     # Bob generates address
@@ -286,11 +291,11 @@ teardown() {
 
     # Alice transfers to Bob
     local transfer_to_bob="${TEST_TEMP_DIR}/transfer-to-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r ${bob_address} --local -o ${transfer_to_bob}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r ${bob_address} -o ${transfer_to_bob}"
     assert_success
 
     local bob_token="${TEST_TEMP_DIR}/bob-token.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_to_bob} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_to_bob} -o ${bob_token}"
     assert_success
 
     # Carol generates address
@@ -303,12 +308,12 @@ teardown() {
     # When Alice tries to transfer again, it should fail due to ownership verification
     local alice_reuse_attempt="${TEST_TEMP_DIR}/alice-reuse.txf"
     local attempt_exit=0
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r ${carol_address} --local -o ${alice_reuse_attempt}" || attempt_exit=$?
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r ${carol_address} -o ${alice_reuse_attempt}" || attempt_exit=$?
 
     # Either the command fails directly, or we can verify the old token is no longer valid
     if [[ $attempt_exit -eq 0 ]]; then
         # Verify that the original token file is no longer in a valid state for transfers
-        run_cli "verify-token -f ${token} --local"
+        run_cli "verify-token -f ${token}"
         # Token verification may still succeed (structural validity) but ownership is gone
         log_info "Note: Original token still structurally valid but ownership transferred to Bob"
     else
@@ -317,11 +322,11 @@ teardown() {
 
     # SECURITY CHECK 2: Only Bob can transfer now
     local transfer_to_carol="${TEST_TEMP_DIR}/transfer-to-carol.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_address} --local -o ${transfer_to_carol}"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_address} -o ${transfer_to_carol}"
     assert_success
 
     local carol_token="${TEST_TEMP_DIR}/carol-token.txf"
-    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_to_carol} --local -o ${carol_token}"
+    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer_to_carol} -o ${carol_token}"
     assert_success
 
     # SECURITY CHECK 3: Bob can no longer transfer (Bob already transferred to Carol)
@@ -331,7 +336,7 @@ teardown() {
     # Bob tries to reuse his token after already transferring to Carol
     local bob_reuse_attempt="${TEST_TEMP_DIR}/bob-reuse.txf"
     local bob_attempt_exit=0
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${alice_address} --local -o ${bob_reuse_attempt}" || bob_attempt_exit=$?
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${alice_address} -o ${bob_reuse_attempt}" || bob_attempt_exit=$?
 
     # Either the command fails directly, or verify shows Bob no longer owns it
     if [[ $bob_attempt_exit -eq 0 ]]; then
@@ -341,10 +346,10 @@ teardown() {
     fi
 
     # SECURITY CHECK 4: Only Carol can transfer now
-    run_cli "verify-token -f ${carol_token} --local"
+    run_cli "verify-token -f ${carol_token}"
     assert_success
 
-    run_cli_with_secret "${CAROL_SECRET}" "send-token -f ${carol_token} -r ${alice_address} --local -o ${TEST_TEMP_DIR}/back-to-alice.txf"
+    run_cli_with_secret "${CAROL_SECRET}" "send-token -f ${carol_token} -r ${alice_address} -o ${TEST_TEMP_DIR}/back-to-alice.txf"
     assert_success
     log_info "Carol (current owner) can transfer token"
 

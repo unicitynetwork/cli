@@ -29,11 +29,12 @@ teardown() {
 # =============================================================================
 @test "HASH-001: RecipientDataHash correctly computes state.data hash" {
     log_test "HASH-001: Verifying recipientDataHash computation correctness"
+    fail_if_aggregator_unavailable
 
     local test_data='{"metadata":"test"}'
     local token="${TEST_TEMP_DIR}/hash-verify.txf"
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '${test_data}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${test_data}' -o ${token}"
     assert_success
     assert_file_exists "${token}"
     log_info "Token created with test data"
@@ -53,7 +54,7 @@ teardown() {
     [[ ${#recipient_hash} -gt 20 ]] || assert_failure "recipientDataHash should be a substantial hash value"
 
     # Verify token is valid
-    run_cli "verify-token -f ${token} --local"
+    run_cli "verify-token -f ${token}"
     assert_success
     log_info "Token verification passed"
 
@@ -68,14 +69,15 @@ teardown() {
 # Expected: Verification fails with hash mismatch error
 @test "HASH-002: Mismatched recipientDataHash (hash != data) should be rejected" {
     log_test "HASH-002: Testing hash/data mismatch detection"
+    fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-mismatch.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
     assert_success
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token} --local"
+    run_cli "verify-token -f ${token}"
     assert_success
     log_info "Original token verification passed"
 
@@ -93,7 +95,7 @@ teardown() {
     log_info "Hash changed to wrong value: ${wrong_hash:0:16}..."
 
     # Try to verify tampered token - MUST FAIL
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
     log_info "verify-token correctly rejected mismatched hash"
@@ -103,7 +105,7 @@ teardown() {
     assert_success
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered} -r ${bob_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered} -r ${bob_addr}"
     assert_failure
     log_info "send-token correctly rejected token with mismatched hash"
 
@@ -118,14 +120,15 @@ teardown() {
 # Expected: Verification fails
 @test "HASH-003: All-zeros recipientDataHash should be rejected" {
     log_test "HASH-003: Testing all-zeros hash tampering"
+    fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-zeros.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
     assert_success
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token} --local"
+    run_cli "verify-token -f ${token}"
     assert_success
     log_info "Original token verification passed"
 
@@ -142,7 +145,7 @@ teardown() {
     log_info "RecipientDataHash set to all zeros"
 
     # Verify must fail
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
 
@@ -157,14 +160,15 @@ teardown() {
 # Expected: Verification fails due to missing commitment
 @test "HASH-004: Missing recipientDataHash when data present should be rejected" {
     log_test "HASH-004: Testing missing hash with present data"
+    fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-missing.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
     assert_success
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token} --local"
+    run_cli "verify-token -f ${token}"
     assert_success
     log_info "Original token verification passed"
 
@@ -179,7 +183,7 @@ teardown() {
     log_info "RecipientDataHash removed"
 
     # Verify must fail
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     assert_output_contains "null" || assert_output_contains "missing" || assert_output_contains "hash" || assert_output_contains "invalid"
 
@@ -194,14 +198,15 @@ teardown() {
 # Expected: Verification fails due to inconsistency
 @test "HASH-005: Hash present but state data null should be rejected" {
     log_test "HASH-005: Testing state data removed but hash present"
+    fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-data-null.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
     assert_success
     log_info "Token created with state data"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token} --local"
+    run_cli "verify-token -f ${token}"
     assert_success
     log_info "Original token verification passed"
 
@@ -216,7 +221,7 @@ teardown() {
     log_info "State.data set to null"
 
     # Verify must fail (hash cannot commit to null data)
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid" || assert_output_contains "state"
 
@@ -231,10 +236,11 @@ teardown() {
 # Expected: receive-token rejects token due to hash mismatch
 @test "HASH-006: RecipientDataHash tampering in transfer should be detected" {
     log_test "HASH-006: Testing hash tampering in offline transfer"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints token with data
     local alice_token="${TEST_TEMP_DIR}/hash-transfer-original.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"sensitive\":\"data\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"sensitive\":\"data\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token with sensitive data"
 
@@ -246,12 +252,12 @@ teardown() {
 
     # Step 3: Alice creates transfer to Bob
     local transfer="${TEST_TEMP_DIR}/hash-transfer-pkg.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     log_info "Transfer package created"
 
     # Verify transfer is valid before tampering
-    run_cli "verify-token -f ${transfer} --local"
+    run_cli "verify-token -f ${transfer}"
     assert_success
     log_info "Transfer package verified"
 
@@ -268,19 +274,19 @@ teardown() {
     log_info "RecipientDataHash tampered in transfer package"
 
     # Step 4: Bob tries to receive tampered transfer - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_transfer} --local"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_transfer}"
     assert_failure
     assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
     log_info "receive-token correctly rejected tampered hash"
 
     # Step 5: Verify original transfer still works
     local bob_token="${TEST_TEMP_DIR}/hash-transfer-bob.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     log_info "Original transfer accepted and received"
 
     # Step 6: Verify received token is valid
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "Received token verified"
 

@@ -44,15 +44,16 @@ teardown() {
 
 @test "SEC-SEND-CRYPTO-001: send-token rejects tampered genesis signature" {
     log_test "SEC-SEND-CRYPTO-001: Testing send-token signature validation"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints a valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     log_info "Alice minted token"
 
     # Step 2: Verify token is valid
-    run_cli "verify-token -f ${alice_token} --local"
+    run_cli "verify-token -f ${alice_token}"
     assert_success
     log_info "Token verification passed"
 
@@ -79,7 +80,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 5: Alice attempts to send tampered token - MUST FAIL
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr}"
     assert_failure
     log_info "send-token correctly rejected tampered signature"
 
@@ -102,10 +103,11 @@ teardown() {
 
 @test "SEC-SEND-CRYPTO-002: send-token rejects tampered merkle path" {
     log_test "SEC-SEND-CRYPTO-002: Testing send-token merkle path validation"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     log_info "Token minted"
 
@@ -127,7 +129,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr}"
     assert_failure
     log_info "send-token correctly rejected tampered merkle path"
 
@@ -150,10 +152,11 @@ teardown() {
 
 @test "SEC-SEND-CRYPTO-003: send-token rejects null authenticator" {
     log_test "SEC-SEND-CRYPTO-003: Testing send-token authenticator validation"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     log_info "Token minted"
 
@@ -170,7 +173,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr}"
     assert_failure
     log_info "send-token correctly rejected null authenticator"
 
@@ -193,10 +196,11 @@ teardown() {
 
 @test "SEC-SEND-CRYPTO-004: send-token rejects modified state data" {
     log_test "SEC-SEND-CRYPTO-004: Testing send-token state data validation"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints token with specific data
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"value\":\"original\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"value\":\"original\"}' -o ${alice_token}"
     assert_success
     log_info "Token minted with original data"
 
@@ -216,7 +220,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     # Step 4: Alice attempts to send - MUST FAIL
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_addr}"
     assert_failure
     log_info "send-token correctly rejected modified state data"
 
@@ -240,15 +244,16 @@ teardown() {
 
 @test "SEC-SEND-CRYPTO-005: send-token validates before creating transfer" {
     log_test "SEC-SEND-CRYPTO-005: Complete send-token validation workflow"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints a valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
     assert_success
     log_info "Alice minted valid token"
 
     # Step 2: Verify token is valid
-    run_cli "verify-token -f ${alice_token} --local"
+    run_cli "verify-token -f ${alice_token}"
     assert_success
     log_success "Initial token verification passed"
 
@@ -266,7 +271,7 @@ teardown() {
     local output_dir="${TEST_TEMP_DIR}/output"
     mkdir -p "${output_dir}"
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${output_dir}/transfer.txf"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${output_dir}/transfer.txf"
     assert_success
     assert_file_exists "${output_dir}/transfer.txf"
     log_success "Valid token transfer created successfully"
@@ -283,7 +288,7 @@ teardown() {
             "${tampered_sig}" > "${tampered_sig}.tmp"
         mv "${tampered_sig}.tmp" "${tampered_sig}"
 
-        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_sig} -r ${carol_addr} --local"
+        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_sig} -r ${carol_addr}"
         assert_failure
         log_info "Invalid token with corrupted signature rejected"
     fi
@@ -294,7 +299,7 @@ teardown() {
     jq '.genesis.inclusionProof.authenticator = null' "${tampered_auth}" > "${tampered_auth}.tmp"
     mv "${tampered_auth}.tmp" "${tampered_auth}"
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_auth} -r ${carol_addr} --local"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_auth} -r ${carol_addr}"
     assert_failure
     log_info "Invalid token with null authenticator rejected"
 

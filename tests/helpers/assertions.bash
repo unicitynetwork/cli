@@ -1760,6 +1760,312 @@ assert_has_inclusion_proof() {
 }
 
 # -----------------------------------------------------------------------------
+# =============================================================================
+# CRITICAL Content Validation Helpers (NO MOCKING, NO FALLBACKS)
+# =============================================================================
+# These helpers ensure files contain valid content, not just exist
+# They MUST fail if content is invalid - no silent defaults
+
+# Assert file is valid JSON
+# CRITICAL: Must fail if file is not valid JSON (not exist, not parse)
+# Args:
+#   $1: File path
+# Returns: 0 if valid JSON, 1 if invalid
+assert_valid_json() {
+  local file="${1:?File required}"
+
+  # File must exist
+  if [[ ! -f "$file" ]]; then
+    printf "${COLOR_RED}✗ JSON validation failed: File does not exist${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  # File must be readable
+  if [[ ! -r "$file" ]]; then
+    printf "${COLOR_RED}✗ JSON validation failed: File not readable${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  # File must be non-empty
+  if [[ ! -s "$file" ]]; then
+    printf "${COLOR_RED}✗ JSON validation failed: File is empty${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  # File must contain valid JSON
+  if ! jq empty "$file" 2>/dev/null; then
+    printf "${COLOR_RED}✗ JSON validation failed: File is not valid JSON${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Content:\n" >&2
+    head -20 "$file" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ File is valid JSON: %s${COLOR_RESET}\n" "$file" >&2
+  fi
+  return 0
+}
+
+# Assert token has valid structure
+# CRITICAL: Must validate ALL required fields exist and have correct types
+# Args:
+#   $1: Token file path
+# Returns: 0 if valid, 1 if invalid
+assert_token_structure_valid() {
+  local file="${1:?Token file required}"
+
+  # First, validate it's JSON
+  assert_valid_json "$file" || return 1
+
+  # Check required top-level fields
+  local required_fields=(
+    ".version"
+    ".genesis"
+    ".genesis.data"
+    ".genesis.data.tokenId"
+    ".genesis.inclusionProof"
+    ".state"
+    ".state.data"
+    ".state.predicate"
+  )
+
+  for field in "${required_fields[@]}"; do
+    if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Token structure invalid: Missing required field${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$file" >&2
+      printf "  Missing field: %s\n" "$field" >&2
+      return 1
+    fi
+  done
+
+  # Validate tokenId is non-empty
+  local token_id
+  token_id=$(jq -r '.genesis.data.tokenId' "$file")
+  if [[ -z "$token_id" ]] || [[ "$token_id" == "null" ]]; then
+    printf "${COLOR_RED}✗ Token structure invalid: tokenId is empty or null${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token structure is valid${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Assert offline transfer has valid structure
+# CRITICAL: Must validate transfer-specific fields exist
+# Args:
+#   $1: Offline transfer file path
+# Returns: 0 if valid, 1 if invalid
+assert_offline_transfer_structure_valid() {
+  local file="${1:?Transfer file required}"
+
+  # First, validate it's JSON
+  assert_valid_json "$file" || return 1
+
+  # Check required transfer fields
+  if ! jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Transfer structure invalid: Missing .offlineTransfer field${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  This is not a valid offline transfer file\n" >&2
+    return 1
+  fi
+
+  # Check transfer subfields
+  local required_transfer_fields=(
+    ".offlineTransfer.transaction"
+    ".offlineTransfer.recipient"
+  )
+
+  for field in "${required_transfer_fields[@]}"; do
+    if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Transfer structure invalid: Missing required field${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$file" >&2
+      printf "  Missing field: %s\n" "$field" >&2
+      return 1
+    fi
+  done
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Offline transfer structure is valid${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Assert JSON field exists and is not null
+# CRITICAL: Field must exist and have a value
+# Args:
+#   $1: File path
+#   $2: JSON path (e.g., ".version", ".genesis.data.tokenId")
+# Returns: 0 if field exists and non-null, 1 otherwise
+assert_json_field_exists_and_valid() {
+  local file="${1:?File required}"
+  local field="${2:?Field path required}"
+
+  # File must exist
+  if [[ ! -f "$file" ]]; then
+    printf "${COLOR_RED}✗ Field validation failed: File does not exist${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  # Field must exist in JSON
+  if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Field validation failed: Field does not exist${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Field: %s\n" "$field" >&2
+    return 1
+  fi
+
+  # Field value must not be null
+  local value
+  value=$(jq -r "$field" "$file")
+  if [[ -z "$value" ]] || [[ "$value" == "null" ]]; then
+    printf "${COLOR_RED}✗ Field validation failed: Field is null or empty${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Field: %s\n" "$field" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Field exists and is valid: %s${COLOR_RESET}\n" "$field" >&2
+  fi
+  return 0
+}
+
+# Validate file is valid JSON (non-empty)
+# CRITICAL: File must exist, be readable, and contain valid JSON
+# Args:
+#   $1: File path
+#   $2: Description (optional, for error messages)
+# Returns: 0 if valid JSON, 1 otherwise
+assert_valid_json() {
+  local file="${1:?File path required}"
+  local description="${2:-File}"
+
+  if [[ ! -f "$file" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: ${description} does not exist${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  if [[ ! -s "$file" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: ${description} is empty${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  if ! jq empty "$file" 2>/dev/null; then
+    local content
+    content=$(head -c 200 "$file" 2>/dev/null || echo "[binary]")
+    printf "${COLOR_RED}✗ Assertion Failed: ${description} is not valid JSON${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  First 200 bytes: %s\n" "$content" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ ${description} is valid JSON${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Validate token file has required structure
+# CRITICAL: Token file must have all required fields
+# Args:
+#   $1: Token file path
+# Returns: 0 if valid token structure, 1 otherwise
+assert_token_structure_valid() {
+  local file="${1:?Token file required}"
+
+  # First validate JSON
+  assert_valid_json "$file" "Token file" || return 1
+
+  # Required top-level fields
+  local required_fields=(
+    ".version"
+    ".genesis"
+    ".state"
+  )
+
+  for field in "${required_fields[@]}"; do
+    if ! jq -e "$field" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Assertion Failed: Token missing required field${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$file" >&2
+      printf "  Missing field: %s\n" "$field" >&2
+      return 1
+    fi
+  done
+
+  # Validate genesis structure
+  assert_json_field_exists "$file" ".genesis.data.tokenId" || return 1
+  assert_json_field_exists "$file" ".genesis.inclusionProof" || return 1
+
+  # Validate state structure
+  assert_json_field_exists "$file" ".state.data" || return 1
+  assert_json_field_exists "$file" ".state.predicate" || return 1
+
+  # Validate tokenId is non-empty
+  local token_id
+  token_id=$(jq -r '.genesis.data.tokenId' "$file")
+
+  if [[ -z "$token_id" ]] || [[ "$token_id" == "null" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Token has empty or null tokenId${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Token structure is valid${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
+# Validate offline transfer structure
+# CRITICAL: Offline transfer file must have required fields
+# Args:
+#   $1: Transfer file path
+# Returns: 0 if valid transfer structure, 1 otherwise
+assert_offline_transfer_structure_valid() {
+  local file="${1:?Transfer file required}"
+
+  # First validate JSON
+  assert_valid_json "$file" "Transfer file" || return 1
+
+  # Must have offlineTransfer field
+  if ! jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Assertion Failed: File is not a valid offline transfer${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Reason: Missing .offlineTransfer field\n" >&2
+    return 1
+  fi
+
+  # Validate offlineTransfer structure
+  assert_json_field_exists "$file" ".offlineTransfer.transaction" || return 1
+  assert_json_field_exists "$file" ".offlineTransfer.transaction.type" || return 1
+
+  local tx_type
+  tx_type=$(jq -r '.offlineTransfer.transaction.type' "$file")
+
+  if [[ "$tx_type" != "transfer" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Invalid transaction type in offline transfer${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Expected type: transfer\n" >&2
+    printf "  Actual type: %s\n" "$tx_type" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ Offline transfer structure is valid${COLOR_RESET}\n" >&2
+  fi
+  return 0
+}
+
 # Export New Functions
 # -----------------------------------------------------------------------------
 
@@ -1786,3 +2092,7 @@ export -f assert_json_has_field
 export -f assert_set
 export -f is_valid_hex
 export -f assert_address_type
+export -f assert_valid_json
+export -f assert_token_structure_valid
+export -f assert_offline_transfer_structure_valid
+export -f assert_json_field_exists_and_valid

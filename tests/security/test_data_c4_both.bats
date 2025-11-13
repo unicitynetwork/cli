@@ -30,12 +30,13 @@ teardown() {
 # =============================================================================
 @test "C4-001: Create and transfer C4 token (both data types present)" {
     log_test "C4-001: Creating C4 token with both data types and transferring"
+    fail_if_aggregator_unavailable
 
     # Step 1: Alice mints token with genesis data
     local alice_token="${TEST_TEMP_DIR}/alice-c4.txf"
     local genesis_data='{"owner":"Alice","nft_type":"rare"}'
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '${genesis_data}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${genesis_data}' -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
     log_info "Alice created token with genesis data"
@@ -57,20 +58,20 @@ teardown() {
 
     # Step 4: Alice transfers to Bob
     local transfer="${TEST_TEMP_DIR}/alice-to-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     assert_file_exists "${transfer}"
     log_info "Transfer package created"
 
     # Step 5: Bob receives - NOW we have C4 token
     local bob_token="${TEST_TEMP_DIR}/bob-c4.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     assert_file_exists "${bob_token}"
     log_info "Bob received C4 token"
 
     # Step 6: Verify Bob has C4 token with both data types
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "Bob's C4 token verified"
 
@@ -104,10 +105,11 @@ teardown() {
 # See C4-005 for explanation of independent protection mechanisms
 @test "C4-002: Genesis data tampering NOT detected (known limitation)" {
     log_test "C4-002: Testing genesis data tampering - KNOWN LIMITATION"
+    fail_if_aggregator_unavailable
 
     # Create C4 token (Alice -> Bob transfer)
     local alice_token="${TEST_TEMP_DIR}/alice-c4-gensig.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"owner\":\"Alice\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"owner\":\"Alice\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -116,17 +118,17 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer-c4.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
     local bob_token="${TEST_TEMP_DIR}/bob-c4-gensig.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     log_info "Bob received C4 token"
 
     # Verify original is valid
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "C4 token verified"
 
@@ -147,7 +149,7 @@ teardown() {
     assert_success
     local carol_addr=$(echo "${output}" | jq -r '.address')
 
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${tampered} -r ${carol_addr} --local"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${tampered} -r ${carol_addr}"
 
     # Should succeed (expected behavior)
     assert_success "Genesis data tampering accepted (this is expected and documented)"
@@ -166,10 +168,11 @@ teardown() {
 # Expected: Tampering detected (state hash / recipientDataHash mismatch)
 @test "C4-003: Tamper state.data in C4 token should be rejected" {
     log_test "C4-003: Testing state data tampering on C4 token"
+    fail_if_aggregator_unavailable
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-state.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"data\":\"original\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"original\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -178,17 +181,17 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer-c4-state.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
     local bob_token="${TEST_TEMP_DIR}/bob-c4-state.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     log_info "Bob received C4 token"
 
     # Verify original is valid
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "C4 token verified"
 
@@ -204,7 +207,7 @@ teardown() {
     log_info "State data tampered"
 
     # Try to verify - MUST FAIL (state hash mismatch with recipientDataHash)
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|state|mismatch|invalid)"); then
         fail "Expected error message containing one of: hash, state, mismatch, invalid. Got: ${output}"
@@ -222,10 +225,11 @@ teardown() {
 # Expected: Hash commitment mismatch detected during verification
 @test "C4-004: Tamper recipientDataHash in C4 token should be rejected" {
     log_test "C4-004: Testing recipientDataHash tampering on C4 token"
+    fail_if_aggregator_unavailable
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-hash.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"sensitive\":\"data\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"sensitive\":\"data\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -234,17 +238,17 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer-c4-hash.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
     local bob_token="${TEST_TEMP_DIR}/bob-c4-hash.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     log_info "Bob received C4 token"
 
     # Verify original
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "C4 token verified"
 
@@ -264,7 +268,7 @@ teardown() {
     log_info "RecipientDataHash tampered to zeros"
 
     # Try to verify - MUST FAIL
-    run_cli "verify-token -f ${tampered} --local"
+    run_cli "verify-token -f ${tampered}"
     assert_failure
     if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|commitment|mismatch)"); then
         fail "Expected error message containing one of: hash, commitment, mismatch. Got: ${output}"
@@ -287,10 +291,11 @@ teardown() {
 # Only the recipient's actual received state is protected by hash commitment.
 @test "C4-005: Verify both tampering mechanisms work independently" {
     log_test "C4-005: Testing independent detection of genesis vs state tampering"
+    fail_if_aggregator_unavailable
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-multi.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"test\":\"value\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"test\":\"value\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -299,12 +304,12 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer-c4-multi.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
     local bob_token="${TEST_TEMP_DIR}/bob-c4-multi.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
     assert_success
     log_info "Bob received C4 token"
 
@@ -316,7 +321,7 @@ teardown() {
     mv "${tamper1}.tmp" "${tamper1}"
     log_info "Scenario 1: Genesis data tampered only"
 
-    run_cli "verify-token -f ${tamper1} --local"
+    run_cli "verify-token -f ${tamper1}"
     # Genesis data tampering not detected in current implementation
     log_info "ℹ Scenario 1: Genesis data tampering NOT detected (data not bound to commitment)"
 
@@ -327,7 +332,7 @@ teardown() {
     mv "${tamper2}.tmp" "${tamper2}"
     log_info "Scenario 2: State data tampered only"
 
-    run_cli "verify-token -f ${tamper2} --local"
+    run_cli "verify-token -f ${tamper2}"
     assert_failure
     log_info "✓ Scenario 2: State tampering independently detected"
 
@@ -339,12 +344,12 @@ teardown() {
     mv "${tamper3}.tmp" "${tamper3}"
     log_info "Scenario 3: RecipientDataHash tampered only"
 
-    run_cli "verify-token -f ${tamper3} --local"
+    run_cli "verify-token -f ${tamper3}"
     assert_failure
     log_info "✓ Scenario 3: Hash tampering independently detected"
 
     # SCENARIO 4: Verify original still works
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "✓ Scenario 4: Original token still valid"
 
@@ -356,10 +361,11 @@ teardown() {
 # =============================================================================
 @test "C4-006: Transfer C4 token again preserves both data types" {
     log_test "C4-006: Verify both data types survive another transfer"
+    fail_if_aggregator_unavailable
 
     # Create and transfer to Bob (making C4 token)
     local alice_token="${TEST_TEMP_DIR}/alice-c4-xfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -d '{\"from\":\"Alice\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"from\":\"Alice\"}' -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -368,12 +374,12 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer1="${TEST_TEMP_DIR}/alice-to-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer1}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer1}"
     assert_success
     log_info "Transfer 1 created (Alice -> Bob)"
 
     local bob_token="${TEST_TEMP_DIR}/bob-c4-xfer.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer1} --local -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer1} -o ${bob_token}"
     assert_success
     log_info "Bob received token"
 
@@ -390,12 +396,12 @@ teardown() {
     local carol_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer2="${TEST_TEMP_DIR}/bob-to-carol.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_addr} --local -o ${transfer2}"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_addr} -o ${transfer2}"
     assert_success
     log_info "Transfer 2 created (Bob -> Carol)"
 
     local carol_token="${TEST_TEMP_DIR}/carol-c4-xfer.txf"
-    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer2} --local -o ${carol_token}"
+    run_cli_with_secret "${CAROL_SECRET}" "receive-token -f ${transfer2} -o ${carol_token}"
     assert_success
     log_info "Carol received token"
 
@@ -405,11 +411,11 @@ teardown() {
     log_info "Verified genesis data preserved in Carol's token"
 
     # Both tokens should be valid
-    run_cli "verify-token -f ${bob_token} --local"
+    run_cli "verify-token -f ${bob_token}"
     assert_success
     log_info "Bob's token valid"
 
-    run_cli "verify-token -f ${carol_token} --local"
+    run_cli "verify-token -f ${carol_token}"
     assert_success
     log_info "Carol's token valid"
 

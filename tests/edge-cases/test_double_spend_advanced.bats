@@ -38,7 +38,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-001: Sequential double-spend attempt" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Alice mints token
   local alice_token=$(create_temp_file "-alice.txf")
@@ -93,7 +93,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-002: Concurrent double-spend attempt" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Alice mints token
   local alice_token=$(create_temp_file "-alice.txf")
@@ -159,7 +159,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-003: Replay attack prevention" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Create and complete a transfer
   local alice_token=$(create_temp_file "-alice.txf")
@@ -204,7 +204,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-004: Delayed offline package submission" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Alice mints token
   local alice_token=$(create_temp_file "-alice.txf")
@@ -249,7 +249,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-005: Extreme concurrent submit-now race" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Alice mints token
   local alice_token=$(create_temp_file "-alice.txf")
@@ -298,15 +298,12 @@ teardown() {
 
   info "Concurrent submit-now: $success_count/5 succeeded"
 
-  if [[ $success_count -eq 1 ]]; then
-    info "✓ Exactly one concurrent submit-now succeeded (network enforced single-spend)"
-  elif [[ $success_count -eq 0 ]]; then
-    info "All concurrent submits failed (may be network issue)"
-  else
-    # Note: Multiple concurrent sends may succeed locally if using --submit-now
-    # The network prevents them from being final, but local creates may succeed
-    info "⚠ Multiple concurrent submits created ($success_count) - network prevents finalization"
+  # CRITICAL: Enforce exactly 1 success, 4 failures
+  if [[ $success_count -ne 1 ]]; then
+    fail "SECURITY FAILURE: Expected exactly 1 successful concurrent send, got ${success_count}. This indicates a double-spend vulnerability!"
   fi
+
+  log_success "✓ Double-spend prevention working: 1 success, 4 blocked"
 }
 
 # -----------------------------------------------------------------------------
@@ -314,7 +311,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-006: Attempt to modify recipient in transfer package" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Create transfer package
   local alice_token=$(create_temp_file "-alice.txf")
@@ -361,7 +358,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-007: Create multiple offline packages rapidly" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Mint token
   local alice_token=$(create_temp_file "-alice.txf")
@@ -437,12 +434,15 @@ teardown() {
 
   info "Successful submissions: $success_count/$created_count"
 
-  if [[ $success_count -eq 1 ]]; then
-    info "✓ Only one submission succeeded (network enforced single-spend)"
-  elif [[ $success_count -gt 1 ]]; then
-    info "⚠ Multiple submissions attempted to succeed ($success_count) - network should prevent finalization"
+  # CRITICAL: Enforce exactly 1 success, others must fail
+  if [[ $created_count -eq 5 ]]; then
+    if [[ $success_count -ne 1 ]]; then
+      fail "SECURITY FAILURE: Expected exactly 1 successful offline transfer submission, got ${success_count}. This indicates a double-spend vulnerability!"
+    fi
+    log_success "✓ Double-spend prevention working: 1 success, 4 blocked"
   else
-    info "All submissions failed"
+    # If not all packages were created, note it but don't fail
+    info "Note: Only $created_count of 5 packages were created (expected 5)"
   fi
 }
 
@@ -451,7 +451,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-010: Same token on two devices (multi-device double-spend)" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Simulate: User has same token file on laptop and phone
   local token_file=$(create_temp_file "-token.txf")
@@ -509,7 +509,7 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "DBLSPEND-015: Stale token file usage (days later)" {
-  skip_if_aggregator_unavailable
+  fail_if_aggregator_unavailable
 
   # Create token
   local token_file=$(create_temp_file "-token.txf")
