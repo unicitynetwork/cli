@@ -187,7 +187,8 @@ teardown() {
     assert_success
     assert_token_fully_valid "received1.txf"
 
-    # Second receive (retry) - may or may not create a file
+    # Second receive (retry) - idempotent operation (may succeed or fail)
+    # Exit code doesn't matter - we check if file was created
     receive_token "${BOB_SECRET}" "transfer.txf" "received2.txf" || true
 
     # Check if the second receive succeeded (idempotent operation)

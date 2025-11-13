@@ -61,14 +61,14 @@ teardown() {
   ) &
   local pid2=$!
 
-  # Wait for both
+  # Wait for both (OK to use || true here - we check files below)
   wait $pid1 || true
   wait $pid2 || true
 
   # Check results
   local success_count=0
-  [[ -f "$file1" ]] && ((success_count++)) || true
-  [[ -f "$file2" ]] && ((success_count++)) || true
+  [[ -f "$file1" ]] && success_count=$((success_count + 1))
+  [[ -f "$file2" ]] && success_count=$((success_count + 1))
 
   info "Concurrent mints completed: $success_count succeeded"
 
@@ -133,8 +133,8 @@ teardown() {
 
   # Both can create offline packages (allowed behavior)
   local created_count=0
-  [[ -f "$out1" ]] && ((created_count++)) || true
-  [[ -f "$out2" ]] && ((created_count++)) || true
+  [[ -f "$out1" ]] && created_count=$((created_count + 1))
+  [[ -f "$out2" ]] && created_count=$((created_count + 1))
 
   info "Created $created_count offline transfer packages"
 
@@ -274,18 +274,23 @@ teardown() {
   ) &
   local pid3=$!
 
-  # Wait for all
+  # Wait for all (OK to use || true here - we check files below)
   wait $pid1 || true
   wait $pid2 || true
   wait $pid3 || true
 
   # Check all succeeded
   local success_count=0
-  [[ -f "${instance1}/token.txf" ]] && ((success_count++)) || true
-  [[ -f "${instance2}/token.txf" ]] && ((success_count++)) || true
-  [[ -f "${instance3}/token.txf" ]] && ((success_count++)) || true
+  [[ -f "${instance1}/token.txf" ]] && success_count=$((success_count + 1))
+  [[ -f "${instance2}/token.txf" ]] && success_count=$((success_count + 1))
+  [[ -f "${instance3}/token.txf" ]] && success_count=$((success_count + 1))
 
   info "Parallel instances: $success_count/3 succeeded"
+
+  # Assert at least one succeeded
+  if [[ $success_count -lt 1 ]]; then
+    fail "Expected at least 1 parallel instance to succeed, got ${success_count}"
+  fi
 
   if [[ $success_count -eq 3 ]]; then
     # Verify all tokens are different
@@ -343,8 +348,8 @@ teardown() {
 
   # Only one should succeed (network prevents duplicate)
   local success_count=0
-  [[ -f "$out1" ]] && ((success_count++)) || true
-  [[ -f "$out2" ]] && ((success_count++)) || true
+  [[ -f "$out1" ]] && success_count=$((success_count + 1))
+  [[ -f "$out2" ]] && success_count=$((success_count + 1))
 
   info "Concurrent receives: $success_count succeeded"
 

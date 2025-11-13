@@ -156,12 +156,15 @@ teardown() {
     local fake_request_id="0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
     # Should return NOT_FOUND status or fail gracefully
-    run_cli "get-request ${fake_request_id} --local --json" || true
+    run_cli "get-request ${fake_request_id} --local --json"
 
     # Output should indicate "NOT_FOUND" status in JSON
     # The command should either succeed with NOT_FOUND or fail gracefully
     # Either way, the aggregator should not crash
-    [[ "$output" == *"NOT_FOUND"* ]] || [[ "$output" == *"not found"* ]] || true
+    if [[ "$output" != *"NOT_FOUND"* ]] && [[ "$output" != *"not found"* ]]; then
+        # Expected NOT_FOUND or not found in output, but it's OK if command failed
+        info "Command output: $output"
+    fi
 }
 
 # AGGREGATOR-007: Register Request with Special Characters in Data

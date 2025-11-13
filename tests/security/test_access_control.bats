@@ -221,8 +221,8 @@ teardown() {
     local fake_trustbase="${TEST_TEMP_DIR}/fake-trustbase.json"
     echo '{"networkId":666,"epoch":999,"trustBaseVersion":1}' > "${fake_trustbase}"
 
-    # Try to use fake trustbase
-    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft" || true
+    # Try to use fake trustbase - expect failure
+    TRUSTBASE_PATH="${fake_trustbase}" run_cli_with_secret "${ALICE_SECRET}" "gen-address --preset nft"
 
     # CRITICAL: Fake trustbase MUST be rejected
     if [[ "${status:-0}" -eq 0 ]]; then

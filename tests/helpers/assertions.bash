@@ -424,10 +424,25 @@ assert_json_field_equals() {
     field=".$field"
   fi
 
+  # Validate JSON file first
+  if ! ~/.local/bin/jq empty "$file" 2>/dev/null; then
+    printf "${COLOR_RED}✗ Assertion Failed: Invalid JSON${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
   # Use jq to convert value to string explicitly
   # This handles JSON numbers (2.0) vs strings ("2.0") consistently
   local actual
-  actual=$(~/.local/bin/jq -r "$field | tostring" "$file" 2>/dev/null || echo "")
+  actual=$(~/.local/bin/jq -r "$field | tostring" "$file" 2>/dev/null)
+
+  # Check if field exists and is not null
+  if [[ -z "$actual" ]] || [[ "$actual" == "null" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: JSON field missing or null${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    printf "  Field: %s\n" "$field" >&2
+    return 1
+  fi
 
   if [[ "$actual" != "$expected" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field mismatch${COLOR_RESET}\n" >&2

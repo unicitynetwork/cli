@@ -497,7 +497,7 @@ teardown() {
     # CLI should either:
     # 1. Allow negative amounts to represent liabilities, or
     # 2. Reject them with proper validation error
-    # For now, we test that the command handles it gracefully
+    # For now, we test that the command handles it gracefully (may succeed or fail)
     run_cli_with_secret "${SECRET}" "mint-token --preset uct -c '${negative_amount}' --local -o token.txf" || true
 
     # If file was created, verify the amount

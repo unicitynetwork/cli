@@ -76,9 +76,10 @@ teardown() {
 
   # Exactly one should have succeeded
   local success_count=0
-  [[ -f "$bob_token" ]] && [[ $(jq 'has("offlineTransfer") | not' "$bob_token") == "true" ]] && ((success_count++)) || true
-  [[ -f "$carol_token" ]] && [[ $(jq 'has("offlineTransfer") | not' "$carol_token") == "true" ]] && ((success_count++)) || true
+  [[ -f "$bob_token" ]] && [[ $(jq 'has("offlineTransfer") | not' "$bob_token") == "true" ]] && success_count=$((success_count + 1))
+  [[ -f "$carol_token" ]] && [[ $(jq 'has("offlineTransfer") | not' "$carol_token") == "true" ]] && success_count=$((success_count + 1))
 
+  # Assert expected behavior
   if [[ $success_count -eq 1 ]]; then
     info "✓ Only one double-spend succeeded (network prevented duplicate)"
   elif [[ $success_count -eq 2 ]]; then
@@ -424,10 +425,12 @@ teardown() {
   for result in "${submitted[@]}"; do
     if [[ -f "$result" ]]; then
       # Check if it's a completed receive (not an offline transfer)
-      local has_offline
-      has_offline=$(jq 'has("offlineTransfer") | not' "$result" 2>/dev/null || echo "false")
-      if [[ "$has_offline" == "true" ]]; then
-        success_count=$((success_count + 1))
+      if jq empty "$result" 2>/dev/null; then
+        local has_offline
+        has_offline=$(jq 'has("offlineTransfer") | not' "$result" 2>/dev/null)
+        if [[ "$has_offline" == "true" ]]; then
+          success_count=$((success_count + 1))
+        fi
       fi
     fi
   done

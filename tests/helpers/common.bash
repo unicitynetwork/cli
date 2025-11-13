@@ -233,7 +233,7 @@ run_cli() {
   }
 
   # Set up cleanup trap for temp files
-  # Use RETURN trap to ensure cleanup happens when function exits
+  # Use RETURN trap to ensure cleanup happens when function exits (|| true is OK in cleanup)
   trap 'rm -f -- "$temp_stdout" "$temp_stderr" 2>/dev/null || true' RETURN
 
   # Capture output and exit code
@@ -252,11 +252,11 @@ run_cli() {
   fi
 
   # Read captured output into variables
-  # Use || true to prevent failure if files are empty
-  output=$(cat "$temp_stdout" 2>/dev/null || true)
-  stderr_output=$(cat "$temp_stderr" 2>/dev/null || true)
+  # Empty files are valid - cat will return empty string
+  output=$(cat "$temp_stdout" 2>/dev/null)
+  stderr_output=$(cat "$temp_stderr" 2>/dev/null)
 
-  # Clean up temporary files
+  # Clean up temporary files (OK to use || true for cleanup operations)
   rm -f -- "$temp_stdout" "$temp_stderr" 2>/dev/null || true
   trap - RETURN
 

@@ -53,8 +53,12 @@ teardown() {
 
   # Should fail with connection error
   if [[ $exit_code -ne 0 ]]; then
-    assert_output_contains "connect\|ECONNREFUSED\|refused\|unreachable" || true
-    info "✓ Connection failure handled"
+    # Check for connection error keywords (non-critical assertion)
+    if [[ "$output" =~ connect|ECONNREFUSED|refused|unreachable ]]; then
+      info "✓ Connection failure handled with proper error message"
+    else
+      info "Command failed but without expected error message: $output"
+    fi
   else
     info "⚠ Unexpectedly succeeded with unavailable aggregator"
   fi
@@ -74,15 +78,16 @@ teardown() {
   # Set very short timeout (if supported by CLI)
   # CLI should timeout gracefully
 
+  local exit_code=0
   timeout 5s bash -c "
     SECRET='$TEST_SECRET' run_cli mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/delay/10' \
       -o '$token_file'
-  " || true
+  " || exit_code=$?
 
-  # Should timeout or complete quickly
-  info "✓ Timeout handled without hanging indefinitely"
+  # Should timeout or complete quickly (exit code doesn't matter, test is that it didn't hang)
+  info "✓ Timeout handled without hanging indefinitely (exit code: $exit_code)"
 }
 
 # -----------------------------------------------------------------------------
@@ -128,8 +133,11 @@ teardown() {
 
   # Should fail with DNS error
   if [[ $exit_code -ne 0 ]]; then
-    assert_output_contains "ENOTFOUND\|getaddrinfo\|DNS\|resolve" || true
-    info "✓ DNS failure handled"
+    if [[ "$output" =~ ENOTFOUND|getaddrinfo|DNS|resolve ]]; then
+      info "✓ DNS failure handled with proper error message"
+    else
+      info "Command failed but without expected DNS error: $output"
+    fi
   fi
 }
 
@@ -143,12 +151,13 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use httpbin delay endpoint to simulate slow response
+  local exit_code=0
   timeout 15s bash -c "
     SECRET='$TEST_SECRET' run_cli mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/delay/3' \
       -o '$token_file'
-  " || true
+  " || exit_code=$?
 
   # Should either complete or timeout gracefully
   if [[ -f "$token_file" ]]; then
@@ -178,8 +187,11 @@ teardown() {
   run_cli verify-token --file "$token_file" --skip-network || exit_code=$?
 
   if [[ $exit_code -eq 0 ]]; then
-    assert_output_contains "Offline mode\|local\|skip" || true
-    info "✓ Offline mode works"
+    if [[ "$output" =~ Offline\ mode|local|skip ]]; then
+      info "✓ Offline mode works with proper message"
+    else
+      info "Offline mode succeeded but without expected keywords: $output"
+    fi
   else
     info "Offline mode verification failed"
   fi
@@ -202,8 +214,11 @@ teardown() {
 
   # Should fail with connection refused
   if [[ $exit_code -ne 0 ]]; then
-    assert_output_contains "ECONNREFUSED\|refused\|connect" || true
-    info "✓ Connection refused handled"
+    if [[ "$output" =~ ECONNREFUSED|refused|connect ]]; then
+      info "✓ Connection refused handled with proper error message"
+    else
+      info "Command failed but without expected error: $output"
+    fi
   fi
 }
 
