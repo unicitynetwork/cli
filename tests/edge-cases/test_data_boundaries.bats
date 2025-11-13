@@ -58,7 +58,8 @@ teardown() {
     addr1=$(echo "$output" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1) || addr1=""
 
     if [[ -n "$addr1" ]]; then
-      SECRET="" run_cli gen-address --preset nft || true
+      SECRET="" run_cli gen-address --preset nft
+      local addr2_exit=$?
       local addr2
       addr2=$(echo "$output" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1) || addr2=""
 
@@ -141,7 +142,8 @@ teardown() {
   fi
 
   # Try with very long secret (should limit or handle gracefully)
-  timeout 10s bash -c "SECRET='$long_secret' run_cli gen-address --preset nft" || true
+  timeout 10s bash -c "SECRET='$long_secret' run_cli gen-address --preset nft"
+  local long_secret_exit=$?
 
   # Should either reject or handle without hanging
   info "✓ Long secret handled without hanging"
@@ -163,8 +165,9 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
-  # Try to mint with very long data
-  timeout 30s bash -c "SECRET='$secret' run_cli mint-token --preset nft -d '$long_data' -o '$token_file'" || true
+  # Try to mint with very long data (expect rejection or size limit)
+  timeout 30s bash -c "SECRET='$secret' run_cli mint-token --preset nft -d '$long_data' -o '$token_file'"
+  local long_data_exit=$?
 
   # Should reject or handle gracefully
   if [[ -f "$token_file" ]]; then
@@ -195,7 +198,8 @@ teardown() {
 
     if [[ -n "$addr" ]]; then
       # Test if null byte affects key derivation
-      SECRET="test" run_cli gen-address --preset nft || true
+      SECRET="test" run_cli gen-address --preset nft
+      local test_exit=$?
       local addr_without_null
       addr_without_null=$(echo "$output" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1) || addr_without_null=""
 
@@ -223,8 +227,9 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
-  # Mint with zero coins
-  SECRET="$secret" run_cli mint-token --preset uct --coins "0" -o "$token_file" || true
+  # Mint with zero coins (may be rejected or accepted)
+  SECRET="$secret" run_cli mint-token --preset uct --coins "0" -o "$token_file"
+  local zero_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # Zero amount accepted (valid but unusual)
@@ -258,8 +263,9 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
-  # Try negative amount
-  SECRET="$secret" run_cli mint-token --preset uct --coins "-1" -o "$token_file" || true
+  # Try negative amount (should be rejected)
+  SECRET="$secret" run_cli mint-token --preset uct --coins "-1" -o "$token_file"
+  local neg_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # Check if negative was accepted
@@ -271,8 +277,9 @@ teardown() {
     info "✓ Negative amount rejected (correct behavior)"
   fi
 
-  # Also test with very large negative
-  SECRET="$secret" run_cli mint-token --preset uct --coins "-9999999999999999999" -o "$token_file" || true
+  # Also test with very large negative (should be rejected)
+  SECRET="$secret" run_cli mint-token --preset uct --coins "-9999999999999999999" -o "$token_file"
+  local large_neg_exit=$?
 
   if [[ -f "$token_file" ]]; then
     info "⚠ Large negative accepted"
@@ -297,7 +304,8 @@ teardown() {
   # Amount > 2^53-1 (JavaScript MAX_SAFE_INTEGER)
   local huge_amount="99999999999999999999999999999999"
 
-  SECRET="$secret" run_cli mint-token --preset uct --coins "$huge_amount" -o "$token_file" || true
+  SECRET="$secret" run_cli mint-token --preset uct --coins "$huge_amount" -o "$token_file"
+  local huge_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # BigInt should handle this
@@ -334,7 +342,8 @@ teardown() {
   # 63 characters (should be 64 for 32 bytes)
   local odd_hex="123456789abcdef123456789abcdef123456789abcdef123456789abcdef12"
 
-  SECRET="$secret" run_cli mint-token --preset nft --token-type "$odd_hex" -o "$token_file" || true
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$odd_hex" -o "$token_file"
+  local odd_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # Should hash to proper 32 bytes
@@ -375,10 +384,12 @@ teardown() {
   local hex_mixed="AbCdEf1234567890ABCDEF1234567890abcdef1234567890ABCDEF1234567890"
 
   # Mint with lowercase
-  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_lower" -o "$token_file1" || true
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_lower" -o "$token_file1"
+  local lower_exit=$?
 
   # Mint with mixed case
-  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_mixed" -o "$token_file2" || true
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_mixed" -o "$token_file2"
+  local mixed_exit=$?
 
   if [[ -f "$token_file1" ]] && [[ -f "$token_file2" ]]; then
     local type1
@@ -411,7 +422,8 @@ teardown() {
   # Invalid hex (contains G, H, I, etc.)
   local invalid_hex="1234567890abcdefGHIJKLMN"
 
-  SECRET="$secret" run_cli mint-token --preset nft --token-type "$invalid_hex" -o "$token_file" || true
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$invalid_hex" -o "$token_file"
+  local invalid_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # Should fall back to hashing as text
@@ -447,7 +459,8 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Explicit empty string
-  SECRET="$secret" run_cli mint-token --preset nft -d "" -o "$token_file" || true
+  SECRET="$secret" run_cli mint-token --preset nft -d "" -o "$token_file"
+  local empty_exit=$?
 
   if [[ -f "$token_file" ]]; then
     assert_valid_json "$token_file"
@@ -471,7 +484,8 @@ teardown() {
   local token_file2
   token_file2=$(create_temp_file "-nodata.txf")
 
-  SECRET="$secret" run_cli mint-token --preset nft -o "$token_file2" || true
+  SECRET="$secret" run_cli mint-token --preset nft -o "$token_file2"
+  local nodata_exit=$?
 
   if [[ -f "$token_file2" ]]; then
     info "✓ Token minted without data parameter"

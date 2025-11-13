@@ -166,8 +166,9 @@ teardown() {
 # =============================================================================
 @test "Dual capture: stderr assertions work correctly" {
   # Generate a command that outputs to stderr
-  # Try mint-token without required parameters
-  run_cli mint-token --local 2>&1 || true
+  # Try mint-token without required parameters (expect failure)
+  run_cli mint-token --local 2>&1
+  local mint_exit=$?
 
   # Should have captured stderr
   [[ -n "${stderr_output+x}" ]]
@@ -175,7 +176,8 @@ teardown() {
   # If there's an error message, it should be in stderr or output
   if [[ -n "$stderr_output" ]]; then
     # Stderr has content - verify assertions work
-    assert_stderr_contains "" || true  # Empty string is always contained
+    # Empty string is always contained (trivially true assertion)
+    assert_stderr_contains ""
   fi
 }
 

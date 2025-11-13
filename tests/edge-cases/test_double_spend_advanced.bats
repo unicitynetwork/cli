@@ -72,7 +72,8 @@ teardown() {
 
   # Carol tries to receive second (should fail)
   local carol_token=$(create_temp_file "-carol-received.txf")
-  run receive_token "$CAROL_SECRET" "$transfer_to_carol" "$carol_token" || true
+  run receive_token "$CAROL_SECRET" "$transfer_to_carol" "$carol_token"
+  local carol_exit_code=$?
 
   # Exactly one should have succeeded
   local success_count=0
@@ -185,9 +186,10 @@ teardown() {
   local replay_pkg=$(create_temp_file "-replay.txf")
   cp "$transfer_pkg" "$replay_pkg"
 
-  # Try to receive again
+  # Try to receive again (expect failure - replay attack)
   local bob_token2=$(create_temp_file "-bob2.txf")
-  run receive_token "$BOB_SECRET" "$replay_pkg" "$bob_token2" || true
+  run receive_token "$BOB_SECRET" "$replay_pkg" "$bob_token2"
+  local replay_exit_code=$?
 
   # Second receive should fail
   if [[ ! -f "$bob_token2" ]]; then
@@ -231,9 +233,10 @@ teardown() {
   local bob_token=$(create_temp_file "-bob.txf")
   run receive_token "$BOB_SECRET" "$monday_pkg" "$bob_token"
 
-  # Day 4: Carol tries to submit
+  # Day 4: Carol tries to submit (expect failure - Bob submitted first)
   local carol_token=$(create_temp_file "-carol.txf")
-  run receive_token "$CAROL_SECRET" "$tuesday_pkg" "$carol_token" || true
+  run receive_token "$CAROL_SECRET" "$tuesday_pkg" "$carol_token"
+  local carol_exit_code=$?
 
   # Bob should win (first to submit)
   if [[ -f "$bob_token" ]] && [[ ! -f "$carol_token" ]]; then
@@ -334,9 +337,10 @@ teardown() {
   local modified_pkg=$(create_temp_file "-modified.txf")
   jq ".offlineTransfer.recipient = \"$attacker_addr\"" "$transfer_pkg" > "$modified_pkg"
 
-  # Attacker tries to receive with modified package
+  # Attacker tries to receive with modified package (expect failure - signature mismatch)
   local attacker_token=$(create_temp_file "-attacker.txf")
-  run receive_token "$attacker_secret" "$modified_pkg" "$attacker_token" || true
+  run receive_token "$attacker_secret" "$modified_pkg" "$attacker_token"
+  local attacker_exit_code=$?
 
   # Should fail (signature mismatch)
   if [[ ! -f "$attacker_token" ]]; then
@@ -347,7 +351,8 @@ teardown() {
 
   # Bob should still be able to receive with original package
   local bob_token=$(create_temp_file "-bob.txf")
-  run receive_token "$BOB_SECRET" "$transfer_pkg" "$bob_token" || true
+  run receive_token "$BOB_SECRET" "$transfer_pkg" "$bob_token"
+  local bob_exit_code=$?
 
   if [[ -f "$bob_token" ]]; then
     info "✓ Original recipient can still receive"
@@ -534,13 +539,14 @@ teardown() {
     skip "Could not complete initial transfer"
   fi
 
-  # "Days later" - try to use backup copy (stale)
+  # "Days later" - try to use backup copy (stale - expect failure)
   run generate_address "$CAROL_SECRET" "nft"
   extract_generated_address
   local carol_addr="$GENERATED_ADDRESS"
 
   local stale_result=$(create_temp_file "-stale-result.txf")
-  run send_token_immediate "$ALICE_SECRET" "$backup_file" "$carol_addr" "$stale_result" || true
+  run send_token_immediate "$ALICE_SECRET" "$backup_file" "$carol_addr" "$stale_result"
+  local stale_exit_code=$?
 
   # Should fail (token already spent)
   if [[ ! -f "$stale_result" ]]; then

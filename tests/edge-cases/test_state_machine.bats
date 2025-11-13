@@ -128,7 +128,8 @@ teardown() {
   local send_file
   send_file=$(create_temp_file "-send.txf")
 
-  run send_token_offline "$TEST_SECRET" "$invalid_file" "$recipient_addr" "$send_file" || true
+  run send_token_offline "$TEST_SECRET" "$invalid_file" "$recipient_addr" "$send_file"
+  local invalid_send_exit=$?
 
   # Should fail gracefully
   info "✓ Invalid status token handled without crash"
@@ -337,11 +338,12 @@ teardown() {
   assert_file_not_exists "$received_file.offlineTransfer" || \
     ! jq -e '.offlineTransfer' "$received_file" >/dev/null 2>&1
 
-  # Try to receive again (idempotency test)
+  # Try to receive again (idempotency test - expect failure)
   local received_again
   received_again=$(create_temp_file "-received-again.txf")
 
-  run receive_token "$recipient_secret" "$received_file" "$received_again" || true
+  run receive_token "$recipient_secret" "$received_file" "$received_again"
+  local receive_again_exit=$?
 
   # Should fail or detect already received
   if [[ -f "$received_again" ]]; then

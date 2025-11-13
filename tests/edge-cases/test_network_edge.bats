@@ -292,7 +292,8 @@ teardown() {
         --preset nft \
         --endpoint '$endpoint' \
         -o '$token_file'
-    " 2>&1 | tee "${token_file}.log" || true
+    " 2>&1 | tee "${token_file}.log"
+    local endpoint_exit=$?
 
     # Check for user-friendly error message (not just stack trace)
     if grep -q "Error:\|error:\|ERROR:\|Failed\|failed\|Cannot\|cannot" "${token_file}.log"; then
@@ -334,7 +335,8 @@ teardown() {
   # (depending on implementation)
   SECRET="$TEST_SECRET" run_cli mint-token \
     --preset nft \
-    -o "$token_file" || true
+    -o "$token_file"
+  local offline_mint_exit=$?
 
   if [[ -f "$token_file" ]]; then
     # Token created in offline mode
@@ -349,7 +351,8 @@ teardown() {
     local transfer_file
     transfer_file=$(create_temp_file "-transfer.txf")
 
-    run send_token_offline "$TEST_SECRET" "$token_file" "$recipient" "$transfer_file" || true
+    run send_token_offline "$TEST_SECRET" "$token_file" "$recipient" "$transfer_file"
+    local offline_send_exit=$?
 
     if [[ -f "$transfer_file" ]]; then
       info "✓ Offline transfer package created"

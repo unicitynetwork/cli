@@ -54,8 +54,12 @@ teardown() {
 
   # Should fail with permission error
   if [[ $exit_code -ne 0 ]]; then
-    assert_output_contains "Permission denied\|EACCES\|read-only\|EROFS" || true
-    info "✓ Read-only directory detected"
+    # Check for permission error in output (non-critical - just informative)
+    if echo "$output" | grep -qE "Permission denied|EACCES|read-only|EROFS"; then
+      info "✓ Read-only directory detected with proper error message"
+    else
+      info "✓ Read-only directory detected (exit code: $exit_code)"
+    fi
   else
     info "⚠ Write to read-only directory succeeded (unexpected)"
   fi
@@ -151,7 +155,8 @@ teardown() {
   )
 
   for file in "${test_files[@]}"; do
-    SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$file" || true
+    SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$file"
+    local file_exit=$?
 
     if [[ -f "$file" ]]; then
       assert_valid_json "$file"
@@ -164,7 +169,8 @@ teardown() {
   # Test path traversal attempt (should be blocked or sanitized)
   local attack_file="${base_dir}/../../../etc/passwd.txf"
 
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$attack_file" || true
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$attack_file"
+  local attack_exit=$?
 
   # Check if file was created outside base_dir
   if [[ -f "/etc/passwd.txf" ]]; then
@@ -206,7 +212,8 @@ teardown() {
   cd "$output_dir" || skip "Cannot change to output directory"
 
   # Mint two tokens rapidly with --save (auto-generate filename)
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save || true
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save
+  local save1_exit=$?
 
   # Check if files were created
   local file1
@@ -218,7 +225,8 @@ teardown() {
   fi
 
   # Immediately mint another (same timestamp possible)
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save || true
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save
+  local save2_exit=$?
   local file2
   file2=$(ls -t *.txf 2>/dev/null | head -1) || file2=""
 
@@ -275,7 +283,8 @@ teardown() {
   local send_file
   send_file=$(create_temp_file "-send.txf")
 
-  run send_token_offline "$TEST_SECRET" "$link_file" "$recipient" "$send_file" || true
+  run send_token_offline "$TEST_SECRET" "$link_file" "$recipient" "$send_file"
+  local send_exit=$?
 
   if [[ -f "$send_file" ]]; then
     assert_valid_json "$send_file"
@@ -288,7 +297,8 @@ teardown() {
   local write_through_link="${link_file}.write"
   ln -s "$(create_temp_file "-target.txf")" "$write_through_link"
 
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$write_through_link" || true
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$write_through_link"
+  local write_exit=$?
 
   if [[ -f "$write_through_link" ]]; then
     # Check if target file was created

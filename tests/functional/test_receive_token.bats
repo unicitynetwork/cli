@@ -189,7 +189,8 @@ teardown() {
 
     # Second receive (retry) - idempotent operation (may succeed or fail)
     # Exit code doesn't matter - we check if file was created
-    receive_token "${BOB_SECRET}" "transfer.txf" "received2.txf" || true
+    receive_token "${BOB_SECRET}" "transfer.txf" "received2.txf"
+    local retry_exit=$?
 
     # Check if the second receive succeeded (idempotent operation)
     if [[ -f "received2.txf" ]]; then
