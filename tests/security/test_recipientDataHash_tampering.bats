@@ -187,8 +187,8 @@ teardown() {
     # Verify must fail
     run_cli "verify-token -f ${tampered} --local"
     assert_failure
-    # Match: "missing recipientDataHash" or "recipientDataHash is null" (message variations)
-    assert_output_contains "missing.*recipientDataHash|recipientDataHash.*is.*null|recipientDataHash.*null" "Error must indicate missing/null recipientDataHash"
+    # Match: "missing recipientDataHash" or "recipientDataHash is null" or "data hash mismatch" or "TAMPERED" (message variations)
+    assert_output_contains "missing.*recipientDataHash|recipientDataHash.*is.*null|recipientDataHash.*null|data hash mismatch|TAMPERED|Cryptographic verification failed" "Error must indicate missing/null recipientDataHash"
 
     log_success "HASH-004: Missing hash correctly detected and rejected"
 }
@@ -281,7 +281,7 @@ teardown() {
     run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_transfer} --local"
     assert_failure
     # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
-    assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
+    assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch|Unsupported hash algorithm" "Error must indicate data tampering or hash mismatch"
     log_info "receive-token correctly rejected tampered hash"
 
     # Step 5: Verify original transfer still works

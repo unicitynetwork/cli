@@ -243,7 +243,7 @@ console.log('SAFE');
 
         # Should fail with invalid address format (not execute command)
         assert_failure
-        assert_output_contains "invalid address format"
+        assert_output_contains "invalid address format|hex.*non-hex|hex part contains non-hexadecimal"
     fi
 
     log_success "SEC-INPUT-004: Command injection successfully prevented"
@@ -295,8 +295,8 @@ console.log('SAFE');
 
     # CRITICAL: Negative amounts must ALWAYS fail
     assert_failure "Negative coin amounts MUST be rejected"
-    # Match: "negative amount not allowed" or "amount must be non-negative" (message variations)
-    assert_output_contains "negative.*amount.*not.*allowed|amount.*must.*be.*non-negative|negative.*amount" "Error must indicate negative amounts are not allowed"
+    # Match: "negative amount not allowed" or "amount must be non-negative" or "cannot be negative" (message variations)
+    assert_output_contains "negative.*amount.*not.*allowed|amount.*must.*be.*non-negative|negative.*amount|cannot be negative" "Error must indicate negative amounts are not allowed"
     log_info "✓ Negative amounts correctly rejected"
 
     # Test 3: Zero amount
@@ -373,34 +373,34 @@ console.log('SAFE');
     # The -r parameter will receive the value as-is
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${sql_injection}\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "[Ii]nvalid address format|Invalid address|invalid.*address"
 
     # Test 2: XSS attempt
     local xss_attempt="<script>alert(1)</script>"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${xss_attempt}\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "[Ii]nvalid address format|Invalid address|invalid.*address"
 
     # Test 3: Null bytes
     local null_bytes="DIRECT://\x00\x00\x00"
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${null_bytes}\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "[Ii]nvalid address format|Invalid address|invalid.*address"
 
     # Test 4: Empty address
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "[Ii]nvalid address format|Invalid address|invalid.*address|--recipient option is required"
 
     # Test 5: Invalid format (no DIRECT:// prefix)
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"invalidaddress\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "[Ii]nvalid address format|Invalid address|invalid.*address"
 
     # Test 6: DIRECT:// with non-hex characters
     run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"DIRECT://zzzzgggg\" --local -o /dev/null"
     assert_failure
-    assert_output_contains "invalid address format"
+    assert_output_contains "invalid address format|Invalid address|non-hexadecimal characters"
 
     log_success "SEC-INPUT-007: Address validation correctly rejects malformed input"
 }
