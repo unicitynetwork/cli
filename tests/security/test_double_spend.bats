@@ -251,10 +251,9 @@ teardown() {
     # CRITICAL: This assertion must ALWAYS execute to verify double-spend prevention
     assert_failure "Re-spending must be rejected by network"
 
-    # Verify error message indicates the token was already spent
-    if ! (echo "${output}${stderr_output}" | grep -qiE "(spent|invalid|outdated|already)"); then
-        fail "Expected error message about spent/invalid token, got: ${output}"
-    fi
+    # Verify error message specifically indicates the token was already spent
+    # Match: "already spent" or "already been spent" (message variations)
+    assert_output_contains "already.*spent" "Error must indicate token is already spent"
 
     # Verify Bob still has the token (legitimate owner)
     run_cli "verify-token -f ${bob_token}"
@@ -318,9 +317,8 @@ teardown() {
     else
         # If failed, must indicate it's a duplicate submission
         assert_failure "Second receive of same offline package must either succeed (idempotent) or fail consistently"
-        if ! (echo "${output}${stderr_output}" | grep -qiE "(already|submitted|duplicate)"); then
-            fail "Expected error message containing one of: already, submitted, duplicate. Got: ${output}"
-        fi
+        # Match: "already submitted" or "duplicate submission" (message variations)
+        assert_output_contains "already.*submitted|duplicate.*submission" "Error must indicate duplicate/already submitted"
         log_info "Second receive rejected as duplicate (expected behavior)"
     fi
 
@@ -398,7 +396,7 @@ teardown() {
 
         # This MUST fail - Bob's state is outdated
         assert_failure
-        assert_output_contains "spent" || assert_output_contains "outdated" || assert_output_contains "invalid"
+        assert_output_contains "already spent"
     fi
 
     # Verify Carol still owns the token (current owner)

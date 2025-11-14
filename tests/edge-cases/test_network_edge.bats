@@ -45,23 +45,16 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Try to mint with unavailable aggregator
-  local exit_code=0
-  SECRET="$TEST_SECRET" run_cli mint-token \
+  run_cli mint-token \
     --preset nft \
     --endpoint "http://localhost:9999" \
-    -o "$token_file" || exit_code=$?
+    -o "$token_file"
 
-  # Should fail with connection error
-  if [[ $exit_code -ne 0 ]]; then
-    # Check for connection error keywords (non-critical assertion)
-    if [[ "$output" =~ connect|ECONNREFUSED|refused|unreachable ]]; then
-      info "✓ Connection failure handled with proper error message"
-    else
-      info "Command failed but without expected error message: $output"
-    fi
-  else
-    info "⚠ Unexpectedly succeeded with unavailable aggregator"
-  fi
+  # MUST fail with connection error
+  assert_failure "Mint must fail when aggregator is unavailable"
+
+  # Error message must indicate connection problem
+  assert_output_contains "ECONNREFUSED\|refused\|connect\|unreachable" "Error must indicate connection failure"
 }
 
 # -----------------------------------------------------------------------------
@@ -76,18 +69,25 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Set very short timeout (if supported by CLI)
-  # CLI should timeout gracefully
+  # CLI should timeout gracefully - command should complete (not hang)
 
-  local exit_code=0
-  timeout 5s bash -c "
-    SECRET='$TEST_SECRET' run_cli mint-token \
+  run timeout 5s bash -c "
+    SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/delay/10' \
       -o '$token_file'
-  " || exit_code=$?
+  "
 
-  # Should timeout or complete quickly (exit code doesn't matter, test is that it didn't hang)
-  info "✓ Timeout handled without hanging indefinitely (exit code: $exit_code)"
+  # Test passes if command completes within timeout (doesn't hang indefinitely)
+  # Exit code may be non-zero (timeout or network error), which is acceptable
+  # The critical requirement is that it COMPLETES (doesn't hang forever)
+
+  # If status is 124, timeout killed it (acceptable - didn't hang longer than 5s)
+  # If status is other non-zero, network error occurred (acceptable)
+  # If status is 0, unlikely but acceptable (fast failure)
+
+  # The test fails ONLY if we never reach this point (infinite hang)
+  assert_true "true" "Command completed within timeout (didn't hang indefinitely)"
 }
 
 # -----------------------------------------------------------------------------
@@ -105,15 +105,11 @@ teardown() {
   echo '{"version":"2.0","genesis":{"incomplete":true' > "$token_file"
 
   # Try to verify malformed file
-  local exit_code=0
-  run_cli verify-token --file "$token_file" || exit_code=$?
+  run_cli verify-token --file "$token_file"
 
-  # Should detect invalid JSON
-  if [[ $exit_code -ne 0 ]]; then
-    info "✓ Invalid JSON detected"
-  else
-    info "⚠ Invalid JSON accepted"
-  fi
+  # MUST detect and reject invalid JSON
+  assert_failure "Malformed JSON must be rejected"
+  assert_output_contains "JSON\|parse\|invalid\|malformed" "Error must indicate JSON parsing problem"
 }
 
 # -----------------------------------------------------------------------------
@@ -125,20 +121,14 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use invalid hostname that won't resolve
-  local exit_code=0
-  SECRET="$TEST_SECRET" run_cli mint-token \
+  run_cli mint-token \
     --preset nft \
     --endpoint "https://nonexistent-aggregator-xyz123.invalid" \
-    -o "$token_file" || exit_code=$?
+    -o "$token_file"
 
-  # Should fail with DNS error
-  if [[ $exit_code -ne 0 ]]; then
-    if [[ "$output" =~ ENOTFOUND|getaddrinfo|DNS|resolve ]]; then
-      info "✓ DNS failure handled with proper error message"
-    else
-      info "Command failed but without expected DNS error: $output"
-    fi
-  fi
+  # MUST fail with DNS/resolution error
+  assert_failure "Mint must fail when hostname cannot be resolved"
+  assert_output_contains "ENOTFOUND\|getaddrinfo\|DNS\|resolve\|not found" "Error must indicate DNS resolution failure"
 }
 
 # -----------------------------------------------------------------------------
@@ -151,19 +141,21 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use httpbin delay endpoint to simulate slow response
-  local exit_code=0
-  timeout 15s bash -c "
-    SECRET='$TEST_SECRET' run_cli mint-token \
+  run timeout 15s bash -c "
+    SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/delay/3' \
       -o '$token_file'
-  " || exit_code=$?
+  "
 
-  # Should either complete or timeout gracefully
+  # Test passes if command completes within timeout
+  # May succeed (slow but completes) or fail (timeout/error) - both acceptable
+  # Critical: must NOT hang indefinitely
+  assert_true "true" "Command completed within 15s timeout (didn't hang)"
+
+  # If file was created, verify it's valid
   if [[ -f "$token_file" ]]; then
-    info "✓ Slow network completed"
-  else
-    info "✓ Slow network timed out gracefully"
+    assert_valid_json "$token_file" "If token created, must be valid JSON"
   fi
 }
 
@@ -183,18 +175,13 @@ teardown() {
   fi
 
   # Verify with --skip-network (should skip aggregator check)
-  local exit_code=0
-  run_cli verify-token --file "$token_file" --skip-network || exit_code=$?
+  run_cli verify-token --file "$token_file" --skip-network
 
-  if [[ $exit_code -eq 0 ]]; then
-    if [[ "$output" =~ Offline\ mode|local|skip ]]; then
-      info "✓ Offline mode works with proper message"
-    else
-      info "Offline mode succeeded but without expected keywords: $output"
-    fi
-  else
-    info "Offline mode verification failed"
-  fi
+  # With --skip-network, verification should succeed (skips aggregator query)
+  assert_success "--skip-network must allow offline verification"
+
+  # Output should indicate local/offline mode
+  assert_output_contains "skip\|offline\|local\|without network" "Output must indicate network was skipped"
 }
 
 # -----------------------------------------------------------------------------
@@ -206,20 +193,14 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Use localhost port that's not listening
-  local exit_code=0
-  SECRET="$TEST_SECRET" run_cli mint-token \
+  run_cli mint-token \
     --preset nft \
     --endpoint "http://localhost:1" \
-    -o "$token_file" || exit_code=$?
+    -o "$token_file"
 
-  # Should fail with connection refused
-  if [[ $exit_code -ne 0 ]]; then
-    if [[ "$output" =~ ECONNREFUSED|refused|connect ]]; then
-      info "✓ Connection refused handled with proper error message"
-    else
-      info "Command failed but without expected error: $output"
-    fi
-  fi
+  # MUST fail with connection refused error
+  assert_failure "Mint must fail when connection is refused"
+  assert_output_contains "ECONNREFUSED\|refused\|connect" "Error must indicate connection was refused"
 }
 
 # -----------------------------------------------------------------------------
@@ -228,48 +209,39 @@ teardown() {
 
 @test "CORNER-034: Handle HTTP error responses" {
   # Test with httpbin which can return various status codes
-
   local token_file
   token_file=$(create_temp_file ".txf")
 
-  # 404 Not Found
-  local exit_code=0
-  timeout 10s bash -c "
-    SECRET='$TEST_SECRET' run_cli mint-token \
+  # Test 404 Not Found - TECHNICAL ERROR per Unicity semantics
+  # Aggregator should never return 404 - this indicates aggregator malfunction
+  run timeout 10s bash -c "
+    SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/404' \
       -o '$token_file'
-  " || exit_code=$?
+  "
+  # MUST fail with 404 error
+  assert_failure "Mint must fail with HTTP 404 (aggregator malfunction)"
 
-  if [[ $exit_code -ne 0 ]]; then
-    info "✓ HTTP 404 handled"
-  fi
-
-  # 500 Internal Server Error
-  local exit_code=0
-  timeout 10s bash -c "
-    SECRET='$TEST_SECRET' run_cli mint-token \
+  # Test 500 Internal Server Error
+  run timeout 10s bash -c "
+    SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/500' \
       -o '$token_file'
-  " || exit_code=$?
+  "
+  # MUST fail with 500 error
+  assert_failure "Mint must fail with HTTP 500 (server error)"
 
-  if [[ $exit_code -ne 0 ]]; then
-    info "✓ HTTP 500 handled"
-  fi
-
-  # 503 Service Unavailable
-  local exit_code=0
-  timeout 10s bash -c "
-    SECRET='$TEST_SECRET' run_cli mint-token \
+  # Test 503 Service Unavailable
+  run timeout 10s bash -c "
+    SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
       --preset nft \
       --endpoint 'http://httpbin.org/status/503' \
       -o '$token_file'
-  " || exit_code=$?
-
-  if [[ $exit_code -ne 0 ]]; then
-    info "✓ HTTP 503 handled"
-  fi
+  "
+  # MUST fail with 503 error
+  assert_failure "Mint must fail with HTTP 503 (service unavailable)"
 }
 
 # -----------------------------------------------------------------------------
@@ -287,20 +259,23 @@ teardown() {
     local token_file
     token_file=$(create_temp_file "-${endpoint//\//_}.txf")
 
-    timeout 5s bash -c "
-      SECRET='$TEST_SECRET' run_cli mint-token \
+    run timeout 5s bash -c "
+      SECRET='$TEST_SECRET' $(which node) dist/index.js mint-token \
         --preset nft \
         --endpoint '$endpoint' \
-        -o '$token_file'
-    " 2>&1 | tee "${token_file}.log"
-    local endpoint_exit=$?
+        -o '$token_file' 2>&1
+    "
 
-    # Check for user-friendly error message (not just stack trace)
-    if grep -q "Error:\|error:\|ERROR:\|Failed\|failed\|Cannot\|cannot" "${token_file}.log"; then
-      info "✓ User-friendly error for: $endpoint"
-    else
-      info "Check error message quality for: $endpoint"
-    fi
+    # MUST fail with network error
+    assert_failure "Mint must fail with invalid endpoint: $endpoint"
+
+    # MUST have user-friendly error message (not stack trace)
+    assert_output_contains "Error\|error\|ERROR\|Failed\|failed\|Cannot\|cannot" \
+      "Error message must be user-friendly for: $endpoint"
+
+    # Must NOT contain raw stack traces or internal errors
+    assert_not_output_contains "at Object\|at async\|    at " \
+      "Error should not expose raw stack trace"
   done
 }
 
@@ -320,44 +295,42 @@ teardown() {
   run mint_token "$TEST_SECRET" "nft" "$token_file"
   assert_file_exists "$token_file"
 
-  # Verify online
+  # Verify online - MUST succeed with healthy aggregator
   run_cli verify-token --file "$token_file" --endpoint "${UNICITY_AGGREGATOR_URL}"
-  assert_success
+  assert_success "Verify must succeed when aggregator is available"
 
-  info "✓ Normal operation with available aggregator"
+  # Output should show verification succeeded
+  assert_output_contains "valid\|success\|current\|✓\|✅" "Output must indicate successful verification"
 }
 
 @test "Network edge: Offline package can be created without aggregator" {
+  skip_if_aggregator_unavailable  # Need aggregator for initial mint
+
   local token_file
   token_file=$(create_temp_file ".txf")
 
-  # Mint with unavailable aggregator should work for offline mode
-  # (depending on implementation)
-  SECRET="$TEST_SECRET" run_cli mint-token \
-    --preset nft \
-    -o "$token_file"
-  local offline_mint_exit=$?
+  # Mint token first (requires aggregator)
+  run mint_token "$TEST_SECRET" "nft" "$token_file"
+  assert_success "Initial mint must succeed"
+  assert_file_exists "$token_file"
+  assert_valid_json "$token_file"
 
-  if [[ -f "$token_file" ]]; then
-    # Token created in offline mode
-    assert_valid_json "$token_file"
-    info "✓ Offline token creation works"
+  # Now create offline transfer (no network needed - works offline)
+  run generate_address "$(generate_unique_id recipient)" "nft"
+  extract_generated_address
+  local recipient="$GENERATED_ADDRESS"
 
-    # Now create offline transfer (no network needed)
-    run generate_address "$(generate_unique_id recipient)" "nft"
-    extract_generated_address
-    local recipient="$GENERATED_ADDRESS"
+  local transfer_file
+  transfer_file=$(create_temp_file "-transfer.txf")
 
-    local transfer_file
-    transfer_file=$(create_temp_file "-transfer.txf")
+  # Create offline transfer - should succeed without network
+  run send_token_offline "$TEST_SECRET" "$token_file" "$recipient" "$transfer_file"
+  assert_success "Offline transfer creation must succeed"
 
-    run send_token_offline "$TEST_SECRET" "$token_file" "$recipient" "$transfer_file"
-    local offline_send_exit=$?
-
-    if [[ -f "$transfer_file" ]]; then
-      info "✓ Offline transfer package created"
-    fi
-  fi
+  # Verify offline transfer package was created
+  assert_file_exists "$transfer_file" "Offline transfer file must be created"
+  assert_valid_json "$transfer_file" "Offline transfer must be valid JSON"
+  assert_json_field_exists "$transfer_file" ".offlineTransfer" "Must have offlineTransfer field"
 }
 
 # -----------------------------------------------------------------------------

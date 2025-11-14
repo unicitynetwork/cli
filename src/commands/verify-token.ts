@@ -515,6 +515,11 @@ Exit codes:
         }
 
         // Display ownership status (query aggregator)
+        // IMPORTANT: Ownership verification queries the aggregator to determine if token state is spent
+        // - checkOwnershipStatus() handles normal responses (PATH_NOT_INCLUDED/OK) gracefully
+        // - PATH_NOT_INCLUDED = unspent state (aggregator returns exclusion proof) - NORMAL
+        // - OK = spent state (aggregator returns inclusion proof) - NORMAL
+        // - Only technical errors (network down, aggregator unavailable) are caught below
         if (!options.skipNetwork && token && tokenJson.state) {
           console.log('\n=== Ownership Status ===');
 
@@ -542,6 +547,9 @@ Exit codes:
             }
 
             if (trustBase) {
+              // checkOwnershipStatus() internally handles all normal aggregator responses
+              // It only returns 'error' scenario for technical failures (network down, etc.)
+              // Normal spent/unspent states are returned as 'current', 'pending', 'confirmed', 'outdated'
               const ownershipStatus = await checkOwnershipStatus(token, tokenJson, client, trustBase);
 
               console.log(`\n${ownershipStatus.message}`);
@@ -550,11 +558,15 @@ Exit codes:
               });
 
               // Token is spent/outdated = cannot be used
+              // This is the ONLY case where exitCode = 1 (token state is obsolete)
               if (ownershipStatus.scenario === 'outdated') {
                 exitCode = 1;
               }
             }
           } catch (err) {
+            // TECHNICAL ERROR: This catch block only executes for unexpected failures
+            // - Not for normal spent/unspent states (those are handled above)
+            // - Typically: network errors, malformed responses, SDK exceptions
             console.log('  ⚠ Cannot verify ownership status');
             console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
           }

@@ -114,15 +114,28 @@ export async function checkOwnershipStatus(
     }
 
     // Query aggregator for token status
+    // IMPORTANT: getTokenStatus() returns InclusionProofVerificationStatus enum, NOT boolean
+    // - Returns PATH_NOT_INCLUDED when RequestId NOT in Sparse Merkle Tree (UNSPENT state - NORMAL)
+    // - Returns OK when RequestId IS in Sparse Merkle Tree (SPENT state - NORMAL)
+    // - Only throws exceptions for TECHNICAL ERRORS (network failures, 404, 503, etc.)
+    //
+    // Aggregator behavior:
+    // - Always returns 200 OK with either inclusion proof (spent) or exclusion proof (unspent)
+    // - 404/503/network errors are TECHNICAL FAILURES, not normal "not found" responses
     let onChainSpent: boolean;
     try {
       const status = await client.getTokenStatus(trustBase, token, ownerInfo.publicKey);
 
-      // PATH_NOT_INCLUDED means the RequestId is not in the SMT = state is UNSPENT
-      // OK means the RequestId is in the SMT = state is SPENT
+      // Both PATH_NOT_INCLUDED and OK are NORMAL responses (aggregator returned 200 OK)
+      // PATH_NOT_INCLUDED = Aggregator returned exclusion proof (RequestId not in SMT) = UNSPENT
+      // OK = Aggregator returned inclusion proof (RequestId in SMT) = SPENT
       onChainSpent = status === InclusionProofVerificationStatus.OK;
     } catch (err) {
-      // Network error or aggregator unavailable
+      // TECHNICAL ERROR occurred (network down, aggregator unavailable, HTTP error)
+      // This catch block only executes for TECHNICAL failures:
+      // - Network errors (ECONNREFUSED, timeout)
+      // - HTTP errors (404 = aggregator malfunction, 503 = service unavailable)
+      // - NOT for normal unspent states (those return PATH_NOT_INCLUDED above)
       return {
         scenario: 'error',
         onChainSpent: null,

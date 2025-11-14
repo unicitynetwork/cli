@@ -45,9 +45,8 @@ teardown() {
 
     run_cli "verify-token -f ${truncated}"
     assert_failure
-    if ! (echo "${output}${stderr_output}" | grep -qiE "(JSON|parse|invalid)"); then
-        fail "Expected error message containing one of: JSON, parse, invalid. Got: ${output}"
-    fi
+    # Match: "JSON parse error" or "Invalid JSON" (parser variations)
+    assert_output_contains "JSON.*parse.*error|Invalid.*JSON|parse.*error" "Error must indicate JSON parsing failure"
 
     # Verify no crash occurred
     assert_not_output_contains "Segmentation fault"
@@ -115,9 +114,8 @@ teardown() {
     # State hash will not match proof
     run_cli "verify-token -f ${modified_state}"
     assert_failure
-    if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|state|mismatch|invalid)"); then
-        fail "Expected error message containing one of: hash, state, mismatch, invalid. Got: ${output}"
-    fi
+    # Match: "state hash mismatch" or "hash mismatch" (message variations)
+    assert_output_contains "state.*hash.*mismatch|hash.*mismatch" "Error must indicate hash mismatch"
 
     # ATTACK 2: Modify state.predicate but keep original proof
     local modified_predicate="${TEST_TEMP_DIR}/modified-predicate.txf"
@@ -391,9 +389,8 @@ teardown() {
 
     run_cli "verify-token -f ${fake_id}"
     assert_failure
-    if ! (echo "${output}${stderr_output}" | grep -qiE "(hash|mismatch|invalid)"); then
-        fail "Expected error message containing one of: hash, mismatch, invalid. Got: ${output}"
-    fi
+    # Match: "state hash mismatch" or "hash mismatch" (message variations)
+    assert_output_contains "state.*hash.*mismatch|hash.*mismatch" "Error must indicate hash mismatch"
 
     log_success "SEC-INTEGRITY-EXTRA: Token ID consistency verified"
 }

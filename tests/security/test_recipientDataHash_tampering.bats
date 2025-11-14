@@ -34,7 +34,7 @@ teardown() {
     local test_data='{"metadata":"test"}'
     local token="${TEST_TEMP_DIR}/hash-verify.txf"
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${test_data}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${test_data}' --local -o ${token}"
     assert_success
     assert_file_exists "${token}"
     log_info "Token created with test data"
@@ -72,7 +72,7 @@ teardown() {
     fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-mismatch.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' --local -o ${token}"
     assert_success
     log_info "Token created"
 
@@ -97,15 +97,16 @@ teardown() {
     # Try to verify tampered token - MUST FAIL
     run_cli "verify-token -f ${tampered}"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
+    # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
+    assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
     log_info "verify-token correctly rejected mismatched hash"
 
     # Try to send tampered token - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --local --preset nft"
     assert_success
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered} -r ${bob_addr}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered} -r ${bob_addr} --local"
     assert_failure
     log_info "send-token correctly rejected token with mismatched hash"
 
@@ -123,7 +124,7 @@ teardown() {
     fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-zeros.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' --local -o ${token}"
     assert_success
     log_info "Token created"
 
@@ -147,7 +148,8 @@ teardown() {
     # Verify must fail
     run_cli "verify-token -f ${tampered}"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
+    # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
+    assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
 
     log_success "HASH-003: All-zeros hash tampering correctly detected"
 }
@@ -163,7 +165,7 @@ teardown() {
     fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-missing.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' --local -o ${token}"
     assert_success
     log_info "Token created"
 
@@ -185,7 +187,8 @@ teardown() {
     # Verify must fail
     run_cli "verify-token -f ${tampered}"
     assert_failure
-    assert_output_contains "null" || assert_output_contains "missing" || assert_output_contains "hash" || assert_output_contains "invalid"
+    # Match: "missing recipientDataHash" or "recipientDataHash is null" (message variations)
+    assert_output_contains "missing.*recipientDataHash|recipientDataHash.*is.*null|recipientDataHash.*null" "Error must indicate missing/null recipientDataHash"
 
     log_success "HASH-004: Missing hash correctly detected and rejected"
 }
@@ -201,7 +204,7 @@ teardown() {
     fail_if_aggregator_unavailable
 
     local token="${TEST_TEMP_DIR}/hash-data-null.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"value\"}' --local -o ${token}"
     assert_success
     log_info "Token created with state data"
 
@@ -223,7 +226,8 @@ teardown() {
     # Verify must fail (hash cannot commit to null data)
     run_cli "verify-token -f ${tampered}"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid" || assert_output_contains "state"
+    # Match: "hash mismatch" or "state data cannot be null with hash present" (message variations)
+    assert_output_contains "hash.*mismatch|state.*data.*cannot.*be.*null|null.*data.*with.*hash" "Error must indicate null data with hash present"
 
     log_success "HASH-005: Null state data with hash correctly detected"
 }
@@ -240,19 +244,19 @@ teardown() {
 
     # Step 1: Alice mints token with data
     local alice_token="${TEST_TEMP_DIR}/hash-transfer-original.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"sensitive\":\"data\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"sensitive\":\"data\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token with sensitive data"
 
     # Step 2: Alice generates Bob's address
-    run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
+    run_cli_with_secret "${BOB_SECRET}" "gen-address --local --preset nft"
     assert_success
     local bob_addr=$(echo "${output}" | jq -r '.address')
     log_info "Bob's address: ${bob_addr}"
 
     # Step 3: Alice creates transfer to Bob
     local transfer="${TEST_TEMP_DIR}/hash-transfer-pkg.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer package created"
 
@@ -274,14 +278,15 @@ teardown() {
     log_info "RecipientDataHash tampered in transfer package"
 
     # Step 4: Bob tries to receive tampered transfer - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_transfer}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_transfer} --local"
     assert_failure
-    assert_output_contains "hash" || assert_output_contains "mismatch" || assert_output_contains "invalid"
+    # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
+    assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
     log_info "receive-token correctly rejected tampered hash"
 
     # Step 5: Verify original transfer still works
     local bob_token="${TEST_TEMP_DIR}/hash-transfer-bob.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_token}"
     assert_success
     log_info "Original transfer accepted and received"
 
