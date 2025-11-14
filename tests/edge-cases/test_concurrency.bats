@@ -345,8 +345,8 @@ teardown() {
 
   # Count successes (status is from BATS $status variable)
   local success_count=0
-  [[ $status1 -eq 0 ]] && ((success_count++))
-  [[ $status2 -eq 0 ]] && ((success_count++))
+  [[ $status1 -eq 0 ]] && ((++success_count))
+  [[ $status2 -eq 0 ]] && ((++success_count))
 
   info "Sequential receive results: $success_count succeeded out of 2"
 

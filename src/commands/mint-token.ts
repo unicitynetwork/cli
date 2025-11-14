@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { HashAlgorithm } from '@unicitylabs/state-transition-sdk/lib/hash/HashAlgorithm.js';
 import { DataHasher } from '@unicitylabs/state-transition-sdk/lib/hash/DataHasher.js';
+import { getNetworkErrorMessage } from '../utils/error-handling.js';
 import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { TokenId } from '@unicitylabs/state-transition-sdk/lib/token/TokenId.js';
@@ -593,13 +594,10 @@ export function mintTokenCommand(program: Command): void {
         console.error(`Address: ${address.address}`);
       } catch (error) {
         console.error('Error minting token:');
-        if (error instanceof Error) {
-          console.error(`  Message: ${error.message}`);
-          if (error.stack) {
-            console.error(`  Stack trace:\n${error.stack}`);
-          }
-        } else {
-          console.error(`  Error details: ${JSON.stringify(error, null, 2)}`);
+        const errorMessage = getNetworkErrorMessage(error);
+        console.error(`  Message: ${errorMessage}`);
+        if (error instanceof Error && error.stack) {
+          console.error(`  Stack trace:\n${error.stack}`);
         }
         process.exit(1);
       }

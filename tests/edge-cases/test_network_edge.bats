@@ -54,7 +54,7 @@ teardown() {
   assert_failure "Mint must fail when aggregator is unavailable"
 
   # Error message must indicate connection problem
-  assert_output_contains "ECONNREFUSED\|refused\|connect\|unreachable" "Error must indicate connection failure"
+  assert_output_contains "ECONNREFUSED|refused|connect|unreachable" "Error must indicate connection failure"
 }
 
 # -----------------------------------------------------------------------------
@@ -109,7 +109,7 @@ teardown() {
 
   # MUST detect and reject invalid JSON
   assert_failure "Malformed JSON must be rejected"
-  assert_output_contains "JSON\|parse\|invalid\|malformed" "Error must indicate JSON parsing problem"
+  assert_output_contains "JSON|parse|invalid|malformed" "Error must indicate JSON parsing problem"
 }
 
 # -----------------------------------------------------------------------------
@@ -128,7 +128,7 @@ teardown() {
 
   # MUST fail with DNS/resolution error
   assert_failure "Mint must fail when hostname cannot be resolved"
-  assert_output_contains "ENOTFOUND\|getaddrinfo\|DNS\|resolve\|not found" "Error must indicate DNS resolution failure"
+  assert_output_contains "ENOTFOUND|getaddrinfo|DNS|resolve|not found" "Error must indicate DNS resolution failure"
 }
 
 # -----------------------------------------------------------------------------
@@ -181,7 +181,7 @@ teardown() {
   assert_success "--skip-network must allow offline verification"
 
   # Output should indicate local/offline mode
-  assert_output_contains "skip\|offline\|local\|without network" "Output must indicate network was skipped"
+  assert_output_contains "skip|offline|local|without network" "Output must indicate network was skipped"
 }
 
 # -----------------------------------------------------------------------------
@@ -200,7 +200,7 @@ teardown() {
 
   # MUST fail with connection refused error
   assert_failure "Mint must fail when connection is refused"
-  assert_output_contains "ECONNREFUSED\|refused\|connect" "Error must indicate connection was refused"
+  assert_output_contains "ECONNREFUSED|refused|connect" "Error must indicate connection was refused"
 }
 
 # -----------------------------------------------------------------------------
@@ -270,11 +270,11 @@ teardown() {
     assert_failure "Mint must fail with invalid endpoint: $endpoint"
 
     # MUST have user-friendly error message (not stack trace)
-    assert_output_contains "Error\|error\|ERROR\|Failed\|failed\|Cannot\|cannot" \
+    assert_output_contains "Error|error|ERROR|Failed|failed|Cannot|cannot" \
       "Error message must be user-friendly for: $endpoint"
 
     # Must NOT contain raw stack traces or internal errors
-    assert_not_output_contains "at Object\|at async\|    at " \
+    assert_not_output_contains "at Object|at async|    at " \
       "Error should not expose raw stack trace"
   done
 }
@@ -300,7 +300,7 @@ teardown() {
   assert_success "Verify must succeed when aggregator is available"
 
   # Output should show verification succeeded
-  assert_output_contains "valid\|success\|current\|✓\|✅" "Output must indicate successful verification"
+  assert_output_contains "valid|success|current|✓|✅" "Output must indicate successful verification"
 }
 
 @test "Network edge: Offline package can be created without aggregator" {

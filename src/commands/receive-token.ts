@@ -788,13 +788,21 @@ export function receiveTokenCommand(program: Command): void {
         }
 
         // Write to file if specified
-        if (outputFile && !options.stdout) {
-          fs.writeFileSync(outputFile, outputJson);
-          console.error(`✅ Token saved to ${outputFile}`);
+        if (outputFile) {
+          try {
+            fs.writeFileSync(outputFile, outputJson, 'utf-8');
+            console.error(`✅ Token saved to ${outputFile}`);
+            console.error(`   File size: ${outputJson.length} bytes`);
+          } catch (err) {
+            console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+            throw err;
+          }
         }
 
-        // Always output to stdout unless explicitly saving only
-        if (!options.save || options.stdout) {
+        // Output to stdout only if:
+        // 1. No output file specified (default to stdout), OR
+        // 2. --stdout flag explicitly set
+        if ((!options.output && !options.save) || options.stdout) {
           console.log(outputJson);
         }
 

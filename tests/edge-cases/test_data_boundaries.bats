@@ -134,19 +134,19 @@ teardown() {
 
 @test "CORNER-010: Very long secret (10MB)" {
   # Note: 10MB secrets cannot be passed via command-line due to ARG_MAX system limit
-  # This is a system constraint, not a CLI bug. Test with 1MB instead.
+  # This is a system constraint, not a CLI bug. Test with 100KB instead.
 
   local long_secret
-  long_secret=$(python3 -c "print('A' * 1000000)" 2>/dev/null || echo "")
+  long_secret=$(python3 -c "print('A' * 102400)" 2>/dev/null || echo "")
 
   if [[ -z "$long_secret" ]]; then
     skip "Python not available for generating long string"
   fi
 
-  # Try with 1MB secret (within ARG_MAX but still very large)
+  # Try with 100KB secret (within ARG_MAX but still very large)
   # Use export to avoid passing through bash -c argument list
   export SECRET="$long_secret"
-  timeout 10s bash -c "$(get_cli_path) gen-address --preset nft"
+  timeout 10s bash -c "node $(get_cli_path) gen-address --preset nft"
   local long_secret_exit=$?
   unset SECRET
 
@@ -262,7 +262,7 @@ teardown() {
 
     if [[ "$coin_count" -gt 0 ]]; then
       local amount
-      amount=$(jq -r '.genesis.data.coinData[0].amount' "$token_file")
+      amount=$(jq -r '.genesis.data.coinData[0][1]' "$token_file")
       info "Zero-value coin created: amount=$amount"
     else
       info "Zero coins created empty coinData"
@@ -292,7 +292,7 @@ teardown() {
   if [[ -f "$token_file" ]]; then
     # Check if negative was accepted
     local amount
-    amount=$(jq -r '.genesis.data.coinData[0].amount // "none"' "$token_file")
+    amount=$(jq -r '.genesis.data.coinData[0][1] // "none"' "$token_file")
     info "⚠ Negative amount may have been accepted: $amount"
     info "CRITICAL: Negative amounts should be rejected at client side"
   else
@@ -334,7 +334,7 @@ teardown() {
     assert_valid_json "$token_file"
 
     local amount
-    amount=$(jq -r '.genesis.data.coinData[0].amount' "$token_file")
+    amount=$(jq -r '.genesis.data.coinData[0][1]' "$token_file")
     info "Large amount handled: $amount"
 
     # Verify it wasn't truncated

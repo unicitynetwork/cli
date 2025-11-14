@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { Token } from '@unicitylabs/state-transition-sdk/lib/token/Token.js';
 import { SigningService } from '@unicitylabs/state-transition-sdk/lib/sign/SigningService.js';
+import { getNetworkErrorMessage } from '../utils/error-handling.js';
 import { TransferCommitment } from '@unicitylabs/state-transition-sdk/lib/transaction/TransferCommitment.js';
 import { StateTransitionClient } from '@unicitylabs/state-transition-sdk/lib/StateTransitionClient.js';
 import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/AggregatorClient.js';
@@ -583,13 +584,10 @@ export function sendTokenCommand(program: Command): void {
 
       } catch (error) {
         console.error('\n❌ Error sending token:');
-        if (error instanceof Error) {
-          console.error(`  Message: ${error.message}`);
-          if (error.stack) {
-            console.error(`  Stack trace:\n${error.stack}`);
-          }
-        } else {
-          console.error(`  Error details: ${JSON.stringify(error, null, 2)}`);
+        const errorMessage = getNetworkErrorMessage(error);
+        console.error(`  Message: ${errorMessage}`);
+        if (error instanceof Error && error.stack) {
+          console.error(`  Stack trace:\n${error.stack}`);
         }
         process.exit(1);
       }

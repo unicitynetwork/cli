@@ -267,7 +267,7 @@ teardown() {
 
   # Verify token through symlink
   local exit_code=0
-  run_cli verify-token --file  --local"$link_file" || exit_code=$?
+  run_cli verify-token --file "$link_file" --local || exit_code=$?
 
   if [[ $exit_code -eq 0 ]]; then
     info "✓ Read through symlink successful"

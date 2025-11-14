@@ -143,7 +143,7 @@ assert_output_contains() {
   printf "${COLOR_RED}✗ Assertion Failed: Output does not contain expected string${COLOR_RESET}\n" >&2
   printf "  Expected to contain: '%s'\n" "$expected" >&2
   printf "  Actual stdout:\n%s\n" "${output}" >&2
-  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output:-<not captured>}" >&2
   return 1
 }
 
@@ -159,7 +159,7 @@ assert_output_not_contains() {
     printf "${COLOR_RED}✗ Assertion Failed: Output contains unexpected string${COLOR_RESET}\n" >&2
     printf "  Should not contain: '%s'\n" "$unexpected" >&2
     printf "  Actual stdout:\n%s\n" "${output}" >&2
-    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -222,7 +222,7 @@ assert_output_matches() {
   printf "${COLOR_RED}✗ Assertion Failed: Output does not match pattern${COLOR_RESET}\n" >&2
   printf "  Pattern: '%s'\n" "$pattern" >&2
   printf "  Actual stdout:\n%s\n" "${output}" >&2
-  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
   return 1
 }
 
@@ -258,7 +258,7 @@ assert_stderr_contains() {
   if [[ ! "${stderr_output:-}" =~ $expected ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Stderr does not contain expected string${COLOR_RESET}\n" >&2
     printf "  Expected to contain: '%s'\n" "$expected" >&2
-    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -277,7 +277,7 @@ assert_stderr_not_contains() {
   if [[ "${stderr_output:-}" =~ $unexpected ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Stderr contains unexpected string${COLOR_RESET}\n" >&2
     printf "  Should not contain: '%s'\n" "$unexpected" >&2
-    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -296,7 +296,7 @@ assert_stderr_matches() {
   if [[ ! "${stderr_output:-}" =~ $pattern ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Stderr does not match pattern${COLOR_RESET}\n" >&2
     printf "  Pattern: '%s'\n" "$pattern" >&2
-    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -315,7 +315,7 @@ assert_stderr_equals() {
   if [[ "${stderr_output:-}" != "$expected" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Stderr does not match${COLOR_RESET}\n" >&2
     printf "  Expected:\n%s\n" "$expected" >&2
-    printf "  Actual:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -329,7 +329,7 @@ assert_stderr_equals() {
 assert_stderr_empty() {
   if [[ -n "${stderr_output:-}" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Stderr should be empty${COLOR_RESET}\n" >&2
-    printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+    printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
     return 1
   fi
 
@@ -356,7 +356,7 @@ assert_output_or_stderr_contains() {
   printf "${COLOR_RED}✗ Assertion Failed: Neither stdout nor stderr contain expected string${COLOR_RESET}\n" >&2
   printf "  Expected to contain: '%s'\n" "$expected" >&2
   printf "  Actual stdout:\n%s\n" "${output}" >&2
-  printf "  Actual stderr:\n%s\n" "${stderr_output}" >&2
+  printf "  Actual stderr:\n%s\n" "${stderr_output:-}" >&2
   return 1
 }
 
