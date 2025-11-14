@@ -799,10 +799,9 @@ export function receiveTokenCommand(program: Command): void {
           }
         }
 
-        // Output to stdout only if:
-        // 1. No output file specified (default to stdout), OR
-        // 2. --stdout flag explicitly set
-        if ((!options.output && !options.save) || options.stdout) {
+        // Output to stdout unless saving to file only
+        // Match send-token behavior for consistency
+        if (!options.save || options.stdout) {
           console.log(outputJson);
         }
 
@@ -816,12 +815,15 @@ export function receiveTokenCommand(program: Command): void {
       } catch (error) {
         console.error('\n❌ Error receiving token:');
         if (error instanceof Error) {
-          console.error(`  Message: ${error.message}`);
-          if (error.stack) {
-            console.error(`  Stack trace:\n${error.stack}`);
+          console.error(`  ${error.message}\n`);
+
+          // Only show stack trace in debug mode
+          if (process.env.DEBUG && error.stack) {
+            console.error('\nDebug Stack Trace:');
+            console.error(error.stack);
           }
         } else {
-          console.error(`  Error details: ${JSON.stringify(error, null, 2)}`);
+          console.error(`  ${JSON.stringify(error, null, 2)}\n`);
         }
         process.exit(1);
       }

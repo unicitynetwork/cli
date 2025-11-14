@@ -1,16 +1,16 @@
 Creating commitment at generic abstraction level...
 
-Public Key: 03c2e9da38c8fd569de4851b3758ccb60ea895c51a853360d1e5768a2cc0b9ec98
-State Hash: 0000dfe0a0b905a92d1dc5834de640c063b03689b7b19ef770b971ddaa9f72c7bf04
-Transaction Hash: 00001c4d848afcfa7b332ff95940aa76d371a9ea219c773c521e97d35cc6c724cf77
-Request ID: 0000ac3c80e0bb5a71b2558e69b775143f0ec49fb00ce3d96c67e027719867730253
+Public Key: 031dd88574dae94d56e6c5df3da82c10ead318bcb7a91f1f5c051ec8199ca8af41
+State Hash: 0000d2688d896e26f00fecc40f8b241ad62d1e7fe4a20e0611adecbd9ab7578e832a
+Transaction Hash: 0000476c864009a4aac4c99f47fa6ded9c168ba4e5671ee07b3dc7d8cd8f4edb24a3
+Request ID: 00000613eb888d9884259694ebfd7ca4b064058ec7b6918388948f4300afc77e32a4
 
 
 === AUTHENTICATOR CREATION DEBUG ===
 Authenticator created locally:
-  Public Key: 03c2e9da38c8fd569de4851b3758ccb60ea895c51a853360d1e5768a2cc0b9ec98
-  Signature: e55749aa2d335b2f7cfbbd9f440d10c042be457a685e33fdba1e9906ac7769b838c91f7839dd7d52b4683929e47f9cc01d78322bd6d756392ef1f2828dff1fad
-  State Hash: 0000dfe0a0b905a92d1dc5834de640c063b03689b7b19ef770b971ddaa9f72c7bf04
+  Public Key: 031dd88574dae94d56e6c5df3da82c10ead318bcb7a91f1f5c051ec8199ca8af41
+  Signature: 0f8ee888dbbfe5c33ca8bcb22eb2c74addb623499367530fa0350fe70302252418fa7215b568d61ede0d56808e00f7dc2a0be36bdaaa19ffe220b3a2571c4f50
+  State Hash: 0000d2688d896e26f00fecc40f8b241ad62d1e7fe4a20e0611adecbd9ab7578e832a
 
 === LOCAL AUTHENTICATOR VERIFICATION TEST ===
 ✓ Local authenticator verifies transactionHash: true
@@ -20,9 +20,9 @@ Submitting to aggregator: http://127.0.0.1:3000
 ✅ Commitment successfully registered
 
 Commitment Details:
-  Request ID: 0000ac3c80e0bb5a71b2558e69b775143f0ec49fb00ce3d96c67e027719867730253
-  Transaction Hash: 00001c4d848afcfa7b332ff95940aa76d371a9ea219c773c521e97d35cc6c724cf77
-  State Hash: 0000dfe0a0b905a92d1dc5834de640c063b03689b7b19ef770b971ddaa9f72c7bf04
+  Request ID: 00000613eb888d9884259694ebfd7ca4b064058ec7b6918388948f4300afc77e32a4
+  Transaction Hash: 0000476c864009a4aac4c99f47fa6ded9c168ba4e5671ee07b3dc7d8cd8f4edb24a3
+  State Hash: 0000d2688d896e26f00fecc40f8b241ad62d1e7fe4a20e0611adecbd9ab7578e832a
 
 You can check the inclusion proof with:
-  npm run get-request -- 0000ac3c80e0bb5a71b2558e69b775143f0ec49fb00ce3d96c67e027719867730253
+  npm run get-request -- 00000613eb888d9884259694ebfd7ca4b064058ec7b6918388948f4300afc77e32a4

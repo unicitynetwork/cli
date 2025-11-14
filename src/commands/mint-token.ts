@@ -580,8 +580,14 @@ export function mintTokenCommand(program: Command): void {
 
         // Write to file if specified
         if (outputFile && !options.stdout) {
-          fs.writeFileSync(outputFile, tokenJson);
-          console.error(`✅ Token saved to ${outputFile}`);
+          try {
+            fs.writeFileSync(outputFile, tokenJson, 'utf-8');
+            console.error(`✅ Token saved to ${outputFile}`);
+            console.error(`   File size: ${tokenJson.length} bytes`);
+          } catch (err) {
+            console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+            throw err;
+          }
         }
 
         // Always output to stdout unless explicitly saving only
@@ -593,12 +599,16 @@ export function mintTokenCommand(program: Command): void {
         console.error(`Token ID: ${tokenId.toJSON()}`);
         console.error(`Address: ${address.address}`);
       } catch (error) {
-        console.error('Error minting token:');
+        console.error('\n❌ Error minting token:');
         const errorMessage = getNetworkErrorMessage(error);
-        console.error(`  Message: ${errorMessage}`);
-        if (error instanceof Error && error.stack) {
-          console.error(`  Stack trace:\n${error.stack}`);
+        console.error(`  ${errorMessage}\n`);
+
+        // Only show stack trace in debug mode
+        if (process.env.DEBUG && error instanceof Error && error.stack) {
+          console.error('\nDebug Stack Trace:');
+          console.error(error.stack);
         }
+
         process.exit(1);
       }
     });

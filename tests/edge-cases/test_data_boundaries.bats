@@ -150,11 +150,14 @@ teardown() {
   local long_secret_exit=$?
   unset SECRET
 
-  # Should either reject or handle without hanging
-  if [[ $long_secret_exit -eq 0 ]] || [[ $long_secret_exit -eq 124 ]]; then
+  # Should either accept (exit 0), reject gracefully (exit 1), or timeout (exit 124)
+  if [[ $long_secret_exit -eq 0 ]] || [[ $long_secret_exit -eq 1 ]] || [[ $long_secret_exit -eq 124 ]]; then
     info "✓ Long secret handled without hanging (exit: $long_secret_exit)"
+    if [[ $long_secret_exit -eq 1 ]]; then
+      info "  Secret rejected by validation (expected for >1024 chars)"
+    fi
   else
-    info "⚠ Long secret handling: exit code $long_secret_exit"
+    fail "Unexpected exit code: $long_secret_exit (expected 0, 1, or 124)"
   fi
 }
 

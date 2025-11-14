@@ -559,8 +559,14 @@ export function sendTokenCommand(program: Command): void {
 
         // Write to file if specified
         if (outputFile && !options.stdout) {
-          fs.writeFileSync(outputFile, outputJson);
-          console.error(`✅ Token saved to ${outputFile}`);
+          try {
+            fs.writeFileSync(outputFile, outputJson, 'utf-8');
+            console.error(`✅ Token saved to ${outputFile}`);
+            console.error(`   File size: ${outputJson.length} bytes`);
+          } catch (err) {
+            console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+            throw err;
+          }
         }
 
         // Always output to stdout unless explicitly saving only
@@ -585,10 +591,14 @@ export function sendTokenCommand(program: Command): void {
       } catch (error) {
         console.error('\n❌ Error sending token:');
         const errorMessage = getNetworkErrorMessage(error);
-        console.error(`  Message: ${errorMessage}`);
-        if (error instanceof Error && error.stack) {
-          console.error(`  Stack trace:\n${error.stack}`);
+        console.error(`  ${errorMessage}\n`);
+
+        // Only show stack trace in debug mode
+        if (process.env.DEBUG && error instanceof Error && error.stack) {
+          console.error('\nDebug Stack Trace:');
+          console.error(error.stack);
         }
+
         process.exit(1);
       }
     });

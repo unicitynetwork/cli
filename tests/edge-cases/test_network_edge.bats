@@ -200,7 +200,13 @@ teardown() {
 
   # MUST fail with connection refused error
   assert_failure "Mint must fail when connection is refused"
-  assert_output_contains "ECONNREFUSED|refused|connect" "Error must indicate connection was refused"
+
+  # Check both stdout and stderr for error message (errors go to stderr)
+  if [[ "${output}${stderr}" =~ ECONNREFUSED|refused|connect ]]; then
+    info "✓ Error message contains connection refused indicator"
+  else
+    fail "Error must indicate connection was refused. Output: ${output}${stderr}"
+  fi
 }
 
 # -----------------------------------------------------------------------------
