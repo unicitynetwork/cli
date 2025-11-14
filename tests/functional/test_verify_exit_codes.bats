@@ -103,7 +103,7 @@ teardown() {
     log_test "Testing exit code 2 for nonexistent file"
 
     # Verify nonexistent file - should exit 2
-    run_cli "verify-token -f /tmp/nonexistent-token-12345.txf"
+    run_cli "verify-token -f /tmp/nonexistent-token-12345.txf --local"
 
     # Check exit code is 2
     [ "$status" -eq 2 ]
@@ -120,7 +120,7 @@ teardown() {
     echo '{invalid json' > "${invalid}"
 
     # Verify file - should exit 2
-    run_cli "verify-token -f ${invalid}"
+    run_cli "verify-token -f ${invalid} --local"
 
     # Check exit code is 2
     [ "$status" -eq 2 ]
@@ -133,7 +133,7 @@ teardown() {
     log_test "Testing exit code 2 for missing --file flag"
 
     # Verify without --file flag - should exit 2
-    run_cli "verify-token"
+    run_cli "verify-token --local"
 
     # Check exit code is 2
     [ "$status" -eq 2 ]
@@ -155,7 +155,7 @@ teardown() {
     assert_success
 
     # Verify token against nonexistent endpoint
-    run_cli "verify-token -f ${token} --endpoint http://localhost:9999"
+    run_cli "verify-token -f ${token} --endpoint http://localhost:9999 --local"
 
     # Should exit 0 (network error is warning, not failure)
     assert_success

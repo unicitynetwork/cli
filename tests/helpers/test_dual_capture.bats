@@ -46,7 +46,7 @@ teardown() {
 # =============================================================================
 @test "Dual capture: stderr contains error from invalid file" {
   # Try to verify non-existent file - should fail with error on stderr
-  run_cli verify-token -f /nonexistent/file/path.txf
+  run_cli verify-token --local -f /nonexistent/file/path.txf
 
   # Verify command failed
   assert_failure
@@ -133,7 +133,7 @@ teardown() {
   assert_equals "0" "$success_exit" "Success should have exit code 0"
 
   # Test failure exit code
-  run_cli verify-token -f /nonexistent/file.txf
+  run_cli verify-token --local -f /nonexistent/file.txf
   local failure_exit=$?
   [[ "$failure_exit" -ne 0 ]] || {
     echo "Failure should have non-zero exit code"

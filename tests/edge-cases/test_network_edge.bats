@@ -105,7 +105,7 @@ teardown() {
   echo '{"version":"2.0","genesis":{"incomplete":true' > "$token_file"
 
   # Try to verify malformed file
-  run_cli verify-token --file "$token_file"
+  run_cli verify-token --file  --local"$token_file"
 
   # MUST detect and reject invalid JSON
   assert_failure "Malformed JSON must be rejected"
@@ -296,7 +296,7 @@ teardown() {
   assert_file_exists "$token_file"
 
   # Verify online - MUST succeed with healthy aggregator
-  run_cli verify-token --file "$token_file" --endpoint "${UNICITY_AGGREGATOR_URL}"
+  run_cli verify-token --file  --local"$token_file" --endpoint "${UNICITY_AGGREGATOR_URL}"
   assert_success "Verify must succeed when aggregator is available"
 
   # Output should show verification succeeded

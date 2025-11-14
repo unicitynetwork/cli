@@ -29,7 +29,7 @@ teardown() {
 
 @test "assert_token_has_valid_structure validates token structure" {
   # Create a valid token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate structure
@@ -60,7 +60,7 @@ teardown() {
 
 @test "assert_token_has_valid_genesis validates genesis transaction" {
   # Create token with valid genesis
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate genesis
@@ -82,7 +82,7 @@ teardown() {
 
 @test "assert_token_has_valid_state validates current state" {
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate state
@@ -108,7 +108,7 @@ EOJSON
 
 @test "assert_state_hash_correct validates hash format" {
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate state hash format
@@ -156,7 +156,7 @@ EOJSON
 
 @test "assert_token_predicate_valid extracts and validates predicate" {
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate token predicate
@@ -169,7 +169,7 @@ EOJSON
 
 @test "assert_inclusion_proof_valid checks proof structure" {
   # Create token with inclusion proof
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Validate inclusion proof structure
@@ -219,7 +219,7 @@ EOJSON
   fi
   
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   
   if [[ $status -ne 0 ]]; then
     skip "Token creation failed - likely no aggregator"
@@ -237,7 +237,7 @@ EOJSON
   fi
   
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   
   if [[ $status -ne 0 ]]; then
     skip "Token creation failed"
@@ -259,7 +259,7 @@ EOJSON
   fi
   
   # Create token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   
   if [[ $status -ne 0 ]]; then
     skip "Token creation failed"
@@ -275,7 +275,7 @@ EOJSON
 
 @test "assert_token_chain_valid handles single-state tokens" {
   # Create single-state token
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Chain validation should succeed (no chain)
@@ -373,7 +373,7 @@ EOJSON
 
 @test "assert_bft_signatures_valid handles tokens without BFT" {
   # Create token without BFT authenticator
-  run_cli mint-token nft --owner "$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
+  run_cli mint-token nft --owner  --local"$TEST_OWNER_KEY" -o "$TEST_TOKEN_FILE"
   assert_success
   
   # Should not fail (BFT is optional)

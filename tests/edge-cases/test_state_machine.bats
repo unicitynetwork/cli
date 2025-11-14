@@ -107,7 +107,7 @@ teardown() {
 
   # Try to verify token - should detect invalid status
   local exit_code=0
-  run_cli verify-token --file "$invalid_file" || exit_code=$?
+  run_cli verify-token --file  --local"$invalid_file" || exit_code=$?
 
   # Should fail or warn about invalid status
   if [[ "$exit_code" -eq 0 ]]; then
@@ -251,7 +251,7 @@ teardown() {
 
   # Try to verify - should detect inconsistency
   local exit_code=0
-  run_cli verify-token --file "$inconsistent_file" || exit_code=$?
+  run_cli verify-token --file  --local"$inconsistent_file" || exit_code=$?
 
   # Should warn or fail
   info "✓ Inconsistent state created (PENDING + transactions)"
@@ -287,7 +287,7 @@ teardown() {
 
   # Try to verify - should detect mismatch
   local exit_code=0
-  run_cli verify-token --file "$bad_file" || exit_code=$?
+  run_cli verify-token --file  --local"$bad_file" || exit_code=$?
 
   # Document current behavior
   if [[ $exit_code -eq 0 ]]; then

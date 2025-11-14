@@ -47,13 +47,13 @@ teardown() {
 
     # Step 1: Alice mints a valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
     log_info "Alice minted token: ${alice_token}"
 
     # Step 2: Verify token is valid before transfer
-    run_cli "verify-token -f ${alice_token}"
+    run_cli "verify-token -f ${alice_token} --local"
     assert_success
     log_info "Token pre-transfer verification passed"
 
@@ -65,7 +65,7 @@ teardown() {
 
     # Step 4: Alice creates transfer to Bob
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     assert_file_exists "${transfer}"
     log_info "Transfer created: ${transfer}"
@@ -89,7 +89,7 @@ teardown() {
     log_info "Signature tampered: ${original_sig:0:32}... -> ${corrupted_sig:0:32}..."
 
     # Step 6: Bob attempts to receive tampered token - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
     assert_failure
     log_info "receive-token correctly rejected tampered signature"
 
@@ -116,7 +116,7 @@ teardown() {
 
     # Step 1: Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
     log_info "Alice minted token"
 
@@ -126,7 +126,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
@@ -143,7 +143,7 @@ teardown() {
     log_info "Merkle root tampered to all zeros"
 
     # Step 4: Bob attempts to receive tampered token - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
     assert_failure
     log_info "receive-token correctly rejected tampered merkle path"
 
@@ -170,7 +170,7 @@ teardown() {
 
     # Step 1: Create valid transfer setup
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -178,7 +178,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
@@ -190,7 +190,7 @@ teardown() {
     log_info "Authenticator removed (set to null)"
 
     # Step 3: Bob attempts to receive - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
     assert_failure
     log_info "receive-token correctly rejected null authenticator"
 
@@ -217,7 +217,7 @@ teardown() {
 
     # Step 1: Create valid transfer with state data
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"test\":\"original\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"test\":\"original\"}' -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -225,7 +225,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
@@ -240,7 +240,7 @@ teardown() {
     log_info "State data modified (hashed integrity should fail)"
 
     # Step 3: Bob attempts to receive - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
     assert_failure
     log_info "receive-token correctly rejected modified state data"
 
@@ -267,7 +267,7 @@ teardown() {
 
     # Step 1: Create valid transfer
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -275,7 +275,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
@@ -290,7 +290,7 @@ teardown() {
     log_info "Genesis tokenType modified"
 
     # Step 3: Bob attempts to receive - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
     assert_failure
     log_info "receive-token correctly rejected modified genesis data"
 
@@ -321,7 +321,7 @@ teardown() {
 
     # Step 1: Create valid transfer
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -329,7 +329,7 @@ teardown() {
     local bob_addr=$(echo "${output}" | jq -r '.address')
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer created"
 
@@ -349,7 +349,7 @@ teardown() {
         log_info "Transaction proof tampered"
 
         # Step 4: Bob attempts to receive - MUST FAIL
-        run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered}"
+        run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered} --local"
         assert_failure
         log_info "receive-token correctly rejected tampered transaction proof"
 
@@ -385,7 +385,7 @@ teardown() {
 
     # Step 1: Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
     log_info "Alice minted token"
 
@@ -397,13 +397,13 @@ teardown() {
 
     # Step 3: Alice creates transfer to Bob
     local transfer="${TEST_TEMP_DIR}/transfer-to-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_addr} --local -o ${transfer}"
     assert_success
     log_info "Transfer to Bob created"
 
     # Step 4a: VALID PATH - Bob receives the valid transfer (should succeed)
     local bob_received="${TEST_TEMP_DIR}/bob-received.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} -o ${bob_received}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer} --local -o ${bob_received}"
     assert_success
     assert_file_exists "${bob_received}"
     log_success "Bob successfully received valid transfer"
@@ -423,7 +423,7 @@ teardown() {
     log_info "Transfer tampered (multiple fields)"
 
     # Step 5: Bob attempts to receive tampered transfer - MUST FAIL
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_multi}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${tampered_multi} --local"
     assert_failure
     log_info "receive-token correctly rejected tampered transfer"
 

@@ -35,12 +35,12 @@ teardown() {
 
     # Alice mints a valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
     assert_file_exists "${alice_token}"
 
     # Verify token is initially valid
-    run_cli "verify-token -f ${alice_token}"
+    run_cli "verify-token -f ${alice_token} --local"
     assert_success
 
     # ATTACK: Tamper with the genesis inclusion proof signature
@@ -61,7 +61,7 @@ teardown() {
         mv "${tampered_token}.tmp" "${tampered_token}"
 
         # Try to verify tampered token - MUST FAIL
-        run_cli "verify-token -f ${tampered_token}"
+        run_cli "verify-token -f ${tampered_token} --local"
         assert_failure
 
         # Error should mention signature or authenticator
@@ -74,7 +74,7 @@ teardown() {
         assert_success
         local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_address} -o /dev/null"
+        run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${tampered_token} -r ${bob_address} --local -o /dev/null"
         assert_failure
 
         log_success "SEC-CRYPTO-001: Tampered proof signature correctly rejected"
@@ -96,11 +96,11 @@ teardown() {
 
     # Alice mints valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Verify original token is valid
-    run_cli "verify-token -f ${alice_token}"
+    run_cli "verify-token -f ${alice_token} --local"
     assert_success
 
     # ATTACK: Tamper with merkle tree path
@@ -120,7 +120,7 @@ teardown() {
         mv "${tampered_token}.tmp" "${tampered_token}"
 
         # Try to verify - MUST FAIL
-        run_cli "verify-token -f ${tampered_token}"
+        run_cli "verify-token -f ${tampered_token} --local"
         assert_failure
 
         # Should mention merkle or proof validation
@@ -147,7 +147,7 @@ teardown() {
 
     # Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Bob and Carol generate addresses
@@ -162,7 +162,7 @@ teardown() {
 
     # Alice creates valid transfer to Bob
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer_bob}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
 
     # ATTACK: Modify recipient address to Carol while keeping Bob's signature
@@ -177,7 +177,7 @@ teardown() {
 
     # Carol tries to receive the modified transfer - MUST FAIL
     # Signature is over original commitment which includes Bob's address
-    run_cli_with_secret "${carol_secret}" "receive-token -f ${malicious_transfer} -o ${TEST_TEMP_DIR}/carol-token.txf"
+    run_cli_with_secret "${carol_secret}" "receive-token -f ${malicious_transfer} --local -o ${TEST_TEMP_DIR}/carol-token.txf"
     assert_failure
 
     # Should mention signature verification failure
@@ -186,7 +186,7 @@ teardown() {
     fi
 
     # Verify original transfer to Bob still works
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} -o ${TEST_TEMP_DIR}/bob-token.txf"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${TEST_TEMP_DIR}/bob-token.txf"
     assert_success
 
     log_success "SEC-CRYPTO-003: Transaction malleability attack successfully prevented"
@@ -209,7 +209,7 @@ teardown() {
 
     for i in $(seq 1 ${token_count}); do
         local token_file="${TEST_TEMP_DIR}/token-${i}.txf"
-        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token_file}"
+        run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token_file}"
         assert_success
 
         local token_id=$(jq -r '.genesis.data.tokenId' "${token_file}")
@@ -287,7 +287,7 @@ teardown() {
 
     # Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Public key should be visible in predicate
@@ -323,14 +323,14 @@ teardown() {
 
     # Create valid token first
     local valid_token="${TEST_TEMP_DIR}/valid-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${valid_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${valid_token}"
     assert_success
 
     # ATTACK 1: Set authenticator to null
     local null_auth_token="${TEST_TEMP_DIR}/null-auth.txf"
     jq '.genesis.inclusionProof.authenticator = null' "${valid_token}" > "${null_auth_token}"
 
-    run_cli "verify-token -f ${null_auth_token}"
+    run_cli "verify-token -f ${null_auth_token} --local"
     assert_failure
     if ! (echo "${output}${stderr_output}" | grep -qiE "(authenticator|null|invalid)"); then
         fail "Expected error message containing one of: authenticator, null, invalid. Got: ${output}"
@@ -340,14 +340,14 @@ teardown() {
     local empty_auth_token="${TEST_TEMP_DIR}/empty-auth.txf"
     jq '.genesis.inclusionProof.authenticator = {}' "${valid_token}" > "${empty_auth_token}"
 
-    run_cli "verify-token -f ${empty_auth_token}"
+    run_cli "verify-token -f ${empty_auth_token} --local"
     assert_failure
 
     # ATTACK 3: Remove inclusion proof entirely
     local no_proof_token="${TEST_TEMP_DIR}/no-proof.txf"
     jq 'del(.genesis.inclusionProof)' "${valid_token}" > "${no_proof_token}"
 
-    run_cli "verify-token -f ${no_proof_token}"
+    run_cli "verify-token -f ${no_proof_token} --local"
     assert_failure
 
     # ATTACK 4: Create fake authenticator with invalid signature
@@ -355,7 +355,7 @@ teardown() {
     jq '.genesis.inclusionProof.authenticator.signature = "deadbeef"' \
         "${valid_token}" > "${fake_auth_token}"
 
-    run_cli "verify-token -f ${fake_auth_token}"
+    run_cli "verify-token -f ${fake_auth_token} --local"
     assert_failure
 
     log_success "SEC-CRYPTO-007: Authenticator verification bypass attempts all rejected"
@@ -372,7 +372,7 @@ teardown() {
 
     # Alice mints token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Generate recipient address
@@ -384,11 +384,11 @@ teardown() {
     local transfer1="${TEST_TEMP_DIR}/transfer-1.txf"
     local transfer2="${TEST_TEMP_DIR}/transfer-2.txf"
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer1}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer1}"
     assert_success
 
     # Create second transfer (new requestId due to different salt/timestamp)
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer2}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer2}"
     assert_success
 
     # Extract request IDs (if available in commitment)

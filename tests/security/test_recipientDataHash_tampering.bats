@@ -54,7 +54,7 @@ teardown() {
     [[ ${#recipient_hash} -gt 20 ]] || assert_failure "recipientDataHash should be a substantial hash value"
 
     # Verify token is valid
-    run_cli "verify-token -f ${token}"
+    run_cli "verify-token -f ${token} --local"
     assert_success
     log_info "Token verification passed"
 
@@ -77,7 +77,7 @@ teardown() {
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token}"
+    run_cli "verify-token -f ${token} --local"
     assert_success
     log_info "Original token verification passed"
 
@@ -95,7 +95,7 @@ teardown() {
     log_info "Hash changed to wrong value: ${wrong_hash:0:16}..."
 
     # Try to verify tampered token - MUST FAIL
-    run_cli "verify-token -f ${tampered}"
+    run_cli "verify-token -f ${tampered} --local"
     assert_failure
     # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
     assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
@@ -129,7 +129,7 @@ teardown() {
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token}"
+    run_cli "verify-token -f ${token} --local"
     assert_success
     log_info "Original token verification passed"
 
@@ -146,7 +146,7 @@ teardown() {
     log_info "RecipientDataHash set to all zeros"
 
     # Verify must fail
-    run_cli "verify-token -f ${tampered}"
+    run_cli "verify-token -f ${tampered} --local"
     assert_failure
     # Match: "TAMPERED" or "hash mismatch" or "recipientDataHash mismatch" (SDK message variations)
     assert_output_contains "TAMPERED|hash.*mismatch|recipientDataHash.*mismatch" "Error must indicate data tampering or hash mismatch"
@@ -170,7 +170,7 @@ teardown() {
     log_info "Token created"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token}"
+    run_cli "verify-token -f ${token} --local"
     assert_success
     log_info "Original token verification passed"
 
@@ -185,7 +185,7 @@ teardown() {
     log_info "RecipientDataHash removed"
 
     # Verify must fail
-    run_cli "verify-token -f ${tampered}"
+    run_cli "verify-token -f ${tampered} --local"
     assert_failure
     # Match: "missing recipientDataHash" or "recipientDataHash is null" (message variations)
     assert_output_contains "missing.*recipientDataHash|recipientDataHash.*is.*null|recipientDataHash.*null" "Error must indicate missing/null recipientDataHash"
@@ -209,7 +209,7 @@ teardown() {
     log_info "Token created with state data"
 
     # Verify original is valid
-    run_cli "verify-token -f ${token}"
+    run_cli "verify-token -f ${token} --local"
     assert_success
     log_info "Original token verification passed"
 
@@ -224,7 +224,7 @@ teardown() {
     log_info "State.data set to null"
 
     # Verify must fail (hash cannot commit to null data)
-    run_cli "verify-token -f ${tampered}"
+    run_cli "verify-token -f ${tampered} --local"
     assert_failure
     # Match: "hash mismatch" or "state data cannot be null with hash present" (message variations)
     assert_output_contains "hash.*mismatch|state.*data.*cannot.*be.*null|null.*data.*with.*hash" "Error must indicate null data with hash present"
@@ -261,7 +261,7 @@ teardown() {
     log_info "Transfer package created"
 
     # Verify transfer is valid before tampering
-    run_cli "verify-token -f ${transfer}"
+    run_cli "verify-token -f ${transfer} --local"
     assert_success
     log_info "Transfer package verified"
 
@@ -291,7 +291,7 @@ teardown() {
     log_info "Original transfer accepted and received"
 
     # Step 6: Verify received token is valid
-    run_cli "verify-token -f ${bob_token}"
+    run_cli "verify-token -f ${bob_token} --local"
     assert_success
     log_info "Received token verified"
 

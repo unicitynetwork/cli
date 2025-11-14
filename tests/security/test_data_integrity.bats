@@ -35,7 +35,7 @@ teardown() {
 
     # Create a valid token
     local valid_token="${TEST_TEMP_DIR}/valid-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${valid_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${valid_token}"
     assert_success
     assert_file_exists "${valid_token}"
 
@@ -43,7 +43,7 @@ teardown() {
     local truncated="${TEST_TEMP_DIR}/truncated.txf"
     head -c 500 "${valid_token}" > "${truncated}"
 
-    run_cli "verify-token -f ${truncated}"
+    run_cli "verify-token -f ${truncated} --local"
     assert_failure
     # Match: "JSON parse error" or "Invalid JSON" (parser variations)
     assert_output_contains "JSON.*parse.*error|Invalid.*JSON|parse.*error" "Error must indicate JSON parsing failure"
@@ -59,7 +59,7 @@ teardown() {
     # Flip random bytes in the middle of the file
     dd if=/dev/urandom of="${corrupted}" bs=1 count=10 seek=100 conv=notrunc 2>/dev/null || true
 
-    run_cli "verify-token -f ${corrupted}"
+    run_cli "verify-token -f ${corrupted} --local"
     assert_failure
 
     # Test 3: Corrupted CBOR data (if present)
@@ -70,7 +70,7 @@ teardown() {
     jq '.state.predicate = "invalid_cbor_data"' "${corrupted_cbor}" > "${corrupted_cbor}.tmp"
     mv "${corrupted_cbor}.tmp" "${corrupted_cbor}"
 
-    run_cli "verify-token -f ${corrupted_cbor}"
+    run_cli "verify-token -f ${corrupted_cbor} --local"
     assert_failure
 
     # Test 4: Try to send corrupted token
@@ -78,7 +78,7 @@ teardown() {
     assert_success
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${corrupted} -r ${bob_address} -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${corrupted} -r ${bob_address} --local -o /dev/null"
     assert_failure
 
     log_success "SEC-INTEGRITY-001: File corruption detected and handled gracefully"
@@ -97,11 +97,11 @@ teardown() {
 
     # Alice mints valid token
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Verify original is valid
-    run_cli "verify-token -f ${alice_token}"
+    run_cli "verify-token -f ${alice_token} --local"
     assert_success
 
     # ATTACK 1: Modify state.data but keep original proof
@@ -112,7 +112,7 @@ teardown() {
     mv "${modified_state}.tmp" "${modified_state}"
 
     # State hash will not match proof
-    run_cli "verify-token -f ${modified_state}"
+    run_cli "verify-token -f ${modified_state} --local"
     assert_failure
     # Match: "state hash mismatch" or "hash mismatch" (message variations)
     assert_output_contains "state.*hash.*mismatch|hash.*mismatch" "Error must indicate hash mismatch"
@@ -129,7 +129,7 @@ teardown() {
         "${modified_predicate}" > "${modified_predicate}.tmp"
     mv "${modified_predicate}.tmp" "${modified_predicate}"
 
-    run_cli "verify-token -f ${modified_predicate}"
+    run_cli "verify-token -f ${modified_predicate} --local"
     assert_failure
 
     # ATTACK 3: Modify both genesis and state (inconsistent)
@@ -140,7 +140,7 @@ teardown() {
     jq '.genesis.data.tokenData = "aabbccdd"' "${inconsistent}" > "${inconsistent}.tmp"
     mv "${inconsistent}.tmp" "${inconsistent}"
 
-    run_cli "verify-token -f ${inconsistent}"
+    run_cli "verify-token -f ${inconsistent} --local"
     assert_failure
 
     log_success "SEC-INTEGRITY-002: State hash mismatch correctly detected"
@@ -159,7 +159,7 @@ teardown() {
 
     # Create a transfer chain: Alice → Bob → Carol
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     # Alice → Bob
@@ -168,11 +168,11 @@ teardown() {
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer_bob}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
 
     local bob_token="${TEST_TEMP_DIR}/bob-token.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${bob_token}"
     assert_success
 
     # Bob → Carol
@@ -182,11 +182,11 @@ teardown() {
     local carol_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local transfer_carol="${TEST_TEMP_DIR}/transfer-carol.txf"
-    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_address} -o ${transfer_carol}"
+    run_cli_with_secret "${BOB_SECRET}" "send-token -f ${bob_token} -r ${carol_address} --local -o ${transfer_carol}"
     assert_success
 
     local carol_token="${TEST_TEMP_DIR}/carol-token.txf"
-    run_cli_with_secret "${carol_secret}" "receive-token -f ${transfer_carol} -o ${carol_token}"
+    run_cli_with_secret "${carol_secret}" "receive-token -f ${transfer_carol} --local -o ${carol_token}"
     assert_success
 
     # Carol's token should have transaction history
@@ -199,12 +199,12 @@ teardown() {
         jq 'del(.transactions[0])' "${carol_token}" > "${tampered_chain}"
 
         # Verify tampered chain is detected - MUST FAIL
-        run_cli "verify-token -f ${tampered_chain}"
+        run_cli "verify-token -f ${tampered_chain} --local"
         assert_failure "Chain integrity verification must be mandatory - transaction removal must be detected"
     fi
 
     # Verify complete chain is valid
-    run_cli "verify-token -f ${carol_token}"
+    run_cli "verify-token -f ${carol_token} --local"
     assert_success
 
     log_success "SEC-INTEGRITY-003: Transaction chain integrity test complete"
@@ -223,42 +223,42 @@ teardown() {
 
     # Create valid token
     local valid_token="${TEST_TEMP_DIR}/valid-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${valid_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${valid_token}"
     assert_success
 
     # Test 1: Remove "version" field
     local no_version="${TEST_TEMP_DIR}/no-version.txf"
     jq 'del(.version)' "${valid_token}" > "${no_version}"
 
-    run_cli "verify-token -f ${no_version}"
+    run_cli "verify-token -f ${no_version} --local"
     assert_failure
 
     # Test 2: Remove "state" field
     local no_state="${TEST_TEMP_DIR}/no-state.txf"
     jq 'del(.state)' "${valid_token}" > "${no_state}"
 
-    run_cli "verify-token -f ${no_state}"
+    run_cli "verify-token -f ${no_state} --local"
     assert_failure
 
     # Test 3: Remove "genesis" field
     local no_genesis="${TEST_TEMP_DIR}/no-genesis.txf"
     jq 'del(.genesis)' "${valid_token}" > "${no_genesis}"
 
-    run_cli "verify-token -f ${no_genesis}"
+    run_cli "verify-token -f ${no_genesis} --local"
     assert_failure
 
     # Test 4: Remove "genesis.inclusionProof"
     local no_proof="${TEST_TEMP_DIR}/no-proof.txf"
     jq 'del(.genesis.inclusionProof)' "${valid_token}" > "${no_proof}"
 
-    run_cli "verify-token -f ${no_proof}"
+    run_cli "verify-token -f ${no_proof} --local"
     assert_failure
 
     # Test 5: Remove "state.predicate"
     local no_predicate="${TEST_TEMP_DIR}/no-predicate.txf"
     jq 'del(.state.predicate)' "${valid_token}" > "${no_predicate}"
 
-    run_cli "verify-token -f ${no_predicate}"
+    run_cli "verify-token -f ${no_predicate} --local"
     assert_failure
 
     # All tests should fail with clear error messages about missing fields
@@ -278,7 +278,7 @@ teardown() {
 
     # Create transfer package (has offline transfer)
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
@@ -286,7 +286,7 @@ teardown() {
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local transfer="${TEST_TEMP_DIR}/transfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer}"
     assert_success
 
     # Check current status
@@ -300,7 +300,7 @@ teardown() {
 
         # This is inconsistent: CONFIRMED status with pending offline transfer
         local exit_code=0
-        run_cli "verify-token -f ${wrong_status}" || exit_code=$?
+        run_cli "verify-token -f ${wrong_status} --local" || exit_code=$?
 
         # Check if status validation is implemented
         if [[ $exit_code -eq 0 ]]; then
@@ -316,7 +316,7 @@ teardown() {
         jq 'del(.offlineTransfer) | .status = "PENDING"' "${alice_token}" > "${no_transfer}"
 
         local exit_code=0
-        run_cli "verify-token -f ${no_transfer}" || exit_code=$?
+        run_cli "verify-token -f ${no_transfer} --local" || exit_code=$?
 
         # Inconsistent: PENDING status without offline transfer
         if [[ $exit_code -eq 0 ]]; then
@@ -331,7 +331,7 @@ teardown() {
     jq '.status = "INVALID_STATUS_VALUE"' "${transfer}" > "${invalid_status}"
 
     local exit_code=0
-    run_cli "verify-token -f ${invalid_status}" || exit_code=$?
+    run_cli "verify-token -f ${invalid_status} --local" || exit_code=$?
 
     # May accept unknown status or reject it
     if [[ $exit_code -eq 0 ]]; then
@@ -353,7 +353,7 @@ teardown() {
 
     # Create token and transfer chain
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${alice_token}"
     assert_success
 
     local original_token_id=$(jq -r '.genesis.data.tokenId' "${alice_token}")
@@ -366,7 +366,7 @@ teardown() {
     local bob_address=$(echo "${output}" | grep -oE "DIRECT://[0-9a-fA-F]+" | head -1)
 
     local transfer_bob="${TEST_TEMP_DIR}/transfer-bob.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} -o ${transfer_bob}"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${alice_token} -r ${bob_address} --local -o ${transfer_bob}"
     assert_success
 
     # Check token ID in transfer package
@@ -375,7 +375,7 @@ teardown() {
 
     # Bob receives
     local bob_token="${TEST_TEMP_DIR}/bob-token.txf"
-    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} -o ${bob_token}"
+    run_cli_with_secret "${BOB_SECRET}" "receive-token -f ${transfer_bob} --local -o ${bob_token}"
     assert_success
 
     # Check token ID after receive
@@ -387,7 +387,7 @@ teardown() {
     jq '.genesis.data.tokenId = "0000000000000000000000000000000000000000000000000000000000000000"' \
         "${bob_token}" > "${fake_id}"
 
-    run_cli "verify-token -f ${fake_id}"
+    run_cli "verify-token -f ${fake_id} --local"
     assert_failure
     # Match: "state hash mismatch" or "hash mismatch" (message variations)
     assert_output_contains "state.*hash.*mismatch|hash.*mismatch" "Error must indicate hash mismatch"
@@ -405,7 +405,7 @@ teardown() {
 
     # Create token with valid proof
     local token="${TEST_TEMP_DIR}/token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -o ${token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft --local -o ${token}"
     assert_success
 
     # Extract proof structure
@@ -420,21 +420,21 @@ teardown() {
     local no_sig="${TEST_TEMP_DIR}/no-sig.txf"
     jq 'del(.genesis.inclusionProof.authenticator.signature)' "${token}" > "${no_sig}"
 
-    run_cli "verify-token -f ${no_sig}"
+    run_cli "verify-token -f ${no_sig} --local"
     assert_failure
 
     # ATTACK: Set authenticator to null
     local null_auth="${TEST_TEMP_DIR}/null-auth.txf"
     jq '.genesis.inclusionProof.authenticator = null' "${token}" > "${null_auth}"
 
-    run_cli "verify-token -f ${null_auth}"
+    run_cli "verify-token -f ${null_auth} --local"
     assert_failure
 
     # ATTACK: Corrupt merkle path
     local bad_merkle="${TEST_TEMP_DIR}/bad-merkle.txf"
     jq '.genesis.inclusionProof.merkleTreePath = null' "${token}" > "${bad_merkle}"
 
-    run_cli "verify-token -f ${bad_merkle}"
+    run_cli "verify-token -f ${bad_merkle} --local"
     assert_failure
 
     log_success "SEC-INTEGRITY-EXTRA2: Inclusion proof integrity verification complete"

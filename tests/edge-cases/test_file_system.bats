@@ -50,7 +50,7 @@ teardown() {
 
   # Try to mint to read-only location
   local exit_code=0
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$token_file" || exit_code=$?
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local -o "$token_file" || exit_code=$?
 
   # Should fail with permission error
   if [[ $exit_code -ne 0 ]]; then
@@ -123,7 +123,7 @@ teardown() {
 
   # Try to mint to long path
   local exit_code=0
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$long_path" || exit_code=$?
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local -o "$long_path" || exit_code=$?
 
   if [[ -f "$long_path" ]]; then
     info "✓ Long path handled successfully"
@@ -155,7 +155,7 @@ teardown() {
   )
 
   for file in "${test_files[@]}"; do
-    SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$file"
+    SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local -o "$file"
     local file_exit=$?
 
     if [[ -f "$file" ]]; then
@@ -169,7 +169,7 @@ teardown() {
   # Test path traversal attempt (should be blocked or sanitized)
   local attack_file="${base_dir}/../../../etc/passwd.txf"
 
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$attack_file"
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local -o "$attack_file"
   local attack_exit=$?
 
   # Check if file was created outside base_dir
@@ -212,7 +212,7 @@ teardown() {
   cd "$output_dir" || skip "Cannot change to output directory"
 
   # Mint two tokens rapidly with --save (auto-generate filename)
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local --save
   local save1_exit=$?
 
   # Check if files were created
@@ -225,7 +225,7 @@ teardown() {
   fi
 
   # Immediately mint another (same timestamp possible)
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --save
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local --save
   local save2_exit=$?
   local file2
   file2=$(ls -t *.txf 2>/dev/null | head -1) || file2=""
@@ -267,7 +267,7 @@ teardown() {
 
   # Verify token through symlink
   local exit_code=0
-  run_cli verify-token --file "$link_file" || exit_code=$?
+  run_cli verify-token --file  --local"$link_file" || exit_code=$?
 
   if [[ $exit_code -eq 0 ]]; then
     info "✓ Read through symlink successful"
@@ -297,7 +297,7 @@ teardown() {
   local write_through_link="${link_file}.write"
   ln -s "$(create_temp_file "-target.txf")" "$write_through_link"
 
-  SECRET="$TEST_SECRET" run_cli mint-token --preset nft -o "$write_through_link"
+  SECRET="$TEST_SECRET" run_cli mint-token --preset nft --local -o "$write_through_link"
   local write_exit=$?
 
   if [[ -f "$write_through_link" ]]; then
@@ -329,7 +329,7 @@ teardown() {
   local pids=()
   local concurrent=5
   for i in {1..5}; do
-    (run_cli verify-token --file "$token_file" > "${token_file}.verify${i}.log" 2>&1) &
+    (run_cli verify-token --file  --local"$token_file" > "${token_file}.verify${i}.log" 2>&1) &
     pids+=($!)
   done
 
