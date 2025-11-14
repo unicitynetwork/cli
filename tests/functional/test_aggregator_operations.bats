@@ -48,7 +48,7 @@ teardown() {
 
     # Verify retrieval response
     assert_file_exists "get_response.json"
-    assert_valid_json "$output"
+    assert_valid_json "get_response.json"
 
     # Verify request ID matches
     local retrieved_id
@@ -258,10 +258,10 @@ teardown() {
     run_cli "get-request ${request_id} --local --json"
     assert_success
 
-    # Verify valid JSON
-    assert_valid_json "$output"
-
     # Save to file for field assertions
     echo "$output" > get.json
+
+    # Verify valid JSON
+    assert_valid_json "get.json"
     assert_json_field_exists "get.json" ".requestId"
 }

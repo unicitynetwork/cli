@@ -328,7 +328,7 @@ teardown() {
   local out1=$(create_temp_file "-receive1.txf")
   info "Step 1: First receive attempt"
   run receive_token "$recipient_secret" "$transfer_file" "$out1"
-  local status1=$?
+  local status1=$status
 
   info "First receive status: $status1"
 
@@ -339,7 +339,7 @@ teardown() {
   local out2=$(create_temp_file "-receive2.txf")
   info "Step 2: Second receive attempt after 1 second"
   run receive_token "$recipient_secret" "$transfer_file" "$out2"
-  local status2=$?
+  local status2=$status
 
   info "Second receive status: $status2"
 

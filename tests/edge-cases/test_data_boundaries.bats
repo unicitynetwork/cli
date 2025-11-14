@@ -133,20 +133,29 @@ teardown() {
 # -----------------------------------------------------------------------------
 
 @test "CORNER-010: Very long secret (10MB)" {
-  # Generate 10MB secret
+  # Note: 10MB secrets cannot be passed via command-line due to ARG_MAX system limit
+  # This is a system constraint, not a CLI bug. Test with 1MB instead.
+
   local long_secret
-  long_secret=$(python3 -c "print('A' * 10000000)" 2>/dev/null || echo "")
+  long_secret=$(python3 -c "print('A' * 1000000)" 2>/dev/null || echo "")
 
   if [[ -z "$long_secret" ]]; then
     skip "Python not available for generating long string"
   fi
 
-  # Try with very long secret (should limit or handle gracefully)
-  timeout 10s bash -c "SECRET='$long_secret' run_cli gen-address --preset nft"
+  # Try with 1MB secret (within ARG_MAX but still very large)
+  # Use export to avoid passing through bash -c argument list
+  export SECRET="$long_secret"
+  timeout 10s bash -c "$(get_cli_path) gen-address --preset nft"
   local long_secret_exit=$?
+  unset SECRET
 
   # Should either reject or handle without hanging
-  info "✓ Long secret handled without hanging"
+  if [[ $long_secret_exit -eq 0 ]] || [[ $long_secret_exit -eq 124 ]]; then
+    info "✓ Long secret handled without hanging (exit: $long_secret_exit)"
+  else
+    info "⚠ Long secret handling: exit code $long_secret_exit"
+  fi
 }
 
 @test "CORNER-010b: Very long token data (1MB)" {
@@ -165,18 +174,31 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
+  # Write data to file to avoid ARG_MAX issues
+  local data_file
+  data_file=$(create_temp_file "-data.txt")
+  echo -n "$long_data" > "$data_file"
+
   # Try to mint with very long data (expect rejection or size limit)
-  timeout 30s bash -c "SECRET='$secret' run_cli mint-token --preset nft -d '$long_data' --local -o '$token_file'"
-  local long_data_exit=$?
+  # Use command substitution to read from file, avoiding ARG_MAX
+  local long_data_exit=0
+  timeout 30s bash -c "
+    SECRET='$secret' \\
+    $(get_cli_path) mint-token \\
+      --preset nft \\
+      -d \"\$(cat '$data_file')\" \\
+      --local \\
+      -o '$token_file'
+  " || long_data_exit=$?
 
   # Should reject or handle gracefully
-  if [[ -f "$token_file" ]]; then
+  if [[ -f "$token_file" ]] && [[ -s "$token_file" ]]; then
     info "Large data accepted (check size limits)"
     local size
     size=$(stat -f%z "$token_file" 2>/dev/null || stat -c%s "$token_file" 2>/dev/null)
     info "Token file size: $size bytes"
   else
-    info "✓ Large data rejected or size limited"
+    info "✓ Large data rejected or size limited (exit: $long_data_exit)"
   fi
 }
 
@@ -228,7 +250,7 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Mint with zero coins (may be rejected or accepted)
-  SECRET="$secret" run_cli mint-token --preset uct --coins  --local"0" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset uct --coins 0 --local -o "$token_file"
   local zero_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -264,7 +286,7 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Try negative amount (should be rejected)
-  SECRET="$secret" run_cli mint-token --preset uct --coins  --local"-1" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset uct --coins -1 --local -o "$token_file"
   local neg_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -278,7 +300,7 @@ teardown() {
   fi
 
   # Also test with very large negative (should be rejected)
-  SECRET="$secret" run_cli mint-token --preset uct --coins  --local"-9999999999999999999" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset uct --coins -9999999999999999999 --local -o "$token_file"
   local large_neg_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -304,7 +326,7 @@ teardown() {
   # Amount > 2^53-1 (JavaScript MAX_SAFE_INTEGER)
   local huge_amount="99999999999999999999999999999999"
 
-  SECRET="$secret" run_cli mint-token --preset uct --coins  --local"$huge_amount" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset uct --coins "$huge_amount" --local -o "$token_file"
   local huge_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -342,7 +364,7 @@ teardown() {
   # 63 characters (should be 64 for 32 bytes)
   local odd_hex="123456789abcdef123456789abcdef123456789abcdef123456789abcdef12"
 
-  SECRET="$secret" run_cli mint-token --preset nft --token-type  --local"$odd_hex" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$odd_hex" --local -o "$token_file"
   local odd_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -384,11 +406,11 @@ teardown() {
   local hex_mixed="AbCdEf1234567890ABCDEF1234567890abcdef1234567890ABCDEF1234567890"
 
   # Mint with lowercase
-  SECRET="$secret" run_cli mint-token --preset nft --token-type  --local"$hex_lower" -o "$token_file1"
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_lower" --local -o "$token_file1"
   local lower_exit=$?
 
   # Mint with mixed case
-  SECRET="$secret" run_cli mint-token --preset nft --token-type  --local"$hex_mixed" -o "$token_file2"
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$hex_mixed" --local -o "$token_file2"
   local mixed_exit=$?
 
   if [[ -f "$token_file1" ]] && [[ -f "$token_file2" ]]; then
@@ -422,7 +444,7 @@ teardown() {
   # Invalid hex (contains G, H, I, etc.)
   local invalid_hex="1234567890abcdefGHIJKLMN"
 
-  SECRET="$secret" run_cli mint-token --preset nft --token-type  --local"$invalid_hex" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset nft --token-type "$invalid_hex" --local -o "$token_file"
   local invalid_exit=$?
 
   if [[ -f "$token_file" ]]; then
@@ -459,7 +481,7 @@ teardown() {
   token_file=$(create_temp_file ".txf")
 
   # Explicit empty string
-  SECRET="$secret" run_cli mint-token --preset nft -d  --local"" -o "$token_file"
+  SECRET="$secret" run_cli mint-token --preset nft -d "" --local -o "$token_file"
   local empty_exit=$?
 
   if [[ -f "$token_file" ]]; then

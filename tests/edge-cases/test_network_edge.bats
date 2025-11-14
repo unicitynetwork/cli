@@ -44,11 +44,11 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
+  local secret
+  secret=$(generate_unique_id "secret")
+
   # Try to mint with unavailable aggregator
-  run_cli mint-token \
-    --preset nft \
-    --endpoint "http://localhost:9999" \
-    -o "$token_file"
+  run_cli_with_secret "$secret" "mint-token --preset nft --endpoint http://localhost:9999 -o $token_file"
 
   # MUST fail with connection error
   assert_failure "Mint must fail when aggregator is unavailable"
@@ -105,7 +105,7 @@ teardown() {
   echo '{"version":"2.0","genesis":{"incomplete":true' > "$token_file"
 
   # Try to verify malformed file
-  run_cli verify-token --file  --local"$token_file"
+  run_cli verify-token --file "$token_file" --local
 
   # MUST detect and reject invalid JSON
   assert_failure "Malformed JSON must be rejected"
@@ -120,11 +120,11 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
+  local secret
+  secret=$(generate_unique_id "secret")
+
   # Use invalid hostname that won't resolve
-  run_cli mint-token \
-    --preset nft \
-    --endpoint "https://nonexistent-aggregator-xyz123.invalid" \
-    -o "$token_file"
+  run_cli_with_secret "$secret" "mint-token --preset nft --endpoint https://nonexistent-aggregator-xyz123.invalid -o $token_file"
 
   # MUST fail with DNS/resolution error
   assert_failure "Mint must fail when hostname cannot be resolved"
@@ -192,11 +192,11 @@ teardown() {
   local token_file
   token_file=$(create_temp_file ".txf")
 
+  local secret
+  secret=$(generate_unique_id "secret")
+
   # Use localhost port that's not listening
-  run_cli mint-token \
-    --preset nft \
-    --endpoint "http://localhost:1" \
-    -o "$token_file"
+  run_cli_with_secret "$secret" "mint-token --preset nft --endpoint http://localhost:1 -o $token_file"
 
   # MUST fail with connection refused error
   assert_failure "Mint must fail when connection is refused"
@@ -296,7 +296,7 @@ teardown() {
   assert_file_exists "$token_file"
 
   # Verify online - MUST succeed with healthy aggregator
-  run_cli verify-token --file  --local"$token_file" --endpoint "${UNICITY_AGGREGATOR_URL}"
+  run_cli verify-token --file "$token_file" --endpoint "${UNICITY_AGGREGATOR_URL}"
   assert_success "Verify must succeed when aggregator is available"
 
   # Output should show verification succeeded

@@ -66,9 +66,9 @@ npm run test:coverage
 - Build CLI first: `npm run build`
 
 **Test Documentation:**
-- Quick Reference: `TESTS_QUICK_REFERENCE.md`
-- Complete Guide: `TEST_SUITE_COMPLETE.md`
-- CI/CD Guide: `CI_CD_QUICK_START.md`
+- Quick Reference: `tests/QUICK_REFERENCE.md`
+- Complete Guide: `docs/testing/TEST_SUITE_COMPLETE.md`
+- CI/CD Guide: `docs/testing/CI_CD_QUICK_START.md`
 - Suite-specific: `tests/{functional,security,edge-cases}/README.md`
 
 **Manual Testing Patterns (for development):**
@@ -108,6 +108,21 @@ cat ./config/trust-base.json | jq '.networkId, .rootNodes[0].nodeId'
 TRUSTBASE_PATH=/tmp/trust-base.json SECRET="test" npm run mint-token -- --local
 ```
 
+**Aggregator Management Script:**
+```bash
+# Start local aggregator (with automatic TrustBase extraction)
+./scripts/aggregator.sh start
+
+# Check aggregator status
+./scripts/aggregator.sh status
+
+# View aggregator logs
+./scripts/aggregator.sh logs
+
+# Stop aggregator
+./scripts/aggregator.sh stop
+```
+
 See `.dev/architecture/trustbase-loading.md` for full details.
 
 ## Architecture
@@ -132,7 +147,8 @@ src/
 │   ├── trustbase-loader.ts           # Dynamic TrustBase loading with caching
 │   ├── proof-validation.ts           # Inclusion proof verification
 │   ├── ownership-verification.ts     # Token ownership status checking
-│   └── transfer-validation.ts        # Transfer validation logic
+│   ├── transfer-validation.ts        # Transfer validation logic
+│   └── input-validation.ts           # Input sanitization and security validation
 └── types/
     └── extended-txf.ts               # TXF file format type definitions
 ```
@@ -160,7 +176,7 @@ src/
 - Searches multiple paths: custom path, `/tmp/aggregator/`, `./config/`, project root
 - Falls back to hardcoded local Docker config if no file found
 - Cached after first load to avoid repeated I/O
-- See `src/utils/trustbase-loader.ts:line:117-136` for loading strategy
+- See `src/utils/trustbase-loader.ts` for loading strategy
 
 **5. Ownership Verification**
 - Queries aggregator to check if token state is spent
@@ -233,6 +249,32 @@ const rl = readline.createInterface({ input: stdin, output: stderr });
 ```
 
 **Never log secrets or private keys to console.**
+
+### Input Validation
+
+All user inputs are validated and sanitized using `src/utils/input-validation.ts`:
+```typescript
+import { sanitizeInput, validateAddress, validateFilePath } from '../utils/input-validation.js';
+
+// Sanitize user input to prevent injection attacks
+const safe = sanitizeInput(userInput);
+
+// Validate addresses (DIRECT:// format)
+if (!validateAddress(address)) {
+  throw new Error('Invalid address format');
+}
+
+// Validate file paths (prevent directory traversal)
+if (!validateFilePath(path)) {
+  throw new Error('Invalid file path');
+}
+```
+
+**Security principles:**
+- Sanitize all user inputs before processing
+- Validate addresses against expected format
+- Prevent path traversal attacks in file operations
+- Reject malformed or suspicious inputs early
 
 ### Error Handling
 
@@ -335,7 +377,7 @@ const predicate = new MaskedPredicate(publicKey, signature, mask);
 
 ### Verifying Inclusion Proofs
 
-Use the helper function in `src/utils/proof-validation.ts:line:19-54`:
+Use the helper function in `src/utils/proof-validation.ts`:
 ```typescript
 import { validateInclusionProof } from '../utils/proof-validation.js';
 
@@ -392,12 +434,17 @@ When updating dependencies:
 
 ### Test Infrastructure
 
-The project has a comprehensive BATS test suite with 313+ test scenarios:
-- **Test Helpers** (`tests/helpers/`):
-  - `common.bash` - Core test utilities and CLI execution wrappers
-  - `assertions.bash` - 50+ assertion functions for validation
-  - `id-generation.bash` - Unique ID generation for test isolation
-  - `aggregator-parsing.bash` - Aggregator response parsing utilities
+The project has a comprehensive BATS test suite with 313+ test scenarios organized into three categories:
+- **Functional Tests** (`tests/functional/`) - 96 tests for commands and workflows
+- **Security Tests** (`tests/security/`) - 68 tests for adversarial scenarios
+- **Edge Case Tests** (`tests/edge-cases/`) - 149+ tests for corner cases and concurrency
+
+**Test Helpers** are located in `tests/helpers/`:
+- `common.bash` - Core test utilities and CLI execution wrappers
+- `assertions.bash` - 50+ assertion functions for validation
+- `id-generation.bash` - Unique ID generation for test isolation
+- `aggregator-parsing.bash` - Aggregator response parsing utilities
+- `validation-functions.bash` - Token and data validation functions
 
 **Key Test Patterns:**
 - **Dual Capture**: Tests capture both stdout and stderr separately using `run_cli()` helper

@@ -90,6 +90,26 @@ assert_exit_code() {
   return 0
 }
 
+# Assert a value is true (string equals "true" or exit code 0)
+# Args:
+#   $1: Value to check (usually "true" or a return code)
+#   $2: Optional message for failure
+assert_true() {
+  local value="${1:?Value required}"
+  local message="${2:-Assertion failed: expected true}"
+
+  if [[ "$value" != "true" ]] && [[ "$value" -ne 0 ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: %s${COLOR_RESET}\n" "$message" >&2
+    printf "  Value: %s\n" "$value" >&2
+    return 1
+  fi
+
+  if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
+    printf "${COLOR_GREEN}✓ %s${COLOR_RESET}\n" "$message" >&2
+  fi
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # Output Assertions
 # -----------------------------------------------------------------------------
