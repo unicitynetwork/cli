@@ -371,34 +371,34 @@ console.log('SAFE');
     local sql_injection="'; DROP TABLE tokens;--"
     # Use double quotes for the entire command to allow variable expansion
     # The -r parameter will receive the value as-is
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${sql_injection}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${sql_injection}\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 2: XSS attempt
     local xss_attempt="<script>alert(1)</script>"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${xss_attempt}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${xss_attempt}\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 3: Null bytes
     local null_bytes="DIRECT://\x00\x00\x00"
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"${null_bytes}\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"${null_bytes}\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 4: Empty address
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 5: Invalid format (no DIRECT:// prefix)
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"invalidaddress\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"invalidaddress\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 
     # Test 6: DIRECT:// with non-hex characters
-    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \ --local"DIRECT://zzzzgggg\" -o /dev/null"
+    run_cli_with_secret "${ALICE_SECRET}" "send-token -f ${token} -r \"DIRECT://zzzzgggg\" --local -o /dev/null"
     assert_failure
     assert_output_contains "invalid address format"
 

@@ -109,7 +109,7 @@ teardown() {
 
     # Create C4 token (Alice -> Bob transfer)
     local alice_token="${TEST_TEMP_DIR}/alice-c4-gensig.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"owner\":\"Alice\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"owner\":\"Alice\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -172,7 +172,7 @@ teardown() {
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-state.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"data\":\"original\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"data\":\"original\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -229,7 +229,7 @@ teardown() {
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-hash.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"sensitive\":\"data\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"sensitive\":\"data\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -295,7 +295,7 @@ teardown() {
 
     # Create C4 token
     local alice_token="${TEST_TEMP_DIR}/alice-c4-multi.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"test\":\"value\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"test\":\"value\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 
@@ -365,7 +365,7 @@ teardown() {
 
     # Create and transfer to Bob (making C4 token)
     local alice_token="${TEST_TEMP_DIR}/alice-c4-xfer.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"from\":\"Alice\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"from\":\"Alice\"}' --local -o ${alice_token}"
     assert_success
     log_info "Alice created token"
 

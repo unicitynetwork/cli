@@ -217,7 +217,7 @@ teardown() {
 
     # Step 1: Create valid transfer with state data
     local alice_token="${TEST_TEMP_DIR}/alice-token.txf"
-    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\ --local"test\":\"original\"}' -o ${alice_token}"
+    run_cli_with_secret "${ALICE_SECRET}" "mint-token --preset nft -d '{\"test\":\"original\"}' --local -o ${alice_token}"
     assert_success
 
     run_cli_with_secret "${BOB_SECRET}" "gen-address --preset nft"
