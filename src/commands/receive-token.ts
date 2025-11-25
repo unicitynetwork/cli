@@ -462,6 +462,10 @@ export function receiveTokenCommand(program: Command): void {
         // HANDLE ONLINE SCENARIOS
         // ========================================
 
+        // Declare variables to be shared between NEEDS_RESOLUTION and ONLINE_COMPLETE
+        let signingService: SigningService | undefined;
+        let recipientPredicate: UnmaskedPredicate | MaskedPredicate | undefined;
+
         if (scenario === 'NEEDS_RESOLUTION') {
           console.error('\n=== Processing Uncommitted Transaction ===');
 
@@ -526,7 +530,7 @@ export function receiveTokenCommand(program: Command): void {
               // Get recipient secret ONLY for address verification
               console.error('Getting recipient secret for address verification...');
               const secret = await getSecret(options.unsafeSecret);
-              const signingService = await SigningService.createFromSecret(secret);
+              signingService = await SigningService.createFromSecret(secret);
               console.error(`  ✓ Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
 
               // Parse token to get ID and type for predicate creation
@@ -540,7 +544,6 @@ export function receiveTokenCommand(program: Command): void {
 
               // Create recipient predicate to verify address
               console.error('Verifying recipient address...');
-              let recipientPredicate;
               if (options.nonce) {
                 const nonceBytes = HexConverter.decode(options.nonce);
                 recipientPredicate = await MaskedPredicate.create(
@@ -682,41 +685,50 @@ export function receiveTokenCommand(program: Command): void {
             }
             console.error();
 
-            // STEP 4: Get recipient's secret
-            console.error('Step 3: Getting recipient secret...');
-            const secret = await getSecret(options.unsafeSecret);
-            const signingService = await SigningService.createFromSecret(secret);
-            console.error(`  ✓ Signing service created`);
-            console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
-
-            // STEP 5: Create recipient predicate using transfer salt
-            console.error('Step 4: Creating recipient predicate...');
-
-            let recipientPredicate;
-            if (options.nonce) {
-              // Masked predicate (one-time address)
-              const nonceBytes = HexConverter.decode(options.nonce);
-              recipientPredicate = await MaskedPredicate.create(
-                token.id,
-                token.type,
-                signingService,
-                HashAlgorithm.SHA256,
-                nonceBytes
-              );
-              console.error('  Using MASKED predicate (one-time address)');
+            // STEP 4: Get recipient's secret (skip if already obtained in NEEDS_RESOLUTION)
+            if (!signingService) {
+              console.error('Step 3: Getting recipient secret...');
+              const secret = await getSecret(options.unsafeSecret);
+              signingService = await SigningService.createFromSecret(secret);
+              console.error(`  ✓ Signing service created`);
+              console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
             } else {
-              // Unmasked predicate (reusable address)
-              recipientPredicate = await UnmaskedPredicate.create(
-                token.id,
-                token.type,
-                signingService,
-                HashAlgorithm.SHA256,
-                transferDetails.salt
-              );
-              console.error('  Using UNMASKED predicate (reusable address)');
+              console.error('Step 3: Using recipient secret from previous step...');
+              console.error(`  ✓ Signing service already created\n`);
             }
 
-            console.error('  ✓ Predicate created\n');
+            // STEP 5: Create recipient predicate using transfer salt (skip if already created)
+            if (!recipientPredicate) {
+              console.error('Step 4: Creating recipient predicate...');
+
+              if (options.nonce) {
+                // Masked predicate (one-time address)
+                const nonceBytes = HexConverter.decode(options.nonce);
+                recipientPredicate = await MaskedPredicate.create(
+                  token.id,
+                  token.type,
+                  signingService,
+                  HashAlgorithm.SHA256,
+                  nonceBytes
+                );
+                console.error('  Using MASKED predicate (one-time address)');
+              } else {
+                // Unmasked predicate (reusable address)
+                recipientPredicate = await UnmaskedPredicate.create(
+                  token.id,
+                  token.type,
+                  signingService,
+                  HashAlgorithm.SHA256,
+                  transferDetails.salt
+                );
+                console.error('  Using UNMASKED predicate (reusable address)');
+              }
+
+              console.error('  ✓ Predicate created\n');
+            } else {
+              console.error('Step 4: Using recipient predicate from previous step...');
+              console.error('  ✓ Predicate already created\n');
+            }
 
             // STEP 6: Verify recipient address matches
             console.error('Step 5: Verifying recipient address...');
