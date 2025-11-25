@@ -664,15 +664,15 @@ get_transaction_count() {
   echo "$tx_count"
 }
 
-# Check if token has offline transfer section
+# Check if token has uncommitted transaction (offline transfer)
 # Args:
 #   $1: Token file path
-# Returns: 0 if has offline transfer, 1 if not
+# Returns: 0 if has uncommitted transaction, 1 if not
 has_offline_transfer() {
   local token_file="${1:?Token file required}"
-  local has_section
-  has_section=$(jq 'has("offlineTransfer")' "$token_file" 2>/dev/null)
-  [[ "$has_section" == "true" ]]
+  local has_uncommitted
+  has_uncommitted=$(jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$token_file" 2>/dev/null)
+  [[ "$has_uncommitted" == "true" ]]
 }
 
 # Check if token is NFT (no coinData or empty coinData)

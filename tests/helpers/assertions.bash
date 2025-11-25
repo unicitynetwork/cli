@@ -741,12 +741,17 @@ assert_valid_token() {
 assert_has_offline_transfer() {
   local file="${1:?Token file required}"
 
-  assert_json_field_exists "$file" ".offlineTransfer" || return 1
-  assert_json_field_exists "$file" ".offlineTransfer.sender" || return 1
-  assert_json_field_exists "$file" ".offlineTransfer.recipient" || return 1
+  # Check for uncommitted transaction in transactions array
+  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+
+  if [[ "$has_uncommitted" != "true" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Token does not have uncommitted transaction${COLOR_RESET}\n" >&2
+    printf "  Expected: transactions[] with missing inclusionProof.authenticator\n" >&2
+    return 1
+  fi
 
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ Token has offline transfer${COLOR_RESET}\n" >&2
+    printf "${COLOR_GREEN}✓ Token has offline transfer (uncommitted transaction)${COLOR_RESET}\n" >&2
   fi
   return 0
 }
@@ -757,9 +762,13 @@ assert_has_offline_transfer() {
 assert_no_offline_transfer() {
   local file="${1:?Token file required}"
 
-  if ~/.local/bin/jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Assertion Failed: Token should not have offline transfer${COLOR_RESET}\n" >&2
+  # Check for uncommitted transactions
+  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+
+  if [[ "$has_uncommitted" == "true" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Token should not have uncommitted transaction${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
+    printf "  File has transactions without inclusionProof.authenticator\n" >&2
     return 1
   fi
 
@@ -1310,34 +1319,26 @@ assert_token_chain_valid() {
 #   assert_offline_transfer_valid "$token_file"
 assert_offline_transfer_valid() {
   local token_file="${1:?Token file required}"
-  
-  # Check if token has offline transfer
-  if ! ~/.local/bin/jq -e '.offlineTransfer' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Token does not have offline transfer${COLOR_RESET}\n" >&2
+
+  # Check if token has uncommitted transaction
+  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$token_file" 2>/dev/null)
+
+  if [[ "$has_uncommitted" != "true" ]]; then
+    printf "${COLOR_RED}✗ Token does not have uncommitted transaction (offline transfer)${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
+    printf "  Expected: transactions[] with missing inclusionProof.authenticator\n" >&2
     return 1
   fi
-  
-  # Check required offline transfer fields
-  local required_fields=(
-    ".offlineTransfer.sender"
-    ".offlineTransfer.recipient"
-  )
-  
-  for field in "${required_fields[@]}"; do
-    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ Missing offline transfer field: %s${COLOR_RESET}\n" "$field" >&2
-      printf "  File: %s\n" "$token_file" >&2
-      return 1
-    fi
-  done
-  
-  # Validate recipient address format (DIRECT:// or hex string)
-  local recipient
-  recipient=$(~/.local/bin/jq -r '.offlineTransfer.recipient' "$token_file" 2>/dev/null)
+
+  # Get the last transaction (should be uncommitted)
+  local tx_data=$(~/.local/bin/jq '.transactions[-1]' "$token_file" 2>/dev/null)
+
+  # Check required transaction fields
+  local recipient=$(echo "$tx_data" | ~/.local/bin/jq -r '.data.recipient' 2>/dev/null)
+  local has_commitment=$(echo "$tx_data" | ~/.local/bin/jq 'has("commitment")' 2>/dev/null)
 
   if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
-    printf "${COLOR_RED}✗ Empty recipient address${COLOR_RESET}\n" >&2
+    printf "${COLOR_RED}✗ Missing recipient address in uncommitted transaction${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
@@ -1348,11 +1349,18 @@ assert_offline_transfer_valid() {
     printf "  Address: %s\n" "$recipient" >&2
     return 1
   fi
-  
+
+  # Check for sender's commitment (required for offline transfers)
+  if [[ "$has_commitment" != "true" ]]; then
+    printf "${COLOR_RED}✗ Missing sender's commitment in uncommitted transaction${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$token_file" >&2
+    return 1
+  fi
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Offline transfer structure valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1903,28 +1911,35 @@ assert_offline_transfer_structure_valid() {
   # First, validate it's JSON
   assert_valid_json "$file" || return 1
 
-  # Check required transfer fields
-  if ! jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Transfer structure invalid: Missing .offlineTransfer field${COLOR_RESET}\n" >&2
+  # Check for uncommitted transaction
+  local has_uncommitted=$(jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+
+  if [[ "$has_uncommitted" != "true" ]]; then
+    printf "${COLOR_RED}✗ Transfer structure invalid: No uncommitted transaction found${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  This is not a valid offline transfer file\n" >&2
+    printf "  Expected: transactions[] with missing inclusionProof.authenticator\n" >&2
     return 1
   fi
 
-  # Check transfer subfields
-  local required_transfer_fields=(
-    ".offlineTransfer.transaction"
-    ".offlineTransfer.recipient"
-  )
+  # Get the last transaction (should be uncommitted)
+  local tx_data=$(jq '.transactions[-1]' "$file" 2>/dev/null)
 
-  for field in "${required_transfer_fields[@]}"; do
-    if ! jq -e "$field" "$file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ Transfer structure invalid: Missing required field${COLOR_RESET}\n" >&2
-      printf "  File: %s\n" "$file" >&2
-      printf "  Missing field: %s\n" "$field" >&2
-      return 1
-    fi
-  done
+  # Check required transaction fields
+  local recipient=$(echo "$tx_data" | jq -r '.data.recipient' 2>/dev/null)
+  local has_commitment=$(echo "$tx_data" | jq 'has("commitment")' 2>/dev/null)
+
+  if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
+    printf "${COLOR_RED}✗ Transfer structure invalid: Missing recipient address${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
+
+  if [[ "$has_commitment" != "true" ]]; then
+    printf "${COLOR_RED}✗ Transfer structure invalid: Missing sender's commitment${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
+    return 1
+  fi
 
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Offline transfer structure is valid${COLOR_RESET}\n" >&2
@@ -2061,8 +2076,8 @@ assert_token_structure_valid() {
   return 0
 }
 
-# Validate offline transfer structure
-# CRITICAL: Offline transfer file must have required fields
+# Validate offline transfer structure (uncommitted transaction)
+# CRITICAL: Offline transfer file must have uncommitted transaction
 # Args:
 #   $1: Transfer file path
 # Returns: 0 if valid transfer structure, 1 otherwise
@@ -2072,26 +2087,34 @@ assert_offline_transfer_structure_valid() {
   # First validate JSON
   assert_valid_json "$file" "Transfer file" || return 1
 
-  # Must have offlineTransfer field
-  if ! jq -e '.offlineTransfer' "$file" >/dev/null 2>&1; then
+  # Check for uncommitted transaction
+  local has_uncommitted=$(jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+
+  if [[ "$has_uncommitted" != "true" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: File is not a valid offline transfer${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
-    printf "  Reason: Missing .offlineTransfer field\n" >&2
+    printf "  Reason: No uncommitted transaction found\n" >&2
+    printf "  Expected: transactions[] with missing inclusionProof.authenticator\n" >&2
     return 1
   fi
 
-  # Validate offlineTransfer structure
-  assert_json_field_exists "$file" ".offlineTransfer.transaction" || return 1
-  assert_json_field_exists "$file" ".offlineTransfer.transaction.type" || return 1
-
-  local tx_type
-  tx_type=$(jq -r '.offlineTransfer.transaction.type' "$file")
+  # Get the last transaction (should be uncommitted)
+  local tx_data=$(jq '.transactions[-1]' "$file" 2>/dev/null)
+  local tx_type=$(echo "$tx_data" | jq -r '.type' 2>/dev/null)
 
   if [[ "$tx_type" != "transfer" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Invalid transaction type in offline transfer${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  Expected type: transfer\n" >&2
     printf "  Actual type: %s\n" "$tx_type" >&2
+    return 1
+  fi
+
+  # Check for sender's commitment
+  local has_commitment=$(echo "$tx_data" | jq 'has("commitment")' 2>/dev/null)
+  if [[ "$has_commitment" != "true" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Missing sender's commitment in offline transfer${COLOR_RESET}\n" >&2
+    printf "  File: %s\n" "$file" >&2
     return 1
   fi
 
