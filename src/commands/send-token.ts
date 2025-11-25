@@ -9,7 +9,7 @@ import { AddressFactory } from '@unicitylabs/state-transition-sdk/lib/address/Ad
 import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConverter.js';
 import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js';
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
-import { IExtendedTxfToken, IOfflineTransferPackage, TokenStatus } from '../types/extended-txf.js';
+import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
@@ -169,7 +169,7 @@ async function verifyOwnership(
 export function sendTokenCommand(program: Command): void {
   program
     .command('send-token')
-    .description('Send a token to a recipient address (create offline transfer package or submit immediately)')
+    .description('Send a token to a recipient address (submit to network or create offline transaction)')
     .option('-f, --file <file>', 'Token file (TXF) to send (required)')
     .option('-r, --recipient <address>', 'Recipient address (required)')
     .option('-m, --message <message>', 'Optional transfer message')
@@ -177,7 +177,7 @@ export function sendTokenCommand(program: Command): void {
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
-    .option('--submit-now', 'Submit to network immediately (Pattern B) instead of creating offline package (Pattern A)')
+    .option('--offline', 'Create uncommitted transaction WITHOUT submitting to aggregator (for ultra-fast chains)')
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
@@ -232,8 +232,8 @@ export function sendTokenCommand(program: Command): void {
           endpoint = 'https://gateway.unicity.network';
         }
 
-        const isSubmitNow = options.submitNow || false;
-        const patternName = isSubmitNow ? 'Pattern B (Submit Now)' : 'Pattern A (Offline Package)';
+        const isOffline = options.offline || false;
+        const patternName = isOffline ? 'Offline Mode (Uncommitted)' : 'Online Mode (Submit to Network)';
 
         console.error(`=== Send Token - ${patternName} ===\n`);
 
@@ -245,7 +245,9 @@ export function sendTokenCommand(program: Command): void {
 
         // STEP 1.5: Validate token structure BEFORE parsing with SDK
         console.error('Step 1.5: Validating token structure...');
-        const jsonValidation = validateTokenProofsJson(tokenJson);
+        const jsonValidation = validateTokenProofsJson(tokenJson, {
+          allowUncommitted: true  // Allow tokens with uncommitted transactions (for transaction chains)
+        });
 
         if (!jsonValidation.valid) {
           console.error('\n❌ Token structure validation failed:');
@@ -370,9 +372,9 @@ export function sendTokenCommand(program: Command): void {
 
         let extendedTxf: IExtendedTxfToken;
 
-        if (isSubmitNow) {
-          // PATTERN B: Submit to network immediately
-          console.error('=== Pattern B: Submitting to Network ===\n');
+        if (!isOffline) {
+          // ONLINE MODE: Submit to network immediately
+          console.error('=== Online Mode: Submitting to Network ===\n');
 
           // Create clients
           const aggregatorClient = new AggregatorClient(endpoint);
@@ -492,46 +494,50 @@ export function sendTokenCommand(program: Command): void {
           console.error(`  ✓ Extended TXF created with TRANSFERRED status\n`);
 
         } else {
-          // PATTERN A: Create offline transfer package
-          console.error('=== Pattern A: Creating Offline Transfer Package ===\n');
+          // OFFLINE MODE: Create uncommitted transaction (no network submission)
+          console.error('=== Offline Mode: Creating Uncommitted Transaction ===\n');
 
-          console.error('Step 7: Building offline transfer package...');
+          console.error('Step 7: Creating uncommitted transfer transaction...');
 
-          // Get sender address from token genesis data (current owner)
-          const senderAddress = token.genesis.data.recipient.address;
+          // CRITICAL: Store the sender's signed commitment
+          // The commitment signature proves the sender authorized this transfer
+          // The recipient cannot recreate this signature (doesn't have sender's private key)
+          const commitmentJson = await transferCommitment.toJSON();
 
-          // Create offline transfer package
-          const offlinePackage: IOfflineTransferPackage = {
-            version: "1.1",
-            type: "offline_transfer",
-            sender: {
-              address: senderAddress,
-              publicKey: Buffer.from(signingService.publicKey).toString('base64')
+          // Create transaction data structure WITHOUT inclusion proof
+          // BUT including the pre-signed commitment for later submission
+          const uncommittedTx = {
+            type: 'transfer',
+            data: {
+              sourceState: tokenJson.state,
+              recipient: recipientAddress.address,
+              salt: HexConverter.encode(salt),
+              recipientDataHash: recipientDataHash?.toJSON() || null,
+              message: options.message || null
             },
-            recipient: recipientAddress.address,
-            commitment: {
-              salt: Buffer.from(salt).toString('base64'),
-              timestamp: Date.now()
-            },
-            network: network,
-            commitmentData: JSON.stringify(transferCommitment.toJSON()),
-            message: options.message || undefined
+            // Store the sender's signed commitment so recipient can submit it
+            commitment: commitmentJson
+            // NO inclusionProof - this marks it as uncommitted
           };
 
-          console.error(`  ✓ Offline package created\n`);
+          console.error(`  ✓ Uncommitted transaction created (no proof)\n`);
+          console.error(`  ✓ Sender's commitment signature stored\n`);
 
-          // Create extended TXF with offline package
-          console.error('Step 8: Building extended TXF with offline package...');
+          // Create extended TXF with uncommitted transaction
+          console.error('Step 8: Building extended TXF with uncommitted transaction...');
           extendedTxf = {
             version: tokenJson.version || "2.0",
-            state: tokenJson.state,
+            state: tokenJson.state,  // State UNCHANGED (still belongs to sender)
             genesis: tokenJson.genesis,
-            transactions: tokenJson.transactions || [],
+            transactions: [
+              ...(tokenJson.transactions || []),
+              uncommittedTx  // Uncommitted transaction added to array
+            ],
             nametags: tokenJson.nametags || [],
-            offlineTransfer: offlinePackage,
             status: TokenStatus.PENDING
           };
-          console.error(`  ✓ Extended TXF created with PENDING status\n`);
+          console.error(`  ✓ Extended TXF created with PENDING status (uncommitted transaction)\n`);
+          console.error(`  ℹ️  Transaction can be submitted later by recipient using receive-token\n`);
         }
 
         // STEP FINAL: Sanitize and output
@@ -552,7 +558,7 @@ export function sendTokenCommand(program: Command): void {
           const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
           const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
           const timestamp = Date.now();
-          const pattern = isSubmitNow ? 'sent' : 'transfer';
+          const pattern = isOffline ? 'offline' : 'sent';
           const recipientPrefix = options.recipient.replace(/^[A-Z]+:\/\//, '').substring(0, 10);
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${pattern}_${recipientPrefix}.txf`;
         }
@@ -579,10 +585,11 @@ export function sendTokenCommand(program: Command): void {
         console.error(`Recipient: ${recipientAddress.address}`);
         console.error(`Status: ${sanitizedTxf.status}`);
 
-        if (!isSubmitNow) {
-          console.error('\n💡 Offline transfer package created!');
+        if (isOffline) {
+          console.error('\n💡 Offline transfer created (uncommitted transaction)');
           console.error('   Send this file to the recipient to complete the transfer.');
-          console.error('   Recipient can submit using: npm run complete-transfer -- -f <file>');
+          console.error('   Recipient must use: npm run receive-token -- -f <file>');
+          console.error('   Transaction will be submitted when recipient receives it.');
         } else {
           console.error('\n✅ Transfer submitted and confirmed on network!');
           console.error('   Token has been transferred to recipient.');

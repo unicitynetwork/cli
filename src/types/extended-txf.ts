@@ -1,6 +1,6 @@
 /**
- * Extended TXF v2.0 format that supports offline token transfers
- * Compatible with Android wallet offline transfer pattern
+ * Extended TXF v2.0 format with transaction-based transfer tracking
+ * All transfers stored in transactions[] array (committed or uncommitted)
  */
 
 export interface IExtendedTxfToken {
@@ -8,36 +8,16 @@ export interface IExtendedTxfToken {
   version: string;
   state: any;  // ITokenStateJson
   genesis: any;  // IMintTransactionJson
-  transactions: any[];  // ITransferTransactionJson[]
+  transactions: any[];  // ITransferTransactionJson[] - May include uncommitted transactions (no inclusionProof)
   nametags: any[];  // ITokenJson[]
-
-  // Extensions for offline transfers (optional)
-  offlineTransfer?: IOfflineTransferPackage;
 
   // Status tracking
   status?: TokenStatus;
-}
 
-export interface IOfflineTransferPackage {
-  version: string;  // "1.1"
-  type: "offline_transfer";
-  sender: {
-    address: string;
-    publicKey: string;  // Base64 encoded
+  // Genesis data integrity hash (optional)
+  _integrity?: {
+    genesisDataJSONHash?: string;
   };
-  recipient: string;
-  commitment: {
-    salt: string;  // Base64 encoded
-    timestamp: number;
-    amount?: string;  // For fungible tokens (BigInt as string)
-  };
-  network: "test" | "production";
-
-  // SDK commitment data for network submission
-  commitmentData?: string;  // Serialized TransferCommitment JSON
-
-  // Optional transfer message
-  message?: string;
 }
 
 export enum TokenStatus {
@@ -53,5 +33,4 @@ export interface IValidationResult {
   isValid: boolean;
   errors?: string[];
   warnings?: string[];
-  hasOfflineTransfer: boolean;
 }

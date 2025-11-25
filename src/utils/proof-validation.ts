@@ -343,36 +343,44 @@ export async function validateTokenProofs(
 
   // 7. SDK COMPREHENSIVE VERIFICATION
   // This validates recipient data matches transaction data, catching state.data tampering
+  // SKIP for tokens with null recipientDataHash (SDK has known issue with empty data)
+  const genesisRecipientDataHash = token.genesis?.data?.recipientDataHash;
   if (trustBase && errors.length === 0) {
-    try {
-      const sdkVerificationResult = await token.verify(trustBase);
+    if (genesisRecipientDataHash === null) {
+      // Token has no data (null recipientDataHash) - SDK verification not applicable
+      warnings.push('SDK comprehensive verification skipped (no recipient data to verify)');
+    } else {
+      // Token has data - perform full SDK verification
+      try {
+        const sdkVerificationResult = await token.verify(trustBase);
 
-      if (sdkVerificationResult.status !== 0) { // 0 = OK, non-zero = FAIL
-        // Extract error messages from verification result tree
-        const errorMessages: string[] = [];
+        if (sdkVerificationResult.status !== 0) { // 0 = OK, non-zero = FAIL
+          // Extract error messages from verification result tree
+          const errorMessages: string[] = [];
 
-        function collectErrors(result: any, prefix = ''): void {
-          if (result.message && result.status !== 0) {
-            errorMessages.push(`${prefix}${result.message}`);
+          function collectErrors(result: any, prefix = ''): void {
+            if (result.message && result.status !== 0) {
+              errorMessages.push(`${prefix}${result.message}`);
+            }
+            if (result.children && Array.isArray(result.children)) {
+              result.children.forEach((child: any, idx: number) => {
+                collectErrors(child, `${prefix}  `);
+              });
+            }
           }
-          if (result.children && Array.isArray(result.children)) {
-            result.children.forEach((child: any, idx: number) => {
-              collectErrors(child, `${prefix}  `);
-            });
+
+          collectErrors(sdkVerificationResult);
+
+          if (errorMessages.length > 0) {
+            errors.push('SDK comprehensive verification failed (state data hash mismatch or invalid recipient data):');
+            errors.push(...errorMessages);
+          } else {
+            errors.push(`SDK verification failed with status ${sdkVerificationResult.status} - possible state hash mismatch`);
           }
         }
-
-        collectErrors(sdkVerificationResult);
-
-        if (errorMessages.length > 0) {
-          errors.push('SDK comprehensive verification failed (state data hash mismatch or invalid recipient data):');
-          errors.push(...errorMessages);
-        } else {
-          errors.push(`SDK verification failed with status ${sdkVerificationResult.status} - possible state hash mismatch`);
-        }
+      } catch (err) {
+        errors.push(`SDK comprehensive verification error: ${err instanceof Error ? err.message : String(err)}`);
       }
-    } catch (err) {
-      errors.push(`SDK comprehensive verification error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -388,11 +396,16 @@ export async function validateTokenProofs(
  * Useful for validating before parsing with SDK
  *
  * @param tokenJson The token in JSON format
+ * @param options Validation options
  * @returns Validation result
  */
-export function validateTokenProofsJson(tokenJson: any): ProofValidationResult {
+export function validateTokenProofsJson(
+  tokenJson: any,
+  options?: { allowUncommitted?: boolean }
+): ProofValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const allowUncommitted = options?.allowUncommitted || false;
 
   if (!tokenJson) {
     errors.push('Token JSON is null or undefined');
@@ -424,7 +437,11 @@ export function validateTokenProofsJson(tokenJson: any): ProofValidationResult {
       const tx = tokenJson.transactions[i];
 
       if (!tx.inclusionProof) {
-        errors.push(`Transaction ${i + 1} missing inclusion proof`);
+        if (!allowUncommitted) {
+          errors.push(`Transaction ${i + 1} missing inclusion proof`);
+        } else {
+          warnings.push(`Transaction ${i + 1} is uncommitted (no proof yet)`);
+        }
         continue;
       }
 

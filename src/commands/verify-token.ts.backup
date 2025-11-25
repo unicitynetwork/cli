@@ -7,8 +7,6 @@ import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/Aggr
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { checkOwnershipStatus } from '../utils/ownership-verification.js';
-import { createPoWClient } from '../utils/pow-client.js';
-import { CoinOriginMintReason } from '../types/CoinOriginMintReason.js';
 import * as fs from 'fs';
 
 /**
@@ -196,107 +194,6 @@ function displayGenesis(genesis: any): void {
   }
 }
 
-/**
- * Display and verify UNCT liquidity in token
- */
-async function displayUNCTLiquidity(genesis: any, options: any): Promise<void> {
-  // Check if token has UNCT liquidity
-  const hasCoinData = genesis?.data?.coinData &&
-                      Array.isArray(genesis.data.coinData) &&
-                      genesis.data.coinData.length > 0;
-
-  const hasCoinOriginReason = genesis?.data?.reason?.type === 'COIN_ORIGIN';
-
-  if (!hasCoinData || !hasCoinOriginReason) {
-    return; // No UNCT liquidity to display
-  }
-
-  console.log('\n=== UNCT Liquidity ===');
-
-  // Calculate total UNCT amount
-  let totalAmount = BigInt(0);
-  const coins = genesis.data.coinData;
-
-  for (const coin of coins) {
-    const [coinId, amount] = coin;
-    totalAmount += BigInt(amount);
-  }
-
-  // Display formatted amount (amount / 10^18)
-  const unctAmount = Number(totalAmount) / 1e18;
-  console.log(`Coins: ${coins.length} coin(s)`);
-  console.log(`  • ${unctAmount.toFixed(1)} UNCT`);
-
-  // Extract coin origin proof data
-  const blockHeight = genesis.data.reason?.proof?.blockHeight;
-  const tokenId = genesis.data.tokenId;
-
-  if (blockHeight === undefined || !tokenId) {
-    console.log('\n⚠️  Coin origin proof incomplete (missing blockHeight or tokenId)');
-    return;
-  }
-
-  console.log('\nCoin Origin Verification:');
-  console.log(`  Block Height: ${blockHeight}`);
-
-  // Check if POW endpoint is provided
-  const powEndpointProvided = options.unctUrl || options.localUnct;
-
-  if (!powEndpointProvided) {
-    console.log('\n  ⚠️  POW verification skipped (no endpoint provided)');
-    console.log('  To verify coin origin, run with:');
-    console.log('    --unct-url <endpoint> or --local-unct');
-    return;
-  }
-
-  // Attempt POW verification
-  try {
-    console.log('\n  Verifying with POW blockchain...');
-
-    const powClient = createPoWClient({
-      endpoint: options.unctUrl,
-      useLocal: options.localUnct
-    });
-
-    // Check POW node connectivity
-    const connected = await powClient.checkConnection();
-    if (!connected) {
-      const endpoint = options.localUnct ? 'http://localhost:8332' : options.unctUrl;
-      console.log(`  ⚠️  Cannot connect to POW node at ${endpoint}`);
-      console.log('  Coin origin not verified');
-      return;
-    }
-
-    // Perform cryptographic verification
-    const verification = await powClient.verifyTokenIdInBlock(tokenId, blockHeight);
-
-    if (!verification.valid) {
-      console.log('  ⚠️  Coin origin verification FAILED');
-      console.log(`  ${verification.error}`);
-      return;
-    }
-
-    // Verification passed
-    console.log('  ✓ Coin origin verified');
-    console.log('\n  Block Details:');
-    if (verification.blockHash) {
-      console.log(`    Block Hash: ${verification.blockHash}`);
-    }
-    if (verification.merkleRoot) {
-      console.log(`    Merkle Root: ${verification.merkleRoot}`);
-    }
-    if (verification.blockTimestamp) {
-      const date = new Date(verification.blockTimestamp * 1000);
-      console.log(`    Block Timestamp: ${date.toISOString()}`);
-    }
-    console.log(`    Target: SHA256(tokenId) matches witness`);
-
-  } catch (error) {
-    console.log('  ⚠️  POW verification error:');
-    console.log(`  ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 export function verifyTokenCommand(program: Command): void {
   program
     .command('verify-token')
@@ -311,8 +208,6 @@ Exit codes:
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--skip-network', 'Skip network ownership verification')
     .option('--diagnostic', 'Display verification info without failing (always exit 0)')
-    .option('--unct-url <url>', 'POW blockchain RPC endpoint URL for UNCT verification')
-    .option('--local-unct', 'Use local POW blockchain (http://localhost:8332) for UNCT verification')
     .action(async (options) => {
       // Track exit code throughout execution
       let exitCode = 0;
@@ -597,9 +492,6 @@ Exit codes:
 
         // Display genesis transaction
         displayGenesis(tokenJson.genesis);
-
-        // Display UNCT liquidity if present
-        await displayUNCTLiquidity(tokenJson.genesis, options);
 
         // Display current state
         console.log('\n=== Current State ===');

@@ -18,6 +18,7 @@ import { checkOwnershipStatus, extractOwnerInfo } from '../utils/ownership-verif
 import { validateInclusionProof, validateTokenProofsJson, validateTokenProofs } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
+import { detectScenario, extractTransferDetails, resolveTokenProofs } from '../utils/state-resolution.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -114,12 +115,13 @@ async function waitInclusionProof(
 export function receiveTokenCommand(program: Command): void {
   program
     .command('receive-token')
-    .description('Receive a token sent via offline transfer package')
-    .option('-f, --file <file>', 'Extended TXF file with offline transfer package (required)')
+    .description('Receive a token transfer (verify cryptographically and update state)')
+    .option('-f, --file <file>', 'Extended TXF file with transfer transaction (required)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('-n, --nonce <nonce>', 'Nonce for masked address (required if receiving at masked address)')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
+    .option('--offline', 'Offline mode: verify locally without aggregator (no proof resolution or submission)')
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
@@ -162,7 +164,9 @@ export function receiveTokenCommand(program: Command): void {
           endpoint = 'https://gateway.unicity.network';
         }
 
-        console.error('=== Receive Token (Offline Transfer) ===\n');
+        const isOfflineMode = options.offline || false;
+
+        console.error(`=== Receive Token${isOfflineMode ? ' (Offline Mode)' : ''} ===\n`);
 
         // STEP 1: Load and validate extended TXF file
         console.error('Step 1: Loading extended TXF file...');
@@ -170,9 +174,12 @@ export function receiveTokenCommand(program: Command): void {
         const extendedTxf: IExtendedTxfToken = JSON.parse(fileContent);
         console.error(`  ✓ File loaded: ${options.file}\n`);
 
-        // STEP 2: Validate offline transfer package
-        console.error('Step 2: Validating offline transfer package...');
-        const validation = await validateExtendedTxf(extendedTxf);
+        // STEP 2: Validate transfer package
+        console.error('Step 2: Validating transfer package...');
+        // Allow uncommitted transactions in both online and offline modes
+        // Online mode: Will submit to aggregator to get proof
+        // Offline mode: Will verify locally without submission
+        const validation = await validateExtendedTxf(extendedTxf, { allowUncommitted: true });
 
         if (!validation.isValid) {
           console.error('\n❌ Validation failed:');
@@ -180,11 +187,10 @@ export function receiveTokenCommand(program: Command): void {
           process.exit(1);
         }
 
-        if (!validation.hasOfflineTransfer) {
-          console.error('\n❌ Error: No offline transfer package found in TXF file');
-          console.error('This command is for receiving offline transfers.');
-          console.error('Use "send-token" to create offline transfer packages.');
-          process.exit(1);
+        // Detect transfer scenario (only for online mode)
+        const scenario = !isOfflineMode ? detectScenario(extendedTxf) : null;
+        if (scenario) {
+          console.error(`  Transfer scenario detected: ${scenario}`);
         }
 
         if (validation.warnings && validation.warnings.length > 0) {
@@ -192,11 +198,12 @@ export function receiveTokenCommand(program: Command): void {
           validation.warnings.forEach(warn => console.error(`    - ${warn}`));
         }
 
-        console.error('  ✓ Offline transfer package validated');
+        console.error('  ✓ Transfer package validated');
 
         // STEP 2.5: Validate token proofs before processing
         console.error('\nStep 2.5: Validating token proofs...');
-        const proofValidation = validateTokenProofsJson(extendedTxf);
+        // Allow uncommitted proofs - they will be resolved in NEEDS_RESOLUTION scenario
+        const proofValidation = validateTokenProofsJson(extendedTxf, { allowUncommitted: true });
 
         if (!proofValidation.valid) {
           console.error('\n❌ Token proof validation failed:');
@@ -213,604 +220,621 @@ export function receiveTokenCommand(program: Command): void {
         console.error('  ✓ Token proofs validated');
 
         // STEP 2.6: CRITICAL SECURITY - Perform cryptographic proof validation
-        // This validates signatures, merkle paths, and state integrity from UNTRUSTED token files
-        console.error('\nStep 2.6: Cryptographic proof verification...');
+        // Skip for tokens with uncommitted transactions (will validate after submission)
+        const hasUncommittedTx = extendedTxf.transactions && extendedTxf.transactions.length > 0 &&
+          extendedTxf.transactions.some(tx => !tx.inclusionProof || !tx.inclusionProof.authenticator);
 
-        try {
-          // Parse token with SDK for cryptographic validation
-          const token = await Token.fromJSON(extendedTxf);
+        if (!hasUncommittedTx) {
+          console.error('\nStep 2.6: Cryptographic proof verification...');
 
-          // Load trust base for verification
-          const trustBase = await getCachedTrustBase({
-            filePath: process.env.TRUSTBASE_PATH,
-            useFallback: false
-          });
+          try {
+            // Parse token with SDK for cryptographic validation
+            const token = await Token.fromJSON(extendedTxf);
 
-          // Perform comprehensive cryptographic validation
-          const cryptoValidation = await validateTokenProofs(token, trustBase);
+            // Load trust base for verification
+            const trustBase = await getCachedTrustBase({
+              filePath: process.env.TRUSTBASE_PATH,
+              useFallback: false
+            });
 
-          if (!cryptoValidation.valid) {
-            console.error('\n❌ Cryptographic proof verification failed:');
-            cryptoValidation.errors.forEach(err => console.error(`  - ${err}`));
-            console.error('\nToken has invalid cryptographic proofs - cannot accept this transfer.');
-            console.error('This could indicate:');
-            console.error('  - Tampered genesis or transaction proofs');
-            console.error('  - Invalid signatures');
-            console.error('  - Corrupted merkle paths');
-            console.error('  - Modified state data');
+            // Perform comprehensive cryptographic validation
+            const cryptoValidation = await validateTokenProofs(token, trustBase);
+
+            if (!cryptoValidation.valid) {
+              console.error('\n❌ Cryptographic proof verification failed:');
+              cryptoValidation.errors.forEach(err => console.error(`  - ${err}`));
+              console.error('\nToken has invalid cryptographic proofs - cannot accept this transfer.');
+              console.error('This could indicate:');
+              console.error('  - Tampered genesis or transaction proofs');
+              console.error('  - Invalid signatures');
+              console.error('  - Corrupted merkle paths');
+              console.error('  - Modified state data');
+              process.exit(1);
+            }
+
+            console.error('  ✓ All cryptographic proofs verified');
+            console.error('  ✓ Genesis proof signature valid');
+            console.error('  ✓ Merkle path verification passed');
+            console.error('  ✓ State integrity confirmed');
+
+            if (cryptoValidation.warnings.length > 0) {
+              console.error('  ⚠ Warnings:');
+              cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+            }
+          } catch (err) {
+            console.error('\n❌ Failed to verify token cryptographically:');
+            console.error(`  ${err instanceof Error ? err.message : String(err)}`);
+            console.error('\nCannot accept transfer with unverifiable token.');
             process.exit(1);
           }
-
-          console.error('  ✓ All cryptographic proofs verified');
-          console.error('  ✓ Genesis proof signature valid');
-          console.error('  ✓ Merkle path verification passed');
-          console.error('  ✓ State integrity confirmed');
-
-          if (cryptoValidation.warnings.length > 0) {
-            console.error('  ⚠ Warnings:');
-            cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
-          }
-        } catch (err) {
-          console.error('\n❌ Failed to verify token cryptographically:');
-          console.error(`  ${err instanceof Error ? err.message : String(err)}`);
-          console.error('\nCannot accept transfer with unverifiable token.');
-          process.exit(1);
-        }
-
-        const offlineTransfer = extendedTxf.offlineTransfer!;
-        console.error(`  Sender: ${offlineTransfer.sender.address}`);
-        console.error(`  Recipient: ${offlineTransfer.recipient}`);
-        console.error(`  Network: ${offlineTransfer.network}`);
-        if (offlineTransfer.message) {
-          console.error(`  Message: "${offlineTransfer.message}"`);
-        }
-        console.error();
-
-        // STEP 3: Get recipient's secret
-        console.error('Step 3: Getting recipient secret...');
-        const secret = await getSecret(options.unsafeSecret);
-        const signingService = await SigningService.createFromSecret(secret);
-        console.error(`  ✓ Signing service created`);
-        console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
-
-        // STEP 4: Parse transfer commitment
-        console.error('Step 4: Parsing transfer commitment...');
-        if (!offlineTransfer.commitmentData) {
-          console.error('\n❌ Error: Missing commitment data in offline transfer package');
-          process.exit(1);
-        }
-
-        const commitmentJson = JSON.parse(offlineTransfer.commitmentData);
-        const transferCommitment = await TransferCommitment.fromJSON(commitmentJson);
-        console.error(`  ✓ Transfer commitment parsed`);
-        console.error(`  Request ID: ${transferCommitment.requestId.toJSON()}\n`);
-
-        // STEP 4.5: Validate state data against recipient data hash (CRITICAL SECURITY)
-        console.error('Step 4.5: Validating state data commitment...');
-        let stateData: Uint8Array | null = null;
-
-        // Access recipientDataHash from commitmentJson (before SDK parsing)
-        const recipientDataHash = commitmentJson.transactionData?.recipientDataHash;
-
-        if (recipientDataHash) {
-          // Recipient data hash is present - state data REQUIRED and MUST match
-          console.error('  ℹ  Sender specified recipient data hash commitment');
-
-          if (!options.stateData) {
-            console.error('\n❌ Error: --state-data is REQUIRED');
-            console.error('The sender committed to a specific state data hash.');
-            console.error('You must provide the exact state data that matches this commitment.\n');
-            console.error('Usage: npm run receive-token -- -f transfer.txf --state-data \'{"your":"data"}\'\n');
-            process.exit(1);
-          }
-
-          // Compute hash of provided state data
-          const providedData = new TextEncoder().encode(options.stateData);
-          // Use SHA256 (same as used by send-token)
-          const hasher = new DataHasher(HashAlgorithm.SHA256);
-          const computedHash = await hasher.update(providedData).digest();
-
-          // CRITICAL: Validate exact hash match
-          // recipientDataHash is just the raw 64-char hex hash string from send-token
-          const expectedHashHex = recipientDataHash;
-          const computedHashHex = HexConverter.encode(computedHash.data);
-
-          if (computedHashHex !== expectedHashHex) {
-            console.error('\n❌ SECURITY ERROR: State data hash mismatch!');
-            console.error('The state data you provided does not match the sender\'s commitment.\n');
-            console.error(`Expected hash: ${expectedHashHex}`);
-            console.error(`Computed hash: ${computedHashHex}\n`);
-            console.error('You must provide the exact state data that matches the hash commitment.');
-            process.exit(1);
-          }
-
-          console.error('  ✓ State data hash validated - matches sender commitment');
-          stateData = providedData;
         } else {
-          // No recipient data hash - state data MUST be null
-          console.error('  ℹ  No recipient data hash commitment');
+          console.error('\nStep 2.6: Cryptographic proof verification...');
+          console.error('  ⚠ Skipping verification for uncommitted transaction');
+          console.error('  ℹ️  Will verify after transaction submission\n');
+        }
 
-          if (options.stateData) {
-            console.error('\n❌ Error: Cannot set --state-data');
-            console.error('The sender did NOT commit to a recipient data hash.');
-            console.error('State data must remain null to prevent creating alternative states.\n');
-            console.error('Remove the --state-data option and try again.');
+        // ========================================
+        // HANDLE OFFLINE MODE
+        // ========================================
+
+        if (isOfflineMode) {
+          console.error('\n=== Offline Mode: Local Verification Only ===');
+          console.error('  ℹ️  No network calls will be made');
+          console.error('  ℹ️  Proofs will not be resolved or submitted');
+          console.error('  ℹ️  Final state will remain PENDING\n');
+
+          try {
+            // Parse token with SDK
+            const token = await Token.fromJSON(extendedTxf);
+
+            // STEP 3: Extract transfer details from last transaction
+            if (!extendedTxf.transactions || extendedTxf.transactions.length === 0) {
+              console.error('\n❌ Error: No transactions found in TXF file');
+              console.error('Cannot receive token without transfer transaction.');
+              process.exit(1);
+            }
+
+            const lastTx = extendedTxf.transactions[extendedTxf.transactions.length - 1];
+            const transferDetails = extractTransferDetails(lastTx);
+
+            console.error(`  Recipient: ${transferDetails.recipient}`);
+            if (transferDetails.message) {
+              console.error(`  Message: "${transferDetails.message}"`);
+            }
+            console.error();
+
+            // STEP 4: Get recipient's secret
+            console.error('Step 3: Getting recipient secret...');
+            const secret = await getSecret(options.unsafeSecret);
+            const signingService = await SigningService.createFromSecret(secret);
+            console.error(`  ✓ Signing service created`);
+            console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+
+            // STEP 5: Create recipient predicate using transfer salt
+            console.error('Step 4: Creating recipient predicate...');
+
+            let recipientPredicate;
+            if (options.nonce) {
+              // Masked predicate (one-time address)
+              const nonceBytes = HexConverter.decode(options.nonce);
+              recipientPredicate = await MaskedPredicate.create(
+                token.id,
+                token.type,
+                signingService,
+                HashAlgorithm.SHA256,
+                nonceBytes
+              );
+              console.error('  Using MASKED predicate (one-time address)');
+            } else {
+              // Unmasked predicate (reusable address)
+              recipientPredicate = await UnmaskedPredicate.create(
+                token.id,
+                token.type,
+                signingService,
+                HashAlgorithm.SHA256,
+                transferDetails.salt
+              );
+              console.error('  Using UNMASKED predicate (reusable address)');
+            }
+
+            console.error('  ✓ Predicate created\n');
+
+            // STEP 6: Verify recipient address matches
+            console.error('Step 5: Verifying recipient address...');
+            const predicateRef = await recipientPredicate.getReference();
+            const actualAddress = await predicateRef.toAddress();
+
+            console.error(`  Expected: ${transferDetails.recipient}`);
+            console.error(`  Actual:   ${actualAddress.address}`);
+
+            if (actualAddress.address !== transferDetails.recipient) {
+              console.error('\n❌ Error: Address mismatch!');
+              console.error('Your secret does not match the intended recipient.');
+              console.error('');
+              console.error('Possible causes:');
+              console.error('  - Wrong secret provided');
+              console.error('  - Wrong nonce (if using masked predicate)');
+              console.error('  - Transfer intended for different recipient');
+              process.exit(1);
+            }
+
+            console.error('  ✓ Address matches\n');
+
+            // STEP 7: Validate state data (if any)
+            console.error('Step 6: Validating state data...');
+
+            let stateDataBytes: Uint8Array;
+
+            if (transferDetails.recipientDataHash !== null) {
+              // Transaction has data commitment - require matching data
+              if (!options.stateData) {
+                console.error('\n❌ Error: Transaction requires state data');
+                console.error('This transfer includes committed state data.');
+                console.error('Provide it with: --state-data "<data>"');
+                process.exit(1);
+              }
+
+              // Process and hash the provided data
+              stateDataBytes = new TextEncoder().encode(options.stateData);
+              const hasher = new DataHasher(HashAlgorithm.SHA256);
+              const dataHash = await hasher.update(stateDataBytes).digest();
+              const actualHash = HexConverter.encode(dataHash.imprint);
+
+              // Compare with committed hash
+              if (actualHash !== transferDetails.recipientDataHash.replace('0000', '')) {
+                console.error('\n❌ Error: State data hash mismatch');
+                console.error(`  Expected: ${transferDetails.recipientDataHash}`);
+                console.error(`  Actual:   0000${actualHash}`);
+                console.error('\nThe provided state data does not match the commitment.');
+                process.exit(1);
+              }
+
+              console.error('  ✓ State data validated');
+            } else {
+              // No data commitment - reject any provided data
+              if (options.stateData) {
+                console.error('\n❌ Error: Transaction has no data commitment');
+                console.error('Cannot provide --state-data for transfer without data.');
+                console.error('Remove the --state-data option.');
+                process.exit(1);
+              }
+
+              stateDataBytes = new Uint8Array(0);
+              console.error('  No state data (empty)');
+            }
+
+            console.error();
+
+            // STEP 8: Create new token state
+            console.error('Step 7: Creating new token state...');
+            const newState = new TokenState(recipientPredicate, stateDataBytes);
+            console.error('  ✓ New state created\n');
+
+            // STEP 9: Build final TXF (PENDING status - not submitted)
+            console.error('Step 8: Building final TXF...');
+
+            const finalTxf: IExtendedTxfToken = {
+              version: extendedTxf.version || "2.0",
+              state: newState.toJSON(),
+              genesis: extendedTxf.genesis,
+              transactions: extendedTxf.transactions, // Keep uncommitted transaction
+              nametags: extendedTxf.nametags || [],
+              status: TokenStatus.PENDING // PENDING because not submitted to aggregator
+            };
+
+            const tokenJson = JSON.stringify(finalTxf, null, 2);
+            console.error('  ✓ Final TXF structure created (status: PENDING)\n');
+            console.error('  ℹ️  Transaction not submitted - proof resolution needed later\n');
+
+            // STEP 10: Save and output
+            if (options.output) {
+              try {
+                fs.writeFileSync(options.output, tokenJson, 'utf-8');
+                console.error(`✅ Token saved to ${options.output}`);
+                console.error(`   File size: ${tokenJson.length} bytes\n`);
+              } catch (err) {
+                console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+                throw err;
+              }
+            }
+
+            // Output to stdout unless saving only
+            if (!options.output || options.stdout) {
+              console.log(tokenJson);
+            }
+
+            console.error('\n=== Offline Transfer Verified Successfully ===');
+            console.error(`Recipient: ${actualAddress.address}`);
+            console.error(`Token ID: ${token.id.toJSON()}`);
+            console.error(`Status: PENDING (proof resolution needed)`);
+            console.error('\nNext step: Submit transaction to aggregator or use receive-token without --offline');
+
+            process.exit(0);
+
+          } catch (error) {
+            console.error('\n❌ Failed to process offline transfer:');
+            console.error(`  ${error instanceof Error ? error.message : String(error)}`);
             process.exit(1);
           }
-
-          console.error('  ✓ State data validation passed (null as required)');
-          stateData = null;
-        }
-        console.error();
-
-        // STEP 5: Load token from TXF to get token ID and type
-        console.error('Step 5: Loading token data...');
-        const token = await Token.fromJSON(extendedTxf);
-        console.error(`  ✓ Token loaded`);
-        console.error(`  Token ID: ${token.id.toJSON()}`);
-        console.error(`  Token Type: ${token.type.toJSON()}\n`);
-
-        // STEP 6: Create recipient's predicate with transfer salt
-        console.error('Step 6: Creating recipient predicate for new ownership state...');
-
-        // Decode salt from Base64 - this salt is for the new ownership state
-        const saltBytes = Buffer.from(offlineTransfer.commitment.salt, 'base64');
-        console.error(`  Transfer Salt: ${HexConverter.encode(saltBytes)}`);
-
-        // Determine if we need masked or unmasked predicate
-        // If nonce is provided, create masked predicate; otherwise unmasked
-        let recipientPredicate;
-        let predicateType: 'masked' | 'unmasked';
-
-        if (options.nonce) {
-          // MASKED PREDICATE: One-time address with nonce
-          predicateType = 'masked';
-          console.error(`  Creating MASKED predicate (one-time address)`);
-          console.error(`  Nonce: ${options.nonce}`);
-
-          // Process nonce: convert hex or hash string input to 32-byte Uint8Array
-          // CRITICAL: Must match gen-address.ts processNonce() logic for address consistency
-          let nonceBytes: Uint8Array;
-
-          // If it's a valid 32-byte hex string, decode it
-          if (/^(0x)?[0-9a-fA-F]{64}$/.test(options.nonce)) {
-            const hexStr = options.nonce.startsWith('0x') ? options.nonce.slice(2) : options.nonce;
-            nonceBytes = HexConverter.decode(hexStr);
-            console.error(`  Using hex nonce: ${HexConverter.encode(nonceBytes)}`);
-          } else {
-            // Otherwise, hash the input to get 32 bytes (matches gen-address.ts behavior)
-            const hasher = new DataHasher(HashAlgorithm.SHA256);
-            const hash = await hasher.update(new TextEncoder().encode(options.nonce)).digest();
-            nonceBytes = hash.data;
-            console.error(`  Hashed nonce input to: ${HexConverter.encode(nonceBytes)}`);
-          }
-
-          // Create SigningService with nonce for masked address derivation
-          const maskedSigningService = await SigningService.createFromSecret(secret, nonceBytes);
-
-          // Create MaskedPredicate for recipient
-          // Note: Masked predicates use nonce, NOT salt
-          recipientPredicate = await MaskedPredicate.create(
-            token.id,
-            token.type,
-            maskedSigningService,
-            HashAlgorithm.SHA256,
-            nonceBytes
-          );
-          console.error('  ✓ Masked predicate created for new state');
-        } else {
-          // UNMASKED PREDICATE: Reusable address without nonce
-          predicateType = 'unmasked';
-          console.error(`  Creating UNMASKED predicate (reusable address)`);
-
-          // Create UnmaskedPredicate for recipient using the transfer commitment salt
-          // Note: We use the actual token ID and type from the transferred token
-          recipientPredicate = await UnmaskedPredicate.create(
-            token.id,
-            token.type,
-            signingService,
-            HashAlgorithm.SHA256,
-            saltBytes
-          );
-          console.error('  ✓ Unmasked predicate created for new state');
         }
 
-        // STEP 6.5: Validate that the secret (and nonce if provided) generates the intended recipient address
-        const predicateRef = await recipientPredicate.getReference();
-        const addressObj = await predicateRef.toAddress();
-        const actualAddress = addressObj.address;
-        console.error(`  Generated Address (${predicateType}): ${actualAddress}`);
-        console.error(`  Intended Recipient: ${offlineTransfer.recipient}`);
+        // ========================================
+        // HANDLE ONLINE SCENARIOS
+        // ========================================
 
-        if (actualAddress !== offlineTransfer.recipient) {
-          console.error('\n❌ Error: Secret does not match intended recipient!');
-          console.error(`\nThe transfer was sent to: ${offlineTransfer.recipient}`);
-          console.error(`Your secret generates:    ${actualAddress}`);
+        if (scenario === 'NEEDS_RESOLUTION') {
+          console.error('\n=== Processing Uncommitted Transaction ===');
 
-          if (predicateType === 'masked') {
-            console.error('\n⚠️  This is a MASKED address. Make sure you are using:');
-            console.error('   1. The correct secret');
-            console.error('   2. The SAME nonce that was used to generate the address');
-            console.error('\nBoth the secret AND nonce must match exactly.');
-            console.error(`\nUsage: npm run receive-token -- -f transfer.txf -n "${options.nonce}"`);
-          } else {
-            console.error('\n⚠️  This appears to be a masked address but no --nonce was provided.');
-            console.error('   If the token was sent to a masked address, you MUST provide the nonce:');
-            console.error('\nUsage: npm run receive-token -- -f transfer.txf -n "<your-nonce>"');
-          }
+          try {
+            // Check if the last transaction is truly uncommitted (no authenticator at all)
+            // vs just missing transactionHash/merkleTreePath (can be resolved)
+            if (!extendedTxf.transactions || extendedTxf.transactions.length === 0) {
+              console.error('\n❌ Error: No transactions found in TXF file');
+              console.error('Cannot receive token without transfer transaction.');
+              process.exit(1);
+            }
 
-          console.error('\nYou are not the intended recipient of this transfer.');
-          console.error('Please verify you are using the correct secret and nonce (if applicable).\n');
-          process.exit(1);
-        }
+            const lastTx = extendedTxf.transactions[extendedTxf.transactions.length - 1];
+            const hasAuthenticator = lastTx.inclusionProof && lastTx.inclusionProof.authenticator;
 
-        console.error('  ✓ Address validation passed - you are the intended recipient\n');
+            if (hasAuthenticator) {
+              // Transaction was submitted but proofs are incomplete - RESOLVE from aggregator
+              console.error('Transaction was submitted - resolving proofs from aggregator...');
 
-        // STEP 7: Create network clients
-        console.error('Step 7: Connecting to network...');
-        const aggregatorClient = new AggregatorClient(endpoint);
-        const client = new StateTransitionClient(aggregatorClient);
-        console.error(`  ✓ Connected to ${endpoint}\n`);
+              const aggregatorClient = new AggregatorClient(endpoint);
+              const trustBase = await getCachedTrustBase({
+                filePath: process.env.TRUSTBASE_PATH,
+                useFallback: false
+              });
 
-        // STEP 7.5: Load trust base dynamically from file or fallback to hardcoded
-        console.error('Step 7.5: Loading trust base...');
-        const trustBase = await getCachedTrustBase({
-          filePath: process.env.TRUSTBASE_PATH,
-          useFallback: false // Try file loading first, fallback if unavailable
-        });
-        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
+              const resolvedTxfJson = await resolveTokenProofs(extendedTxf, aggregatorClient, trustBase);
+              extendedTxf.genesis = resolvedTxfJson.genesis;
+              extendedTxf.transactions = resolvedTxfJson.transactions || [];
 
-        // STEP 7.8: CRITICAL SECURITY - Check if source state has already been spent
-        // This prevents attempting to transfer a token that's already been transferred elsewhere
-        console.error('Step 7.8: Checking source state for double-spend prevention...');
+              console.error('  ✓ Proofs resolved\n');
 
-        try {
-          // Extract the source state predicate from the commitment's transaction data
-          const sourceStateData = commitmentJson.transactionData?.sourceState;
-          const sourcePredicateHex = sourceStateData?.predicate || '';
+              // Now continue to ONLINE_COMPLETE handling
+            } else {
+              // Transaction is truly uncommitted (no authenticator) - SUBMIT to aggregator
+              console.error('Uncommitted transaction detected - submitting to aggregator...\n');
 
-          if (sourcePredicateHex) {
-            // Extract owner info from the source predicate
-            const sourceOwnerInfo = extractOwnerInfo(sourcePredicateHex);
+              // Extract transfer details from uncommitted transaction
+              const transferDetails = extractTransferDetails(lastTx);
+              console.error(`  Recipient: ${transferDetails.recipient}`);
+              if (transferDetails.message) {
+                console.error(`  Message: "${transferDetails.message}"`);
+              }
+              console.error();
 
-            if (sourceOwnerInfo) {
-              // Create a minimal token-like object representing the source state
-              const sourceTokenJson = {
+              // CRITICAL: Check if the transaction has the sender's pre-signed commitment
+              if (!lastTx.commitment) {
+                console.error('\n❌ Error: Uncommitted transaction missing sender\'s commitment');
+                console.error('The transaction was created without storing the sender\'s signature.');
+                console.error('This is required for offline transfers.');
+                console.error('\nThe sender needs to recreate the transfer using the latest version of send-token.');
+                process.exit(1);
+              }
+
+              console.error('Loading sender\'s pre-signed commitment...');
+
+              // Reconstruct the TransferCommitment from the stored JSON
+              // This commitment was signed by the sender and cannot be recreated by the recipient
+              const transferCommitment = await TransferCommitment.fromJSON(lastTx.commitment);
+              console.error('  ✓ Sender\'s commitment loaded');
+              console.error(`  Request ID: ${transferCommitment.requestId.toJSON()}\n`);
+
+              // Get recipient secret ONLY for address verification
+              console.error('Getting recipient secret for address verification...');
+              const secret = await getSecret(options.unsafeSecret);
+              const signingService = await SigningService.createFromSecret(secret);
+              console.error(`  ✓ Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+
+              // Parse token to get ID and type for predicate creation
+              const genesis = await Token.fromJSON({
+                version: extendedTxf.version,
+                state: extendedTxf.state,
                 genesis: extendedTxf.genesis,
-                state: {
-                  data: sourceStateData?.data || null,
-                  predicate: sourcePredicateHex
-                },
-                transactions: [],
-                status: 'UNSPENT' as TokenStatus
-              };
+                transactions: extendedTxf.transactions.slice(0, -1),
+                nametags: extendedTxf.nametags || []
+              });
 
-              // Query aggregator to check if this state is already spent
-              const sourceStatus = await checkOwnershipStatus(
-                token,
-                sourceTokenJson,
-                client,
+              // Create recipient predicate to verify address
+              console.error('Verifying recipient address...');
+              let recipientPredicate;
+              if (options.nonce) {
+                const nonceBytes = HexConverter.decode(options.nonce);
+                recipientPredicate = await MaskedPredicate.create(
+                  genesis.id,
+                  genesis.type,
+                  signingService,
+                  HashAlgorithm.SHA256,
+                  nonceBytes
+                );
+              } else {
+                recipientPredicate = await UnmaskedPredicate.create(
+                  genesis.id,
+                  genesis.type,
+                  signingService,
+                  HashAlgorithm.SHA256,
+                  transferDetails.salt
+                );
+              }
+
+              const predicateRef = await recipientPredicate.getReference();
+              const recipientAddress = await predicateRef.toAddress();
+              if (recipientAddress.address !== transferDetails.recipient) {
+                console.error('\n❌ Error: Address mismatch!');
+                console.error(`Expected: ${transferDetails.recipient}`);
+                console.error(`Actual:   ${recipientAddress.address}`);
+                process.exit(1);
+              }
+              console.error('  ✓ Address verified - you are the intended recipient\n');
+
+              // Connect to aggregator
+              const aggregatorClient = new AggregatorClient(endpoint);
+              const client = new StateTransitionClient(aggregatorClient);
+              const trustBase = await getCachedTrustBase({
+                filePath: process.env.TRUSTBASE_PATH,
+                useFallback: false
+              });
+
+              // Submit commitment
+              console.error('Submitting to aggregator...');
+              const submitResponse = await client.submitTransferCommitment(transferCommitment);
+
+              if (submitResponse.status !== 'SUCCESS') {
+                console.error(`\n❌ Submission failed: ${submitResponse.status}`);
+                process.exit(1);
+              }
+              console.error('  ✓ Submitted\n');
+
+              // Wait for proof
+              console.error('Waiting for inclusion proof...');
+              const inclusionProof = await waitInclusionProof(client, transferCommitment);
+              console.error('  ✓ Proof received\n');
+
+              // Validate proof
+              const proofValidation2 = await validateInclusionProof(
+                inclusionProof,
+                transferCommitment.requestId,
                 trustBase
               );
-
-              // Check the on-chain spent status
-              if (sourceStatus.onChainSpent === true) {
-                // This state has already been spent - DOUBLE-SPEND ATTEMPT DETECTED
-                console.error('\n❌ DOUBLE-SPEND PREVENTION - Transfer Rejected');
-                console.error(`\nThe source token has already been spent (transferred elsewhere).`);
-                console.error(`\nDetails:`);
-                console.error(`  - Current Owner: ${sourceStatus.currentOwner}`);
-                console.error(`  - On-Chain Status: SPENT`);
-                console.error(`\nThis can happen if:`);
-                console.error(`  1. The sender created multiple transfers from the same token`);
-                console.error(`  2. Another recipient already claimed this transfer`);
-                console.error(`  3. The token was spent from another device/client`);
-                console.error(`\nYou cannot complete this transfer. Request a fresh token from the sender.`);
-                console.error();
+              if (!proofValidation2.valid) {
+                console.error('\n❌ Proof validation failed');
                 process.exit(1);
-              } else if (sourceStatus.onChainSpent === false) {
-                console.error('  ✓ Source state is UNSPENT - safe to proceed\n');
-              } else {
-                // Status unknown (network issue) - allow retry but warn
-                console.error('  ⚠ Source state status unknown (network unavailable)\n');
-                console.error('  ℹ Cannot verify double-spend status. Proceeding with submission...\n');
               }
-            } else {
-              // Could not extract owner info - continue but note this
-              console.error('  ⚠ Could not verify source state status (proceeding cautiously)\n');
-            }
-          } else {
-            console.error('  ⚠ No source predicate found (proceeding cautiously)\n');
-          }
-        } catch (err) {
-          // Error checking status - log it but don't block (network might be temporarily unavailable)
-          console.error('  ⚠ Warning: Could not verify source state status');
-          console.error(`  Reason: ${err instanceof Error ? err.message : String(err)}`);
-          console.error('  Proceeding with submission (aggregator will enforce single-spend)\n');
-        }
+              console.error('  ✓ Proof validated\n');
 
-        // STEP 8: Submit transfer commitment to network
-        console.error('Step 8: Submitting transfer to network...');
-        let submitResponse;
-        try {
-          submitResponse = await client.submitTransferCommitment(transferCommitment);
+              // Create transfer transaction
+              console.error('Creating transfer transaction...');
+              const transferTransaction = transferCommitment.toTransaction(inclusionProof);
+              console.error('  ✓ Transaction created\n');
 
-          // CRITICAL SECURITY: Validate response status
-          // The aggregator returns status codes for duplicate/invalid submissions
-          // Without validation, we'd treat failures as success (SECURITY BUG)
-          if (submitResponse.status !== 'SUCCESS') {
-            if (submitResponse.status === 'REQUEST_ID_EXISTS') {
-              // Duplicate submission - another process already submitted this commitment
-              console.error('\n❌ Double-Spend Prevention - Transfer Already Submitted');
-              console.error(`\nAnother process has already submitted this transfer commitment.`);
-              console.error(`Request ID: ${transferCommitment.requestId.toJSON()}`);
-              console.error(`\nThis can happen when:`);
-              console.error(`  1. Multiple concurrent receive attempts for the same transfer`);
-              console.error(`  2. You already received this transfer in a previous attempt`);
-              console.error(`\nThe token has already been transferred. Check your wallet for the received token.`);
-              console.error();
-              process.exit(1);
-            } else {
-              // Other non-success status
-              console.error(`\n❌ Transfer Submission Failed`);
-              console.error(`\nStatus: ${submitResponse.status}`);
-              console.error(`Request ID: ${transferCommitment.requestId.toJSON()}`);
-              console.error();
+              // Update token with new transaction
+              const transferTxJson = await transferTransaction.toJSON();
+              extendedTxf.transactions[extendedTxf.transactions.length - 1] = transferTxJson;
+
+              console.error('  ✓ Transaction updated with proof\n');
+              // Continue to ONLINE_COMPLETE handling
+            }
+
+            // Now that all proofs are resolved, perform full cryptographic validation
+            console.error('Performing cryptographic validation on resolved token...');
+            try {
+              const validatedToken = await Token.fromJSON(extendedTxf);
+              const trustBase = await getCachedTrustBase({
+                filePath: process.env.TRUSTBASE_PATH,
+                useFallback: false
+              });
+
+              const cryptoValidation = await validateTokenProofs(validatedToken, trustBase);
+
+              if (!cryptoValidation.valid) {
+                console.error('\n❌ Cryptographic proof verification failed after resolution:');
+                cryptoValidation.errors.forEach(err => console.error(`  - ${err}`));
+                console.error('\nToken has invalid cryptographic proofs - cannot accept this transfer.');
+                process.exit(1);
+              }
+
+              console.error('  ✓ All cryptographic proofs verified');
+              console.error('  ✓ Genesis proof signature valid');
+              console.error('  ✓ All transaction proofs verified');
+              console.error('  ✓ State integrity confirmed\n');
+
+              if (cryptoValidation.warnings.length > 0) {
+                console.error('  ⚠ Warnings:');
+                cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+              }
+            } catch (err) {
+              console.error('\n❌ Failed to verify resolved token cryptographically:');
+              console.error(`  ${err instanceof Error ? err.message : String(err)}`);
+              console.error('\nCannot accept transfer with unverifiable token.');
               process.exit(1);
             }
-          }
 
-          console.error('  ✓ Transfer submitted to network\n');
-        } catch (err) {
-          // Check for specific error types (exceptions)
-          if (err instanceof Error) {
-            if (err.message.includes('already exists')) {
-              // CRITICAL: RequestId already submitted by another process
-              // This is the aggregator's double-spend prevention - EXIT instead of continuing
-              console.error('\n❌ Double-Spend Prevention - Transfer Already Submitted');
-              console.error(`\nAnother process has already submitted this transfer commitment.`);
-              console.error(`\nThis can happen when:`);
-              console.error(`  1. Multiple concurrent receive attempts for the same transfer`);
-              console.error(`  2. You already received this transfer in a previous attempt`);
-              console.error(`\nThe aggregator enforces single-spend by rejecting duplicate RequestIds.`);
-              console.error(`Only one process can successfully complete this transfer.`);
-              console.error();
-              process.exit(1);
-            } else if (
-              err.message.includes('spent') ||
-              err.message.includes('SPENT') ||
-              err.message.includes('double') ||
-              err.message.includes('duplicate') ||
-              err.message.toLowerCase().includes('already')
-            ) {
-              // Aggregator rejected due to double-spend
-              console.error('\n❌ Double-Spend Prevention - Aggregator Rejected Transfer');
-              console.error(`\nError: ${err.message}`);
-              console.error(`\nThe aggregator detected that this token was already transferred.`);
-              console.error(`This is expected protection against double-spending.`);
-              console.error();
-              process.exit(1);
-            } else {
-              throw err;
-            }
-          } else {
-            throw err;
+          } catch (error) {
+            console.error('\n❌ Failed to process uncommitted transaction:');
+            console.error(`  ${error instanceof Error ? error.message : String(error)}`);
+            process.exit(1);
           }
         }
 
-        // STEP 9: Wait for inclusion proof
-        console.error('Step 9: Waiting for inclusion proof...');
-        const inclusionProof = await waitInclusionProof(client, transferCommitment);
-        console.error();
+        if (scenario === 'ONLINE_COMPLETE' || scenario === 'NEEDS_RESOLUTION') {
+          console.error('\n=== Receiving Online Transfer ===');
 
-        // STEP 9.5: Validate the transfer inclusion proof
-        console.error('Step 9.5: Validating transfer inclusion proof...');
-        const transferProofValidation = await validateInclusionProof(
-          inclusionProof,
-          transferCommitment.requestId,
-          trustBase
-        );
-
-        if (!transferProofValidation.valid) {
-          console.error('\n❌ Transfer proof validation failed:');
-          transferProofValidation.errors.forEach(err => console.error(`  - ${err}`));
-          console.error('\nCannot proceed with invalid proof.');
-          process.exit(1);
-        }
-
-        if (transferProofValidation.warnings.length > 0) {
-          console.error('  ⚠ Proof warnings:');
-          transferProofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
-        }
-
-        console.error('  ✓ Transfer proof validated');
-        console.error('  ✓ Authenticator verified\n');
-
-        // STEP 10: Create transfer transaction from commitment + proof
-        console.error('Step 10: Creating transfer transaction...');
-        const transferTransaction = transferCommitment.toTransaction(inclusionProof);
-        console.error('  ✓ Transfer transaction created\n');
-
-        // STEP 10.5: CRITICAL SECURITY - Verify proof corresponds to our source state
-        // This is the KEY double-spend detection mechanism in Unicity Network:
-        // The proof MUST correspond to the SOURCE STATE being spent (cryptographic verification)
-        // We verify BOTH:
-        //   1. Source state correspondence (proof is for the right source state)
-        //   2. Transaction hash match (proof is for our specific transaction)
-        console.error('Step 10.5: Verifying proof corresponds to our source state and transaction...');
-
-        // VERIFICATION 1: Source State Correspondence (CRITICAL)
-        // The proof's authenticator.stateHash must match our source state hash
-        // This ensures the proof is for the correct SOURCE STATE being spent
-        const proofAuthenticator = inclusionProof.authenticator;
-
-        if (!proofAuthenticator) {
-          console.error('\n❌ SECURITY ERROR: Proof is missing authenticator!');
-          console.error('\nThe inclusion proof does not contain an authenticator.');
-          console.error('This indicates an incomplete or invalid proof from the aggregator.');
-          console.error();
-          process.exit(1);
-        }
-
-        const proofSourceStateHash = proofAuthenticator.stateHash;
-        const ourSourceState = transferCommitment.transactionData.sourceState;
-        const ourSourceStateHash = await ourSourceState.calculateHash();
-
-        // Compare source state hashes
-        if (!proofSourceStateHash.equals(ourSourceStateHash)) {
-          console.error('\n❌ SECURITY ERROR: Proof is for WRONG source state!');
-          console.error('\nThe inclusion proof does NOT correspond to our source state.');
-          console.error('This indicates a serious security issue (Byzantine aggregator or corrupted proof).');
-          console.error('\nDetails:');
-          console.error(`  - Expected Source State Hash: ${HexConverter.encode(ourSourceStateHash.imprint)}`);
-          console.error(`  - Proof Source State Hash:    ${HexConverter.encode(proofSourceStateHash.imprint)}`);
-          console.error('\nThis should NEVER happen with a correct aggregator.');
-          console.error('DO NOT proceed. Contact support immediately.');
-          console.error();
-          process.exit(1);
-        }
-
-        console.error('  ✓ Source state correspondence verified');
-
-        // VERIFICATION 2: Transaction Hash Match (Double-Spend Detection)
-        // The proof's transactionHash must match our transaction hash
-        // Different recipients create different transaction hashes (different target addresses)
-        // If hashes don't match → another recipient got to the aggregator first
-        const proofTxHash = inclusionProof.transactionHash;
-
-        if (!proofTxHash) {
-          console.error('\n❌ SECURITY ERROR: Proof is missing transaction hash!');
-          console.error('\nThe inclusion proof does not contain a transaction hash.');
-          console.error('This indicates an incomplete or invalid proof from the aggregator.');
-          console.error();
-          process.exit(1);
-        }
-
-        const ourTxHash = await transferCommitment.transactionData.calculateHash();
-        const proofTxHashHex = HexConverter.encode(proofTxHash.imprint);
-        const ourTxHashHex = HexConverter.encode(ourTxHash.imprint);
-
-        console.error(`  Proof Transaction Hash: ${proofTxHashHex}`);
-        console.error(`  Our Transaction Hash:   ${ourTxHashHex}`);
-
-        if (proofTxHashHex !== ourTxHashHex) {
-          // DOUBLE-SPEND DETECTED!
-          // The proof is for the correct source state, but a DIFFERENT transaction
-          // This means another recipient submitted their transfer FIRST
-          console.error('\n❌ DOUBLE-SPEND DETECTED - Transaction Mismatch!');
-          console.error('\nThe inclusion proof is for the correct source state,');
-          console.error('but corresponds to a DIFFERENT transaction (different recipient).');
-          console.error('\nThis means another recipient submitted their transfer FIRST.');
-          console.error('\nDetails:');
-          console.error(`  - Request ID: ${transferCommitment.requestId.toJSON()}`);
-          console.error(`  - Expected Transaction Hash: ${ourTxHashHex}`);
-          console.error(`  - Proof Transaction Hash:    ${proofTxHashHex}`);
-          console.error('\nWhat happened:');
-          console.error('  1. The sender created multiple offline transfers from the same token');
-          console.error('  2. Multiple recipients submitted their transfers concurrently');
-          console.error('  3. The aggregator accepted the FIRST submission');
-          console.error('  4. Your submission arrived AFTER another recipient');
-          console.error('\nResult:');
-          console.error('  - The aggregator stored the other recipient\'s transaction in the tree');
-          console.error('  - The proof you received is for THEIR transaction, not yours');
-          console.error('  - You cannot claim this token (already transferred to someone else)');
-          console.error('\nAction Required:');
-          console.error('  Contact the sender and request a fresh token that hasn\'t been double-spent.');
-          console.error();
-          process.exit(1);
-        }
-
-        console.error('  ✓ Transaction hash match verified - this proof is for our transaction');
-        console.error('  ✓ No double-spend detected\n');
-
-        // STEP 12: Create new token state with recipient's predicate
-        console.error('Step 12: Creating new token state with recipient predicate...');
-        // Use validated state data (either from hash validation or null)
-        const newState = new TokenState(recipientPredicate, stateData);
-        console.error('  ✓ New token state created with validated data\n');
-
-        // STEP 13: Create updated token with recipient's state and transfer transaction
-        console.error('Step 13: Creating updated token with new ownership...');
-
-        // Build updated token JSON with new state and transfer transaction
-        const tokenJson = await token.toJSON();
-        const newStateJson = await newState.toJSON();
-        const transferTxJson = await transferTransaction.toJSON();
-
-        // Create new token JSON with updated state and transaction history
-        const modifiedTokenJson = {
-          ...tokenJson,
-          state: newStateJson,
-          transactions: [...(tokenJson.transactions || []), transferTxJson]
-        };
-
-        // Recreate token from modified JSON
-        const updatedToken = await Token.fromJSON(modifiedTokenJson);
-        console.error('  ✓ Token updated with recipient ownership\n');
-
-        // STEP 14: Create final extended TXF with CONFIRMED status
-        console.error('Step 14: Building final extended TXF...');
-        const updatedTokenJson = await updatedToken.toJSON();
-
-        const finalTxf: IExtendedTxfToken = {
-          version: updatedTokenJson.version || "2.0",
-          state: updatedTokenJson.state,
-          genesis: updatedTokenJson.genesis,
-          transactions: updatedTokenJson.transactions || [],
-          nametags: updatedTokenJson.nametags || [],
-          status: TokenStatus.CONFIRMED
-          // Note: offlineTransfer is removed - transfer is complete
-        };
-
-        console.error('  ✓ Final TXF created with CONFIRMED status\n');
-
-        // STEP 15: Sanitize and output
-        console.error('Step 15: Sanitizing and preparing output...');
-        const sanitizedTxf = sanitizeForExport(finalTxf);
-        const outputJson = JSON.stringify(sanitizedTxf, null, 2);
-        console.error('  ✓ Output sanitized (private keys removed)\n');
-
-        // Output handling
-        let outputFile: string | null = null;
-
-        if (options.output) {
-          // Explicit output file specified
-          outputFile = options.output;
-        } else if (options.save) {
-          // Auto-generate filename
-          const now = new Date();
-          const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-          const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
-          const timestamp = Date.now();
-          const addressBody = offlineTransfer.recipient.replace(/^[A-Z]+:\/\//, '');
-          const addressPrefix = addressBody.substring(0, 10);
-          outputFile = `${dateStr}_${timeStr}_${timestamp}_received_${addressPrefix}.txf`;
-        }
-
-        // Write to file if specified
-        if (outputFile) {
           try {
-            fs.writeFileSync(outputFile, outputJson, 'utf-8');
-            console.error(`✅ Token saved to ${outputFile}`);
-            console.error(`   File size: ${outputJson.length} bytes`);
-          } catch (err) {
-            console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
-            throw err;
+            // Parse token with SDK
+            const token = await Token.fromJSON(extendedTxf);
+
+            // STEP 3: Extract transfer details from last transaction
+            if (!extendedTxf.transactions || extendedTxf.transactions.length === 0) {
+              console.error('\n❌ Error: No transactions found in online transfer');
+              console.error('File appears to be incomplete or corrupted.');
+              process.exit(1);
+            }
+
+            const lastTx = extendedTxf.transactions[extendedTxf.transactions.length - 1];
+            const transferDetails = extractTransferDetails(lastTx);
+
+            console.error(`  Recipient: ${transferDetails.recipient}`);
+            if (transferDetails.message) {
+              console.error(`  Message: "${transferDetails.message}"`);
+            }
+            console.error();
+
+            // STEP 4: Get recipient's secret
+            console.error('Step 3: Getting recipient secret...');
+            const secret = await getSecret(options.unsafeSecret);
+            const signingService = await SigningService.createFromSecret(secret);
+            console.error(`  ✓ Signing service created`);
+            console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+
+            // STEP 5: Create recipient predicate using transfer salt
+            console.error('Step 4: Creating recipient predicate...');
+
+            let recipientPredicate;
+            if (options.nonce) {
+              // Masked predicate (one-time address)
+              const nonceBytes = HexConverter.decode(options.nonce);
+              recipientPredicate = await MaskedPredicate.create(
+                token.id,
+                token.type,
+                signingService,
+                HashAlgorithm.SHA256,
+                nonceBytes
+              );
+              console.error('  Using MASKED predicate (one-time address)');
+            } else {
+              // Unmasked predicate (reusable address)
+              recipientPredicate = await UnmaskedPredicate.create(
+                token.id,
+                token.type,
+                signingService,
+                HashAlgorithm.SHA256,
+                transferDetails.salt
+              );
+              console.error('  Using UNMASKED predicate (reusable address)');
+            }
+
+            console.error('  ✓ Predicate created\n');
+
+            // STEP 6: Verify recipient address matches
+            console.error('Step 5: Verifying recipient address...');
+            const predicateRef = await recipientPredicate.getReference();
+            const actualAddress = await predicateRef.toAddress();
+
+            console.error(`  Expected: ${transferDetails.recipient}`);
+            console.error(`  Actual:   ${actualAddress.address}`);
+
+            if (actualAddress.address !== transferDetails.recipient) {
+              console.error('\n❌ Error: Address mismatch!');
+              console.error('Your secret does not match the intended recipient.');
+              console.error('');
+              console.error('Possible causes:');
+              console.error('  - Wrong secret provided');
+              console.error('  - Wrong nonce (if using masked predicate)');
+              console.error('  - Transfer intended for different recipient');
+              process.exit(1);
+            }
+
+            console.error('  ✓ Address matches\n');
+
+            // STEP 7: Validate state data (if any)
+            console.error('Step 6: Validating state data...');
+
+            let stateDataBytes: Uint8Array;
+
+            if (transferDetails.recipientDataHash !== null) {
+              // Transaction has data commitment - require matching data
+              if (!options.stateData) {
+                console.error('\n❌ Error: Transaction requires state data');
+                console.error('This transfer includes committed state data.');
+                console.error('Provide it with: --state-data "<data>"');
+                process.exit(1);
+              }
+
+              // Process and hash the provided data
+              stateDataBytes = new TextEncoder().encode(options.stateData);
+              const hasher = new DataHasher(HashAlgorithm.SHA256);
+              const dataHash = await hasher.update(stateDataBytes).digest();
+              const actualHash = HexConverter.encode(dataHash.imprint);
+
+              // Compare with committed hash
+              if (actualHash !== transferDetails.recipientDataHash.replace('0000', '')) {
+                console.error('\n❌ Error: State data hash mismatch');
+                console.error(`  Expected: ${transferDetails.recipientDataHash}`);
+                console.error(`  Actual:   0000${actualHash}`);
+                console.error('\nThe provided state data does not match the commitment.');
+                process.exit(1);
+              }
+
+              console.error('  ✓ State data validated');
+            } else {
+              // No data commitment - reject any provided data
+              if (options.stateData) {
+                console.error('\n❌ Error: Transaction has no data commitment');
+                console.error('Cannot provide --state-data for transfer without data.');
+                console.error('Remove the --state-data option.');
+                process.exit(1);
+              }
+
+              stateDataBytes = new Uint8Array(0);
+              console.error('  No state data (empty)');
+            }
+
+            console.error();
+
+            // STEP 8: Create new token state
+            console.error('Step 7: Creating new token state...');
+            const newState = new TokenState(recipientPredicate, stateDataBytes);
+            console.error('  ✓ New state created\n');
+
+            // STEP 9: Build final TXF
+            console.error('Step 8: Building final TXF...');
+
+            const finalTxf: IExtendedTxfToken = {
+              version: extendedTxf.version || "2.0",
+              state: newState.toJSON(),
+              genesis: extendedTxf.genesis,
+              transactions: extendedTxf.transactions,
+              nametags: extendedTxf.nametags || [],
+              status: TokenStatus.CONFIRMED
+            };
+
+            const tokenJson = JSON.stringify(finalTxf, null, 2);
+            console.error('  ✓ Final TXF structure created\n');
+
+            // STEP 10: Save and output
+            if (options.output) {
+              try {
+                fs.writeFileSync(options.output, tokenJson, 'utf-8');
+                console.error(`✅ Token saved to ${options.output}`);
+                console.error(`   File size: ${tokenJson.length} bytes\n`);
+              } catch (err) {
+                console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+                throw err;
+              }
+            }
+
+            // Output to stdout unless saving only
+            if (!options.output || options.stdout) {
+              console.log(tokenJson);
+            }
+
+            console.error('\n=== Online Transfer Received Successfully ===');
+            console.error(`Recipient: ${actualAddress.address}`);
+            console.error(`Token ID: ${token.id.toJSON()}`);
+            console.error(`Status: CONFIRMED`);
+
+            process.exit(0);
+
+          } catch (error) {
+            console.error('\n❌ Failed to receive online transfer:');
+            console.error(`  ${error instanceof Error ? error.message : String(error)}`);
+            process.exit(1);
           }
         }
 
-        // Output to stdout unless saving to file only
-        // Match send-token behavior for consistency
-        if (!options.save || options.stdout) {
-          console.log(outputJson);
-        }
-
-        console.error('\n=== Transfer Received Successfully ===');
-        console.error(`Token ID: ${token.id.toJSON()}`);
-        console.error(`Recipient Address: ${offlineTransfer.recipient}`);
-        console.error(`Status: ${sanitizedTxf.status}`);
-        console.error(`Transactions: ${finalTxf.transactions.length}`);
-        console.error('\n✅ Token is now in your wallet and ready to use!');
 
       } catch (error) {
         console.error('\n❌ Error receiving token:');

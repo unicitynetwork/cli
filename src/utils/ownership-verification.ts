@@ -23,6 +23,21 @@ export interface OwnershipStatus {
 }
 
 /**
+ * Check if token has uncommitted transactions (no inclusion proof)
+ */
+function hasUncommittedTransactions(tokenJson: any): boolean {
+  if (!tokenJson.transactions || tokenJson.transactions.length === 0) {
+    return false;
+  }
+
+  return tokenJson.transactions.some((tx: any) =>
+    !tx.inclusionProof ||
+    !tx.inclusionProof.transactionHash ||
+    !tx.inclusionProof.merkleTreePath
+  );
+}
+
+/**
  * Extract owner information from predicate
  */
 export function extractOwnerInfo(predicateHex: string): OwnerInfo | null {
@@ -151,7 +166,7 @@ export async function checkOwnershipStatus(
     }
 
     // Analyze local TXF state
-    const hasPendingTransfer = !!tokenJson.offlineTransfer;
+    const hasPendingTransfer = hasUncommittedTransactions(tokenJson);
     const hasTransactions = tokenJson.transactions && tokenJson.transactions.length > 0;
     const status = tokenJson.status;
 
@@ -230,9 +245,10 @@ function determineScenario(context: {
   }
 
   // Scenario C: Pending Transfer
-  // State not spent + Has offlineTransfer
+  // State not spent + Has uncommitted transaction
   if (!onChainSpent && hasPendingTransfer) {
-    const pendingRecipient = tokenJson.offlineTransfer?.recipient || 'Unknown';
+    const lastTx = tokenJson.transactions[tokenJson.transactions.length - 1];
+    const pendingRecipient = lastTx?.data?.recipient || 'Unknown';
     return {
       scenario: 'pending',
       onChainSpent: false,
@@ -244,7 +260,7 @@ function determineScenario(context: {
         `Current Owner (on-chain): ${currentStateOwner}`,
         'On-chain status: UNSPENT',
         `Pending Transfer To: ${pendingRecipient}`,
-        'Transfer package created but recipient has not submitted it yet'
+        'Transaction created but not yet submitted to aggregator'
       ]
     };
   }
@@ -284,19 +300,20 @@ function determineScenario(context: {
 
   // Edge case: State spent + Has pending transfer (shouldn't happen normally)
   if (onChainSpent && hasPendingTransfer) {
-    const pendingRecipient = tokenJson.offlineTransfer?.recipient || 'Unknown';
+    const lastTx = tokenJson.transactions[tokenJson.transactions.length - 1];
+    const pendingRecipient = lastTx?.data?.recipient || 'Unknown';
     return {
       scenario: 'confirmed',
       onChainSpent: true,
       currentOwner: pendingRecipient,
       latestKnownOwner: pendingRecipient,
       pendingRecipient: null,
-      message: '✅ Transfer confirmed (pending transfer was submitted)',
+      message: '✅ Transfer confirmed (uncommitted transaction was submitted)',
       details: [
         `Previous Owner: ${currentStateOwner}`,
         `Current Owner: ${pendingRecipient}`,
         'On-chain status: SPENT',
-        'The pending transfer was successfully submitted to the network'
+        'The uncommitted transaction was successfully submitted to the aggregator'
       ]
     };
   }

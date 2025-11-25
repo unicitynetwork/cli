@@ -23,6 +23,12 @@ import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate
 import { validateInclusionProof } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateTokenType, validateNonce, validateFilePath, throwValidationError } from '../utils/input-validation.js';
+import { createPoWClient } from '../utils/pow-client.js';
+import {
+  CoinOriginProof,
+  createProof
+} from '../types/CoinOriginProof.js';
+import { CoinOriginMintReason } from '../types/CoinOriginMintReason.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -192,10 +198,10 @@ async function processTokenType(
     return { tokenType: new TokenType(tokenTypeBytes) };
   }
 
-  // Default to Unicity NFT type
-  const defaultPreset = UNICITY_TOKEN_TYPES.nft;
+  // Default to Unicity UCT type (fungible)
+  const defaultPreset = UNICITY_TOKEN_TYPES.uct;
   const tokenTypeBytes = HexConverter.decode(defaultPreset.id);
-  console.error(`Using default NFT token type (${defaultPreset.name})`);
+  console.error(`Using default UCT token type (${defaultPreset.name})`);
   console.error(`  TokenType ID: ${defaultPreset.id}`);
 
   return {
@@ -308,7 +314,7 @@ export function mintTokenCommand(program: Command): void {
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--production', 'Use production aggregator (https://gateway.unicity.network)')
-    .option('--preset <type>', 'Use preset token type: nft, alpha/uct, usdu, euru')
+    .option('--preset <type>', 'Use preset token type: nft, alpha/uct (default), usdu, euru')
     .option('-n, --nonce <nonce>', 'Nonce for masked predicate (creates one-time address if provided)')
     .option('-u, --unmasked', 'Use unmasked predicate (reusable address, default for self-mint)')
     .option('-d, --token-data <data>', 'Token data (JSON or text, stored in token state)')
@@ -320,6 +326,10 @@ export function mintTokenCommand(program: Command): void {
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
+    .option('--unct-mine <blockHeight>', 'Mint UNCT coin using proof from specified POW blockchain block height')
+    .option('--unct-url <url>', 'POW blockchain RPC endpoint URL (for verification)')
+    .option('--local-unct', 'Use local POW node at http://localhost:8332 (for verification)')
+    .option('--force-unverified', 'Force minting even if POW verification fails (dangerous - may waste token ID)')
     .action(async (options) => {
       // Determine endpoint
       let endpoint = options.endpoint;
@@ -327,6 +337,53 @@ export function mintTokenCommand(program: Command): void {
         endpoint = 'http://127.0.0.1:3000';
       } else if (options.production) {
         endpoint = 'https://gateway.unicity.network';
+      }
+
+      // UNCT Mining Validation
+      let unctBlockHeight: number | null = null;
+      let unctVerificationEnabled = false;
+      if (options.unctMine) {
+        // Parse block height
+        const parsedHeight = parseInt(options.unctMine, 10);
+        if (isNaN(parsedHeight) || parsedHeight < 0) {
+          console.error('❌ Error: --unct-mine requires a valid non-negative block height');
+          console.error(`  Provided: "${options.unctMine}"`);
+          process.exit(1);
+        }
+        unctBlockHeight = parsedHeight;
+
+        // Validate token ID is provided (required for UNCT)
+        if (!options.tokenId) {
+          console.error('❌ Error: --unct-mine requires --token-id to be specified');
+          console.error('  Token ID must match the one used during POW mining');
+          process.exit(1);
+        }
+
+        // Determine if verification is enabled
+        unctVerificationEnabled = !!(options.unctUrl || options.localUnct);
+
+        // Validate --force-unverified only makes sense with verification
+        if (options.forceUnverified && !unctVerificationEnabled) {
+          console.error('❌ Error: --force-unverified requires POW endpoint (--unct-url or --local-unct)');
+          console.error('  Without verification, use --unct-mine alone (unverified mode)');
+          process.exit(1);
+        }
+
+        // Auto-configure for UNCT minting
+        console.error('=== UNCT Coin Minting Mode ===');
+        console.error(`  Block Height: ${unctBlockHeight}`);
+        if (unctVerificationEnabled) {
+          const powEndpoint = options.localUnct ? 'http://localhost:8332 (local)' : options.unctUrl;
+          console.error(`  POW Verification: ENABLED (${powEndpoint})`);
+        } else {
+          console.error(`  POW Verification: DISABLED (unverified mode)`);
+          console.error(`  ⚠️  WARNING: Token will not be cryptographically verified`);
+        }
+        console.error();
+
+        // Override preset and coins
+        options.preset = 'uct';
+        options.coins = '10000000000000000000'; // Exactly 10 UNCT with 18 decimals
       }
 
       try {
@@ -396,11 +453,113 @@ export function mintTokenCommand(program: Command): void {
         const address = await predicateRef.toAddress();
         console.error(`  ✓ Address: ${address.address}\n`);
 
-        // Process token data
+        // Process token data and UNCT proof
         let tokenDataBytes: Uint8Array;
         let recipientDataHash: DataHash | null = null;
+        let coinOriginProof: CoinOriginProof | null = null;
+        let mintReason: IMintTransactionReason | null = null;
 
-        if (options.tokenData) {
+        // UNCT Mining: Two-path logic (verified vs unverified)
+        if (unctBlockHeight !== null) {
+          const tokenIdHex = HexConverter.encode(tokenIdBytes);
+
+          if (unctVerificationEnabled) {
+            // PATH A: VERIFIED MODE - Full cryptographic verification
+            console.error('Fetching and verifying UNCT coin origin proof from POW blockchain...');
+
+            try {
+              const powClient = createPoWClient({
+                endpoint: options.unctUrl,
+                useLocal: options.localUnct
+              });
+
+              // Check POW node connectivity
+              const connected = await powClient.checkConnection();
+              if (!connected) {
+                const powEndpoint = options.localUnct ? 'http://localhost:8332' : options.unctUrl;
+                console.error(`❌ Error: Cannot connect to POW node at ${powEndpoint}`);
+                console.error('  Please ensure the POW blockchain is running');
+                process.exit(1);
+              }
+
+              // Perform full cryptographic verification (4 checks)
+              const verification = await powClient.verifyTokenIdInBlock(tokenIdHex, unctBlockHeight);
+
+              if (!verification.valid) {
+                // Verification failed
+                console.error('\n❌ POW Verification Failed:');
+                console.error(`  ${verification.error}`);
+                console.error();
+
+                if (!options.forceUnverified) {
+                  console.error('⚠️  Token ID NOT consumed - you can retry with correct data');
+                  console.error();
+                  console.error('To mint anyway (DANGEROUS - may waste token ID):');
+                  console.error('  Add --force-unverified flag');
+                  console.error();
+                  console.error('Or mint in unverified mode (omit --unct-url/--local-unct)');
+                  process.exit(1);
+                }
+
+                // Force override - create proof and continue
+                console.error('⚠️  WARNING: Proceeding with --force-unverified');
+                console.error('   Token may be invalid and token ID may be wasted!');
+                console.error();
+
+                coinOriginProof = createProof(unctBlockHeight);
+              } else {
+                // Verification passed - create proof
+                console.error('  ✓ All verification checks passed:');
+                console.error('    ✓ Target matches SHA256(tokenId)');
+                console.error('    ✓ Witness contains target');
+                console.error('    ✓ Merkle root matches block header');
+                console.error('    ✓ Witness composition correct');
+                console.error();
+
+                coinOriginProof = createProof(verification.blockHeight!);
+
+                console.error(`  Block Height: ${verification.blockHeight}`);
+                console.error(`  Proof will be stored in genesis.reason field`);
+                console.error();
+              }
+            } catch (error) {
+              console.error('\n❌ Error during POW verification:');
+              console.error(`  ${error instanceof Error ? error.message : String(error)}`);
+              console.error();
+              console.error('⚠️  Token ID NOT consumed - you can retry');
+              process.exit(1);
+            }
+          } else {
+            // PATH B: UNVERIFIED MODE - Create proof without verification
+            console.error('Creating UNCT coin origin proof (unverified mode)...');
+            console.error('  ⚠️  WARNING: No cryptographic verification performed');
+            console.error('  ⚠️  Token may be invalid if block/tokenId are incorrect');
+            console.error();
+
+            // Create proof with just blockHeight
+            // All other data (merkleRoot, target, witness) can be fetched from POW chain
+            coinOriginProof = createProof(unctBlockHeight);
+
+            console.error(`  Block Height: ${unctBlockHeight}`);
+            console.error(`  Proof will be stored in genesis.reason field`);
+            console.error('  ⚠️  Verification data can be fetched from POW blockchain later');
+            console.error();
+          }
+
+          // Create mint reason with coin origin proof (both paths)
+          // This provides the justification for including UNCT coin liquidity
+          mintReason = new CoinOriginMintReason(coinOriginProof);
+
+          // Empty token data for UNCT (proof goes in reason field)
+          tokenDataBytes = new Uint8Array(0);
+          recipientDataHash = null; // No token data to hash
+
+          console.error(`Created coin origin mint reason with proof`);
+          console.error(`  Block Height: ${coinOriginProof.blockHeight}`);
+          console.error(`  Proof stored in genesis.reason field (justifies coin origin)`);
+          console.error();
+        } else if (options.tokenData) {
+          // Regular token data (non-UNCT)
           tokenDataBytes = await processInput(options.tokenData, 'token data', { allowEmpty: false });
 
           // CRITICAL: Compute recipientDataHash to commit to state.data
@@ -469,7 +628,7 @@ export function mintTokenCommand(program: Command): void {
           address,           // Address of the first owner
           salt,              // Random salt used to derive predicates
           recipientDataHash, // Commit to state.data via hash (CRITICAL FIX)
-          null               // Reason (optional)
+          mintReason         // Reason (CoinOriginMintReason for UNCT, null otherwise)
         );
         console.error('  ✓ MintTransactionData created\n');
 

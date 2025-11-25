@@ -2,12 +2,18 @@ import { IExtendedTxfToken, IValidationResult, TokenStatus } from '../types/exte
 
 /**
  * Validate extended TXF before processing
+ *
+ * @param txfJson Token JSON to validate
+ * @param options Validation options
+ * @returns Validation result
  */
 export async function validateExtendedTxf(
-  txfJson: IExtendedTxfToken
+  txfJson: IExtendedTxfToken,
+  options?: { allowUncommitted?: boolean }
 ): Promise<IValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const allowUncommitted = options?.allowUncommitted || false;
 
   // 1. Basic TXF validation
   if (txfJson.version !== "2.0") {
@@ -18,76 +24,53 @@ export async function validateExtendedTxf(
     errors.push('Invalid TXF structure: missing required fields');
   }
 
-  // 2. Offline transfer validation
-  if (txfJson.offlineTransfer) {
-    const ot = txfJson.offlineTransfer;
+  // 2. Transaction validation
+  if (txfJson.transactions && txfJson.transactions.length > 0) {
+    const lastTx = txfJson.transactions[txfJson.transactions.length - 1];
 
-    // Version check
-    if (ot.version !== "1.1") {
-      warnings.push(`Offline transfer version ${ot.version} may not be compatible`);
+    // Check if last transaction has proof
+    const hasProof = lastTx.inclusionProof &&
+                     lastTx.inclusionProof.authenticator &&
+                     lastTx.inclusionProof.transactionHash;
+
+    if (!hasProof && !allowUncommitted) {
+      errors.push('Last transaction missing inclusion proof (uncommitted)');
+      warnings.push('Transaction is uncommitted - use --offline flag to process without proof');
     }
 
-    // Type check
-    if (ot.type !== "offline_transfer") {
-      errors.push(`Invalid offline transfer type: ${ot.type}`);
+    // Validate transaction structure
+    if (!lastTx.data || !lastTx.data.recipient) {
+      errors.push('Transaction missing required data fields');
     }
 
-    // Required fields
-    if (!ot.sender?.address || !ot.sender?.publicKey) {
-      errors.push('Missing sender information');
-    }
-
-    if (!ot.recipient) {
-      errors.push('Missing recipient address');
-    }
-
-    if (!ot.commitment?.salt) {
-      errors.push('Missing commitment salt');
-    }
-
-    if (!ot.commitmentData) {
-      errors.push('Missing SDK commitment data');
-    }
-
-    // Network validation
-    if (ot.network !== "test" && ot.network !== "production") {
-      warnings.push(`Unknown network type: ${ot.network}`);
-    }
-
-    // Validate commitment is parseable
-    if (ot.commitmentData) {
-      try {
-        const commitment = JSON.parse(ot.commitmentData);
-        if (!commitment.requestId || !commitment.transactionData) {
-          errors.push('Invalid commitment structure');
-        }
-      } catch (e) {
-        errors.push('Commitment data is not valid JSON');
+    // Security checks - ensure no private keys leaked
+    if (lastTx.data) {
+      const dataStr = JSON.stringify(lastTx.data);
+      if (dataStr.includes('privateKey') || dataStr.includes('"secret"')) {
+        errors.push('SECURITY VIOLATION: Transaction contains private key data');
       }
-    }
-
-    // Security checks
-    if (ot.commitmentData && (
-        ot.commitmentData.includes('privateKey') ||
-        ot.commitmentData.includes('secret') ||
-        ot.commitmentData.toLowerCase().includes('private')
-    )) {
-      errors.push('SECURITY VIOLATION: Commitment contains private key data');
     }
   }
 
   // 3. Status validation
-  if (txfJson.offlineTransfer && txfJson.status !== TokenStatus.PENDING) {
-    warnings.push(
-      `Unexpected status "${txfJson.status}" for offline transfer (expected PENDING)`
+  if (txfJson.transactions && txfJson.transactions.length > 0) {
+    const hasCompleteProofs = txfJson.transactions.every(tx =>
+      tx.inclusionProof?.transactionHash && tx.inclusionProof?.merkleTreePath
     );
+
+    if (hasCompleteProofs && txfJson.status === TokenStatus.PENDING) {
+      warnings.push('Status is PENDING but all transactions have proofs');
+    }
+
+    if (!hasCompleteProofs && txfJson.status === TokenStatus.CONFIRMED) {
+      errors.push('Status is CONFIRMED but transactions missing proofs');
+    }
   }
 
   return {
     isValid: errors.length === 0,
     errors: errors.length > 0 ? errors : undefined,
-    warnings: warnings.length > 0 ? warnings : undefined,
-    hasOfflineTransfer: !!txfJson.offlineTransfer
+    warnings: warnings.length > 0 ? warnings : undefined
   };
 }
 
@@ -97,42 +80,28 @@ export async function validateExtendedTxf(
 export function sanitizeForExport(txfJson: IExtendedTxfToken): IExtendedTxfToken {
   const sanitized = JSON.parse(JSON.stringify(txfJson));
 
-  // Remove any accidental private key leakage
-  if (sanitized.offlineTransfer?.sender) {
-    delete (sanitized.offlineTransfer.sender as any).privateKey;
-    delete (sanitized.offlineTransfer.sender as any).secret;
-    delete (sanitized.offlineTransfer.sender as any).nonce;
-  }
+  // Remove any accidental private key leakage from transactions
+  if (sanitized.transactions && Array.isArray(sanitized.transactions)) {
+    for (const tx of sanitized.transactions) {
+      if (tx.data) {
+        delete (tx.data as any).privateKey;
+        delete (tx.data as any).secret;
+        delete (tx.data as any).nonce;
+      }
 
-  // Clean commitment data too
-  if (sanitized.offlineTransfer?.commitmentData) {
-    try {
-      const commitment = JSON.parse(sanitized.offlineTransfer.commitmentData);
-      delete (commitment as any).privateKey;
-      delete (commitment as any).secret;
-      sanitized.offlineTransfer.commitmentData = JSON.stringify(commitment);
-    } catch (e) {
-      // Leave as is if not parseable
+      // Also clean inclusion proof if present
+      if (tx.inclusionProof) {
+        delete (tx.inclusionProof as any).privateKey;
+        delete (tx.inclusionProof as any).secret;
+      }
     }
   }
 
-  return sanitized;
-}
-
-/**
- * Upgrade old TXF to extended format
- */
-export function upgradeTxfToExtended(oldTxf: any): IExtendedTxfToken {
-  // Already extended?
-  if (oldTxf.offlineTransfer || oldTxf.status) {
-    return oldTxf as IExtendedTxfToken;
+  // Clean state
+  if (sanitized.state) {
+    delete (sanitized.state as any).privateKey;
+    delete (sanitized.state as any).secret;
   }
 
-  // Upgrade to extended format
-  const extended: IExtendedTxfToken = {
-    ...oldTxf,
-    status: TokenStatus.CONFIRMED  // Existing tokens are confirmed
-  };
-
-  return extended;
+  return sanitized;
 }
