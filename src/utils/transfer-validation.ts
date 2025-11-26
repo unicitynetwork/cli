@@ -1,4 +1,5 @@
 import { IExtendedTxfToken, IValidationResult, TokenStatus } from '../types/extended-txf.js';
+import { hasReconstructableState } from './txf-serialization.js';
 
 /**
  * Validate extended TXF before processing
@@ -20,7 +21,13 @@ export async function validateExtendedTxf(
     errors.push(`Unsupported TXF version: ${txfJson.version}`);
   }
 
-  if (!txfJson.state || !txfJson.genesis) {
+  // Allow null state only if it can be reconstructed from sourceState (in-transit token)
+  if (txfJson.state === null) {
+    if (!hasReconstructableState(txfJson)) {
+      errors.push('Invalid TXF structure: null state without reconstructable sourceState');
+    }
+    // If reconstructable, state is valid (will be reconstructed on load)
+  } else if (!txfJson.state || !txfJson.genesis) {
     errors.push('Invalid TXF structure: missing required fields');
   }
 

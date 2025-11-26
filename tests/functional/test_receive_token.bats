@@ -293,9 +293,9 @@ teardown() {
     assert_success
     assert_offline_transfer_valid "transfer.txf"
 
-    # Verify: No recipient data hash in transfer
+    # Verify: No recipient data hash in transfer (using new transactions[] structure)
     local commit_data
-    commit_data=$(jq -r '.offlineTransfer.commitmentData' transfer.txf)
+    commit_data=$(jq -r '.transactions[-1].commitment' transfer.txf)
     local recipient_hash
     recipient_hash=$(echo "$commit_data" | jq -r '.transactionData.recipientDataHash')
     assert_equals "null" "$recipient_hash" "Should have no recipient data hash"

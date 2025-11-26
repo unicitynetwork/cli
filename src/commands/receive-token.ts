@@ -14,6 +14,7 @@ import { HexConverter } from '@unicitylabs/state-transition-sdk/lib/util/HexConv
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { validateExtendedTxf, sanitizeForExport } from '../utils/transfer-validation.js';
+import { deserializeTxf } from '../utils/txf-serialization.js';
 import { checkOwnershipStatus, extractOwnerInfo } from '../utils/ownership-verification.js';
 import { validateInclusionProof, validateTokenProofsJson, validateTokenProofs } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
@@ -171,8 +172,15 @@ export function receiveTokenCommand(program: Command): void {
         // STEP 1: Load and validate extended TXF file
         console.error('Step 1: Loading extended TXF file...');
         const fileContent = fs.readFileSync(options.file, 'utf8');
-        const extendedTxf: IExtendedTxfToken = JSON.parse(fileContent);
-        console.error(`  ✓ File loaded: ${options.file}\n`);
+        const rawJson = JSON.parse(fileContent);
+        const hadNullState = rawJson.state === null;
+        const extendedTxf: IExtendedTxfToken = deserializeTxf(rawJson);
+        console.error(`  ✓ File loaded: ${options.file}`);
+        if (hadNullState && extendedTxf.state !== null) {
+          console.error(`  ✓ State reconstructed from sourceState (in-transit token)\n`);
+        } else {
+          console.error('\n');
+        }
 
         // STEP 2: Validate transfer package
         console.error('Step 2: Validating transfer package...');

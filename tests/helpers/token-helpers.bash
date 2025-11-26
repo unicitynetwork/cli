@@ -276,8 +276,8 @@ send_token_offline() {
     output_file=$(create_temp_file ".txf")
   fi
 
-  # Build command
-  local -a cmd=(send-token --file "$input_file" --recipient "$recipient" --output "$output_file" --unsafe-secret)
+  # Build command - use --offline flag to create uncommitted transaction
+  local -a cmd=(send-token --file "$input_file" --recipient "$recipient" --output "$output_file" --offline --unsafe-secret)
 
   if [[ -n "$message" ]]; then
     cmd+=(--message "$message")
@@ -340,14 +340,13 @@ send_token_immediate() {
     output_file=$(create_temp_file ".txf")
   fi
 
-  # Build command
+  # Build command - default is online submit, use --local for local aggregator
   local -a cmd=(
     send-token
     --file "$input_file"
     --recipient "$recipient"
-    --submit-now
+    --local
     --output "$output_file"
-    --endpoint "${UNICITY_AGGREGATOR_URL}"
     --unsafe-secret
   )
 
@@ -414,12 +413,12 @@ receive_token() {
     auto_generated_output=1
   fi
 
-  # Build command
+  # Build command - use --local for local aggregator
   local -a cmd=(
     receive-token
     --file "$input_file"
     --output "$output_file"
-    --endpoint "${UNICITY_AGGREGATOR_URL}"
+    --local
     --unsafe-secret
   )
 

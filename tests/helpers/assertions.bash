@@ -957,26 +957,32 @@ assert_token_has_valid_structure() {
     return 1
   fi
   
-  # Check state object
-  if ! ~/.local/bin/jq -e '.state' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing .state object${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
-  fi
-  
-  # Check required state fields
-  # Note: .state.data can be null for received tokens, so we check existence only
-  if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing required field: .state.data${COLOR_RESET}\n" >&2
+  # Check state object OR transactions with sourceState (for TRANSFERRED tokens)
+  local has_state=$(~/.local/bin/jq -e '.state != null and .state != {}' "$token_file" 2>/dev/null)
+  local has_tx_with_sourcestate=$(~/.local/bin/jq -e '.transactions | length > 0 and .[0].data.sourceState != null' "$token_file" 2>/dev/null)
+
+  if [[ "$has_state" != "true" ]] && [[ "$has_tx_with_sourcestate" != "true" ]]; then
+    printf "${COLOR_RED}✗ Missing .state object and no transactions with sourceState${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
 
-  # .state.predicate must exist and be non-null
-  if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing required field: .state.predicate${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
+  # If state is null but we have transactions, that's OK (state can be reconstructed)
+  if [[ "$has_state" == "true" ]]; then
+    # Check required state fields
+    # Note: .state.data can be null for received tokens, so we check existence only
+    if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing required field: .state.data${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
+
+    # .state.predicate must exist and be non-null
+    if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing required field: .state.predicate${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
   fi
 
   # Check genesis has data (including tokenType)
@@ -1049,25 +1055,31 @@ assert_token_has_valid_genesis() {
 assert_token_has_valid_state() {
   local token_file="${1:?Token file required}"
 
-  # Check state object exists
-  if ! ~/.local/bin/jq -e '.state' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing state object${COLOR_RESET}\n" >&2
+  # Check state object exists OR transactions with sourceState
+  local has_state=$(~/.local/bin/jq -e '.state != null' "$token_file" 2>/dev/null)
+  local has_tx_with_sourcestate=$(~/.local/bin/jq -e '.transactions | length > 0 and .[0].data.sourceState != null' "$token_file" 2>/dev/null)
+
+  if [[ "$has_state" != "true" ]] && [[ "$has_tx_with_sourcestate" != "true" ]]; then
+    printf "${COLOR_RED}✗ Missing state object and no transactions with sourceState${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
 
-  # Check state data exists (can be null for received tokens)
-  if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
-  fi
+  # If state is null but we have transactions with sourceState, that's valid
+  if [[ "$has_state" == "true" ]]; then
+    # Check state data exists (can be null for received tokens)
+    if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
 
-  # Check predicate exists and is non-null
-  if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
+    # Check predicate exists and is non-null
+    if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
   fi
 
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
@@ -1187,24 +1199,24 @@ assert_predicate_structure_valid() {
 #   assert_token_predicate_valid "$token_file"
 assert_token_predicate_valid() {
   local token_file="${1:?Token file required}"
-  
-  # Extract predicate from token
+
+  # Extract predicate from token - first try .state, then transactions[-1].data.sourceState
   local predicate_hex
-  predicate_hex=$(~/.local/bin/jq -r '.state.predicate' "$token_file" 2>/dev/null)
-  
+  predicate_hex=$(~/.local/bin/jq -r '.state.predicate // .transactions[-1].data.sourceState.predicate // null' "$token_file" 2>/dev/null)
+
   if [[ -z "$predicate_hex" ]] || [[ "$predicate_hex" == "null" ]]; then
-    printf "${COLOR_RED}✗ Missing predicate in token state${COLOR_RESET}\n" >&2
+    printf "${COLOR_RED}✗ Missing predicate in token state or sourceState${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Validate predicate structure
   assert_predicate_structure_valid "$predicate_hex" || return 1
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Token predicate valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1655,11 +1667,11 @@ is_valid_txf() {
     return 1
   fi
 
-  # Check required TXF fields
-  local required_fields=(".version" ".genesis" ".state")
+  # Check required TXF fields (using has() for fields that can be null)
+  local required_fields=("version" "genesis" "state")
   for field in "${required_fields[@]}"; do
-    if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ TXF file missing required field: %s${COLOR_RESET}\n" "$field" >&2
+    if ! ~/.local/bin/jq -e "has(\"$field\")" "$file" >/dev/null 2>&1; then
+      printf "${COLOR_RED}✗ TXF file missing required field: .%s${COLOR_RESET}\n" "$field" >&2
       return 1
     fi
   done

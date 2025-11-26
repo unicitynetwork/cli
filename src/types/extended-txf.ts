@@ -6,7 +6,7 @@
 export interface IExtendedTxfToken {
   // Standard TXF v2.0 fields
   version: string;
-  state: any;  // ITokenStateJson
+  state: any | null;  // ITokenStateJson - null when in-transit (reconstructed from sourceState on load)
   genesis: any;  // IMintTransactionJson
   transactions: any[];  // ITransferTransactionJson[] - May include uncommitted transactions (no inclusionProof)
   nametags: any[];  // ITokenJson[]

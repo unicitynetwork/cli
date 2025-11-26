@@ -7,6 +7,7 @@ import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/Aggr
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { checkOwnershipStatus } from '../utils/ownership-verification.js';
+import { deserializeTxf } from '../utils/txf-serialization.js';
 import { createPoWClient } from '../utils/pow-client.js';
 import { CoinOriginMintReason } from '../types/CoinOriginMintReason.js';
 import * as fs from 'fs';
@@ -339,7 +340,11 @@ Exit codes:
         }
 
         try {
-          tokenJson = JSON.parse(tokenFileContent);
+          const rawJson = JSON.parse(tokenFileContent);
+          tokenJson = deserializeTxf(rawJson);
+          if (rawJson.state === null && tokenJson.state !== null) {
+            console.log('Note: State reconstructed from sourceState (in-transit token)');
+          }
         } catch (err) {
           console.error(`Error: Invalid JSON in file: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(2); // File error

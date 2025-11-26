@@ -50,21 +50,21 @@ teardown() {
     status=$(get_token_status "transfer.txf")
     assert_equals "PENDING" "${status}"
 
-    # Verify: Recipient matches Bob's address
+    # Verify: Recipient matches Bob's address (using new transactions[] structure)
     local recipient
-    recipient=$(extract_json_field "transfer.txf" "offlineTransfer.recipient")
+    recipient=$(extract_json_field "transfer.txf" "transactions[-1].data.recipient")
     assert_equals "${bob_addr}" "${recipient}"
 
-    # Verify: Message is preserved
+    # Verify: Message is preserved (using new transactions[] structure)
     local message
-    message=$(extract_json_field "transfer.txf" "offlineTransfer.message")
+    message=$(extract_json_field "transfer.txf" "transactions[-1].data.message")
     assert_equals "Test transfer message" "${message}"
 
-    # Verify: Commitment data exists
-    assert_json_field_exists "transfer.txf" "offlineTransfer.commitmentData"
+    # Verify: Commitment data exists (using new transactions[] structure)
+    assert_json_field_exists "transfer.txf" "transactions[-1].commitment"
 
-    # Verify: Sender address exists
-    assert_json_field_exists "transfer.txf" "offlineTransfer.sender.address"
+    # Verify: Source state exists (using new transactions[] structure)
+    assert_json_field_exists "transfer.txf" "transactions[-1].data.sourceState"
 
     # Verify: Original state unchanged (Alice's predicate)
     local state_addr
@@ -305,7 +305,7 @@ teardown() {
 
     # Verify recipient address is masked
     local recipient
-    recipient=$(extract_json_field "transfer.txf" "offlineTransfer.recipient")
+    recipient=$(extract_json_field "transfer.txf" "transactions[-1].data.recipient")
     assert_address_type "${recipient}" "masked"
 }
 
@@ -370,6 +370,7 @@ teardown() {
         "send-token -f alice-token.txf -r \"${bob_addr}\" \
          --recipient-data-hash \"${data_hash}\" \
          -m \"Token with state commitment\" \
+         --offline \
          -o transfer-with-hash.txf"
 
     assert_success
@@ -384,14 +385,14 @@ teardown() {
     status=$(get_token_status "transfer-with-hash.txf")
     assert_equals "PENDING" "${status}"
 
-    # Step 5.2: Verify recipient address
+    # Step 5.2: Verify recipient address (using new transactions[] structure)
     local recipient
-    recipient=$(extract_json_field "transfer-with-hash.txf" "offlineTransfer.recipient")
+    recipient=$(extract_json_field "transfer-with-hash.txf" "transactions[-1].data.recipient")
     assert_equals "${bob_addr}" "${recipient}"
 
-    # Step 5.3: Verify message preserved
+    # Step 5.3: Verify message preserved (using new transactions[] structure)
     local message
-    message=$(extract_json_field "transfer-with-hash.txf" "offlineTransfer.message")
+    message=$(extract_json_field "transfer-with-hash.txf" "transactions[-1].data.message")
     assert_equals "Token with state commitment" "${message}"
 
     # Step 5.4: Verify Alice cannot see Bob's actual state data
@@ -454,6 +455,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" \
         "send-token -f token4.txf -r \"${bob_addr}\" \
          --recipient-data-hash \"\" \
+         --offline \
          -o output.txf" || status=$?
     # Empty is allowed (optional parameter) - this should succeed
     assert_success
@@ -466,6 +468,7 @@ teardown() {
     run_cli_with_secret "${ALICE_SECRET}" \
         "send-token -f token5.txf -r \"${bob_addr}\" \
          --recipient-data-hash \"ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890\" \
+         --offline \
          -o output-upper.txf" || status=$?
     assert_success
     assert_file_exists "output-upper.txf"

@@ -11,6 +11,7 @@ import { DataHash } from '@unicitylabs/state-transition-sdk/lib/hash/DataHash.js
 import { JsonRpcNetworkError } from '@unicitylabs/state-transition-sdk/lib/api/json-rpc/JsonRpcNetworkError.js';
 import { IExtendedTxfToken, TokenStatus } from '../types/extended-txf.js';
 import { sanitizeForExport } from '../utils/transfer-validation.js';
+import { serializeTxf } from '../utils/txf-serialization.js';
 import { validateTokenProofs, validateTokenProofsJson } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { extractOwnerInfo } from '../utils/ownership-verification.js';
@@ -540,11 +541,17 @@ export function sendTokenCommand(program: Command): void {
           console.error(`  ℹ️  Transaction can be submitted later by recipient using receive-token\n`);
         }
 
-        // STEP FINAL: Sanitize and output
+        // STEP FINAL: Sanitize and serialize for output
         console.error('Final Step: Sanitizing and preparing output...');
         const sanitizedTxf = sanitizeForExport(extendedTxf);
-        const outputJson = JSON.stringify(sanitizedTxf, null, 2);
-        console.error(`  ✓ Output sanitized (private keys removed)\n`);
+        const serializedTxf = serializeTxf(sanitizedTxf);
+        const outputJson = JSON.stringify(serializedTxf, null, 2);
+        console.error(`  ✓ Output sanitized (private keys removed)`);
+        if (serializedTxf.state === null) {
+          console.error(`  ✓ State field optimized (reconstructable from sourceState)\n`);
+        } else {
+          console.error('\n');
+        }
 
         // Output handling
         let outputFile: string | null = null;
@@ -583,7 +590,7 @@ export function sendTokenCommand(program: Command): void {
         console.error('\n=== Transfer Complete ===');
         console.error(`Token ID: ${token.id.toJSON()}`);
         console.error(`Recipient: ${recipientAddress.address}`);
-        console.error(`Status: ${sanitizedTxf.status}`);
+        console.error(`Status: ${serializedTxf.status}`);
 
         if (isOffline) {
           console.error('\n💡 Offline transfer created (uncommitted transaction)');
