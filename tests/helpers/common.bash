@@ -603,6 +603,7 @@ run_cli_with_secret() {
 
   # Add --unsafe-secret flag to bypass secret validation in tests
   # This allows using simple test secrets like "test-secret-123"
+  # Note: --verbose flag removed - not all commands support it
   SECRET="$secret" run_cli "$@ --unsafe-secret"
 }
 

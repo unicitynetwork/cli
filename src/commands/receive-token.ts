@@ -20,6 +20,7 @@ import { validateInclusionProof, validateTokenProofsJson, validateTokenProofs } 
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
 import { detectScenario, extractTransferDetails, resolveTokenProofs } from '../utils/state-resolution.js';
+import { formatReceiveOutput } from '../utils/output-formatter.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -67,12 +68,13 @@ async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: TransferCommitment,
   timeoutMs: number = 60000,
-  intervalMs: number = 1000
+  intervalMs: number = 1000,
+  verbose: boolean = false
 ): Promise<any> {
   const startTime = Date.now();
   let proofReceived = false;
 
-  console.error('Waiting for inclusion proof...');
+  if (verbose) console.error('Waiting for inclusion proof...');
 
   while (Date.now() - startTime < timeoutMs) {
     try {
@@ -88,12 +90,12 @@ async function waitInclusionProof(
         const hasTxHash = proof.transactionHash !== null && proof.transactionHash !== undefined;
 
         if (hasAuth && hasTxHash) {
-          console.error('  ✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
+          if (verbose) console.error('  ✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
           return proof;
         }
         // If proof exists but is incomplete, continue polling
         if (!proofReceived) {
-          console.error(`  ⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
+          if (verbose) console.error(`  ⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
           proofReceived = true;
         }
       }
@@ -102,7 +104,7 @@ async function waitInclusionProof(
         // Continue polling - proof not available yet
       } else {
         // Log other errors but continue polling
-        console.error('Error getting inclusion proof (will retry):', err instanceof Error ? err.message : String(err));
+        if (verbose) console.error('Error getting inclusion proof (will retry):', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -128,7 +130,13 @@ export function receiveTokenCommand(program: Command): void {
     .option('--stdout', 'Output to STDOUT only (no file)')
     .option('--state-data <json>', 'State data (JSON string) for the received token - REQUIRED if sender specified recipient data hash')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
+    .option('-v, --verbose', 'Show detailed step-by-step output')
+    .option('--json', 'Output TXF JSON to stdout (no status messages)')
     .action(async (options) => {
+      const verbose = options.verbose || false;
+      const jsonOutput = options.json || false;
+      const log = (msg: string) => { if (verbose) console.error(msg); };
+
       try {
         // Validate required options
         if (!options.file) {
@@ -167,23 +175,23 @@ export function receiveTokenCommand(program: Command): void {
 
         const isOfflineMode = options.offline || false;
 
-        console.error(`=== Receive Token${isOfflineMode ? ' (Offline Mode)' : ''} ===\n`);
+        log(`=== Receive Token${isOfflineMode ? ' (Offline Mode)' : ''} ===\n`);
 
         // STEP 1: Load and validate extended TXF file
-        console.error('Step 1: Loading extended TXF file...');
+        log('Step 1: Loading extended TXF file...');
         const fileContent = fs.readFileSync(options.file, 'utf8');
         const rawJson = JSON.parse(fileContent);
         const hadNullState = rawJson.state === null;
         const extendedTxf: IExtendedTxfToken = deserializeTxf(rawJson);
-        console.error(`  ✓ File loaded: ${options.file}`);
+        log(`  ✓ File loaded: ${options.file}`);
         if (hadNullState && extendedTxf.state !== null) {
-          console.error(`  ✓ State reconstructed from sourceState (in-transit token)\n`);
+          log(`  ✓ State reconstructed from sourceState (in-transit token)\n`);
         } else {
-          console.error('\n');
+          log('');
         }
 
         // STEP 2: Validate transfer package
-        console.error('Step 2: Validating transfer package...');
+        log('Step 2: Validating transfer package...');
         // Allow uncommitted transactions in both online and offline modes
         // Online mode: Will submit to aggregator to get proof
         // Offline mode: Will verify locally without submission
@@ -198,18 +206,18 @@ export function receiveTokenCommand(program: Command): void {
         // Detect transfer scenario (only for online mode)
         const scenario = !isOfflineMode ? detectScenario(extendedTxf) : null;
         if (scenario) {
-          console.error(`  Transfer scenario detected: ${scenario}`);
+          log(`  Transfer scenario detected: ${scenario}`);
         }
 
         if (validation.warnings && validation.warnings.length > 0) {
-          console.error('  ⚠ Warnings:');
-          validation.warnings.forEach(warn => console.error(`    - ${warn}`));
+          log('  ⚠ Warnings:');
+          validation.warnings.forEach(warn => log(`    - ${warn}`));
         }
 
-        console.error('  ✓ Transfer package validated');
+        log('  ✓ Transfer package validated');
 
         // STEP 2.5: Validate token proofs before processing
-        console.error('\nStep 2.5: Validating token proofs...');
+        log('\nStep 2.5: Validating token proofs...');
         // Allow uncommitted proofs - they will be resolved in NEEDS_RESOLUTION scenario
         const proofValidation = validateTokenProofsJson(extendedTxf, { allowUncommitted: true });
 
@@ -221,11 +229,11 @@ export function receiveTokenCommand(program: Command): void {
         }
 
         if (proofValidation.warnings.length > 0) {
-          console.error('  ⚠ Proof warnings:');
-          proofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+          log('  ⚠ Proof warnings:');
+          proofValidation.warnings.forEach(warn => log(`    - ${warn}`));
         }
 
-        console.error('  ✓ Token proofs validated');
+        log('  ✓ Token proofs validated');
 
         // STEP 2.6: CRITICAL SECURITY - Perform cryptographic proof validation
         // Skip for tokens with uncommitted transactions (will validate after submission)
@@ -233,7 +241,7 @@ export function receiveTokenCommand(program: Command): void {
           extendedTxf.transactions.some(tx => !tx.inclusionProof || !tx.inclusionProof.authenticator);
 
         if (!hasUncommittedTx) {
-          console.error('\nStep 2.6: Cryptographic proof verification...');
+          log('\nStep 2.6: Cryptographic proof verification...');
 
           try {
             // Parse token with SDK for cryptographic validation
@@ -242,7 +250,8 @@ export function receiveTokenCommand(program: Command): void {
             // Load trust base for verification
             const trustBase = await getCachedTrustBase({
               filePath: process.env.TRUSTBASE_PATH,
-              useFallback: false
+              useFallback: false,
+              silent: !verbose
             });
 
             // Perform comprehensive cryptographic validation
@@ -260,14 +269,14 @@ export function receiveTokenCommand(program: Command): void {
               process.exit(1);
             }
 
-            console.error('  ✓ All cryptographic proofs verified');
-            console.error('  ✓ Genesis proof signature valid');
-            console.error('  ✓ Merkle path verification passed');
-            console.error('  ✓ State integrity confirmed');
+            log('  ✓ All cryptographic proofs verified');
+            log('  ✓ Genesis proof signature valid');
+            log('  ✓ Merkle path verification passed');
+            log('  ✓ State integrity confirmed');
 
             if (cryptoValidation.warnings.length > 0) {
-              console.error('  ⚠ Warnings:');
-              cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+              log('  ⚠ Warnings:');
+              cryptoValidation.warnings.forEach(warn => log(`    - ${warn}`));
             }
           } catch (err) {
             console.error('\n❌ Failed to verify token cryptographically:');
@@ -276,9 +285,9 @@ export function receiveTokenCommand(program: Command): void {
             process.exit(1);
           }
         } else {
-          console.error('\nStep 2.6: Cryptographic proof verification...');
-          console.error('  ⚠ Skipping verification for uncommitted transaction');
-          console.error('  ℹ️  Will verify after transaction submission\n');
+          log('\nStep 2.6: Cryptographic proof verification...');
+          log('  ⚠ Skipping verification for uncommitted transaction');
+          log('  ℹ️  Will verify after transaction submission\n');
         }
 
         // ========================================
@@ -286,10 +295,10 @@ export function receiveTokenCommand(program: Command): void {
         // ========================================
 
         if (isOfflineMode) {
-          console.error('\n=== Offline Mode: Local Verification Only ===');
-          console.error('  ℹ️  No network calls will be made');
-          console.error('  ℹ️  Proofs will not be resolved or submitted');
-          console.error('  ℹ️  Final state will remain PENDING\n');
+          log('\n=== Offline Mode: Local Verification Only ===');
+          log('  ℹ️  No network calls will be made');
+          log('  ℹ️  Proofs will not be resolved or submitted');
+          log('  ℹ️  Final state will remain PENDING\n');
 
           try {
             // Parse token with SDK
@@ -305,21 +314,21 @@ export function receiveTokenCommand(program: Command): void {
             const lastTx = extendedTxf.transactions[extendedTxf.transactions.length - 1];
             const transferDetails = extractTransferDetails(lastTx);
 
-            console.error(`  Recipient: ${transferDetails.recipient}`);
+            log(`  Recipient: ${transferDetails.recipient}`);
             if (transferDetails.message) {
-              console.error(`  Message: "${transferDetails.message}"`);
+              log(`  Message: "${transferDetails.message}"`);
             }
-            console.error();
+            log('');
 
             // STEP 4: Get recipient's secret
-            console.error('Step 3: Getting recipient secret...');
+            log('Step 3: Getting recipient secret...');
             const secret = await getSecret(options.unsafeSecret);
             const signingService = await SigningService.createFromSecret(secret);
-            console.error(`  ✓ Signing service created`);
-            console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+            log(`  ✓ Signing service created`);
+            log(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
 
             // STEP 5: Create recipient predicate using transfer salt
-            console.error('Step 4: Creating recipient predicate...');
+            log('Step 4: Creating recipient predicate...');
 
             let recipientPredicate;
             if (options.nonce) {
@@ -332,7 +341,7 @@ export function receiveTokenCommand(program: Command): void {
                 HashAlgorithm.SHA256,
                 nonceBytes
               );
-              console.error('  Using MASKED predicate (one-time address)');
+              log('  Using MASKED predicate (one-time address)');
             } else {
               // Unmasked predicate (reusable address)
               recipientPredicate = await UnmaskedPredicate.create(
@@ -342,18 +351,18 @@ export function receiveTokenCommand(program: Command): void {
                 HashAlgorithm.SHA256,
                 transferDetails.salt
               );
-              console.error('  Using UNMASKED predicate (reusable address)');
+              log('  Using UNMASKED predicate (reusable address)');
             }
 
-            console.error('  ✓ Predicate created\n');
+            log('  ✓ Predicate created\n');
 
             // STEP 6: Verify recipient address matches
-            console.error('Step 5: Verifying recipient address...');
+            log('Step 5: Verifying recipient address...');
             const predicateRef = await recipientPredicate.getReference();
             const actualAddress = await predicateRef.toAddress();
 
-            console.error(`  Expected: ${transferDetails.recipient}`);
-            console.error(`  Actual:   ${actualAddress.address}`);
+            log(`  Expected: ${transferDetails.recipient}`);
+            log(`  Actual:   ${actualAddress.address}`);
 
             if (actualAddress.address !== transferDetails.recipient) {
               console.error('\n❌ Error: Address mismatch!');
@@ -366,10 +375,10 @@ export function receiveTokenCommand(program: Command): void {
               process.exit(1);
             }
 
-            console.error('  ✓ Address matches\n');
+            log('  ✓ Address matches\n');
 
             // STEP 7: Validate state data (if any)
-            console.error('Step 6: Validating state data...');
+            log('Step 6: Validating state data...');
 
             let stateDataBytes: Uint8Array;
 
@@ -397,29 +406,29 @@ export function receiveTokenCommand(program: Command): void {
                 process.exit(1);
               }
 
-              console.error('  ✓ State data validated');
+              log('  ✓ State data validated');
             } else {
               // No data commitment - recipient has full control over state data
               if (options.stateData) {
                 // Recipient provided explicit data
                 stateDataBytes = new TextEncoder().encode(options.stateData);
-                console.error('  ✓ Using recipient-provided state data');
+                log('  ✓ Using recipient-provided state data');
               } else {
                 // No data commitment and no data provided - use empty state data
                 stateDataBytes = new Uint8Array(0);
-                console.error('  No state data (empty)');
+                log('  No state data (empty)');
               }
             }
 
-            console.error();
+            log('');
 
             // STEP 8: Create new token state
-            console.error('Step 7: Creating new token state...');
+            log('Step 7: Creating new token state...');
             const newState = new TokenState(recipientPredicate, stateDataBytes);
-            console.error('  ✓ New state created\n');
+            log('  ✓ New state created\n');
 
             // STEP 9: Build final TXF (PENDING status - not submitted)
-            console.error('Step 8: Building final TXF...');
+            log('Step 8: Building final TXF...');
 
             const finalTxf: IExtendedTxfToken = {
               version: extendedTxf.version || "2.0",
@@ -431,31 +440,33 @@ export function receiveTokenCommand(program: Command): void {
             };
 
             const tokenJson = JSON.stringify(finalTxf, null, 2);
-            console.error('  ✓ Final TXF structure created (status: PENDING)\n');
-            console.error('  ℹ️  Transaction not submitted - proof resolution needed later\n');
+            log('  ✓ Final TXF structure created (status: PENDING)\n');
+            log('  ℹ️  Transaction not submitted - proof resolution needed later\n');
 
             // STEP 10: Save and output
+            let outputFile: string | undefined;
             if (options.output) {
               try {
                 fs.writeFileSync(options.output, tokenJson, 'utf-8');
-                console.error(`✅ Token saved to ${options.output}`);
-                console.error(`   File size: ${tokenJson.length} bytes\n`);
+                outputFile = options.output;
+                log(`✅ Token saved to ${options.output}`);
+                log(`   File size: ${tokenJson.length} bytes\n`);
               } catch (err) {
                 console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
                 throw err;
               }
             }
 
-            // Output to stdout unless saving only
-            if (!options.output || options.stdout) {
+            // Output based on flags
+            if (jsonOutput) {
+              console.log(tokenJson);
+            } else if (!options.output || options.stdout) {
               console.log(tokenJson);
             }
 
-            console.error('\n=== Offline Transfer Verified Successfully ===');
-            console.error(`Recipient: ${actualAddress.address}`);
-            console.error(`Token ID: ${token.id.toJSON()}`);
-            console.error(`Status: PENDING (proof resolution needed)`);
-            console.error('\nNext step: Submit transaction to aggregator or use receive-token without --offline');
+            if (!jsonOutput) {
+              console.log(formatReceiveOutput(finalTxf, outputFile));
+            }
 
             process.exit(0);
 
@@ -475,7 +486,7 @@ export function receiveTokenCommand(program: Command): void {
         let recipientPredicate: UnmaskedPredicate | MaskedPredicate | undefined;
 
         if (scenario === 'NEEDS_RESOLUTION') {
-          console.error('\n=== Processing Uncommitted Transaction ===');
+          log('\n=== Processing Uncommitted Transaction ===');
 
           try {
             // Check if the last transaction is truly uncommitted (no authenticator at all)
@@ -491,32 +502,33 @@ export function receiveTokenCommand(program: Command): void {
 
             if (hasAuthenticator) {
               // Transaction was submitted but proofs are incomplete - RESOLVE from aggregator
-              console.error('Transaction was submitted - resolving proofs from aggregator...');
+              log('Transaction was submitted - resolving proofs from aggregator...');
 
               const aggregatorClient = new AggregatorClient(endpoint);
               const trustBase = await getCachedTrustBase({
                 filePath: process.env.TRUSTBASE_PATH,
-                useFallback: false
+                useFallback: false,
+                silent: !verbose
               });
 
               const resolvedTxfJson = await resolveTokenProofs(extendedTxf, aggregatorClient, trustBase);
               extendedTxf.genesis = resolvedTxfJson.genesis;
               extendedTxf.transactions = resolvedTxfJson.transactions || [];
 
-              console.error('  ✓ Proofs resolved\n');
+              log('  ✓ Proofs resolved\n');
 
               // Now continue to ONLINE_COMPLETE handling
             } else {
               // Transaction is truly uncommitted (no authenticator) - SUBMIT to aggregator
-              console.error('Uncommitted transaction detected - submitting to aggregator...\n');
+              log('Uncommitted transaction detected - submitting to aggregator...\n');
 
               // Extract transfer details from uncommitted transaction
               const transferDetails = extractTransferDetails(lastTx);
-              console.error(`  Recipient: ${transferDetails.recipient}`);
+              log(`  Recipient: ${transferDetails.recipient}`);
               if (transferDetails.message) {
-                console.error(`  Message: "${transferDetails.message}"`);
+                log(`  Message: "${transferDetails.message}"`);
               }
-              console.error();
+              log('');
 
               // CRITICAL: Check if the transaction has the sender's pre-signed commitment
               if (!lastTx.commitment) {
@@ -527,19 +539,19 @@ export function receiveTokenCommand(program: Command): void {
                 process.exit(1);
               }
 
-              console.error('Loading sender\'s pre-signed commitment...');
+              log('Loading sender\'s pre-signed commitment...');
 
               // Reconstruct the TransferCommitment from the stored JSON
               // This commitment was signed by the sender and cannot be recreated by the recipient
               const transferCommitment = await TransferCommitment.fromJSON(lastTx.commitment);
-              console.error('  ✓ Sender\'s commitment loaded');
-              console.error(`  Request ID: ${transferCommitment.requestId.toJSON()}\n`);
+              log('  ✓ Sender\'s commitment loaded');
+              log(`  Request ID: ${transferCommitment.requestId.toJSON()}\n`);
 
               // Get recipient secret ONLY for address verification
-              console.error('Getting recipient secret for address verification...');
+              log('Getting recipient secret for address verification...');
               const secret = await getSecret(options.unsafeSecret);
               signingService = await SigningService.createFromSecret(secret);
-              console.error(`  ✓ Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+              log(`  ✓ Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
 
               // Parse token to get ID and type for predicate creation
               const genesis = await Token.fromJSON({
@@ -551,7 +563,7 @@ export function receiveTokenCommand(program: Command): void {
               });
 
               // Create recipient predicate to verify address
-              console.error('Verifying recipient address...');
+              log('Verifying recipient address...');
               if (options.nonce) {
                 const nonceBytes = HexConverter.decode(options.nonce);
                 recipientPredicate = await MaskedPredicate.create(
@@ -579,30 +591,31 @@ export function receiveTokenCommand(program: Command): void {
                 console.error(`Actual:   ${recipientAddress.address}`);
                 process.exit(1);
               }
-              console.error('  ✓ Address verified - you are the intended recipient\n');
+              log('  ✓ Address verified - you are the intended recipient\n');
 
               // Connect to aggregator
               const aggregatorClient = new AggregatorClient(endpoint);
               const client = new StateTransitionClient(aggregatorClient);
               const trustBase = await getCachedTrustBase({
                 filePath: process.env.TRUSTBASE_PATH,
-                useFallback: false
+                useFallback: false,
+                silent: !verbose
               });
 
               // Submit commitment
-              console.error('Submitting to aggregator...');
+              log('Submitting to aggregator...');
               const submitResponse = await client.submitTransferCommitment(transferCommitment);
 
               if (submitResponse.status !== 'SUCCESS') {
                 console.error(`\n❌ Submission failed: ${submitResponse.status}`);
                 process.exit(1);
               }
-              console.error('  ✓ Submitted\n');
+              log('  ✓ Submitted\n');
 
               // Wait for proof
-              console.error('Waiting for inclusion proof...');
-              const inclusionProof = await waitInclusionProof(client, transferCommitment);
-              console.error('  ✓ Proof received\n');
+              log('Waiting for inclusion proof...');
+              const inclusionProof = await waitInclusionProof(client, transferCommitment, 60000, 1000, verbose);
+              log('  ✓ Proof received\n');
 
               // Validate proof
               const proofValidation2 = await validateInclusionProof(
@@ -614,28 +627,29 @@ export function receiveTokenCommand(program: Command): void {
                 console.error('\n❌ Proof validation failed');
                 process.exit(1);
               }
-              console.error('  ✓ Proof validated\n');
+              log('  ✓ Proof validated\n');
 
               // Create transfer transaction
-              console.error('Creating transfer transaction...');
+              log('Creating transfer transaction...');
               const transferTransaction = transferCommitment.toTransaction(inclusionProof);
-              console.error('  ✓ Transaction created\n');
+              log('  ✓ Transaction created\n');
 
               // Update token with new transaction
               const transferTxJson = await transferTransaction.toJSON();
               extendedTxf.transactions[extendedTxf.transactions.length - 1] = transferTxJson;
 
-              console.error('  ✓ Transaction updated with proof\n');
+              log('  ✓ Transaction updated with proof\n');
               // Continue to ONLINE_COMPLETE handling
             }
 
             // Now that all proofs are resolved, perform full cryptographic validation
-            console.error('Performing cryptographic validation on resolved token...');
+            log('Performing cryptographic validation on resolved token...');
             try {
               const validatedToken = await Token.fromJSON(extendedTxf);
               const trustBase = await getCachedTrustBase({
                 filePath: process.env.TRUSTBASE_PATH,
-                useFallback: false
+                useFallback: false,
+                silent: !verbose
               });
 
               const cryptoValidation = await validateTokenProofs(validatedToken, trustBase);
@@ -647,14 +661,14 @@ export function receiveTokenCommand(program: Command): void {
                 process.exit(1);
               }
 
-              console.error('  ✓ All cryptographic proofs verified');
-              console.error('  ✓ Genesis proof signature valid');
-              console.error('  ✓ All transaction proofs verified');
-              console.error('  ✓ State integrity confirmed\n');
+              log('  ✓ All cryptographic proofs verified');
+              log('  ✓ Genesis proof signature valid');
+              log('  ✓ All transaction proofs verified');
+              log('  ✓ State integrity confirmed\n');
 
               if (cryptoValidation.warnings.length > 0) {
-                console.error('  ⚠ Warnings:');
-                cryptoValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+                log('  ⚠ Warnings:');
+                cryptoValidation.warnings.forEach(warn => log(`    - ${warn}`));
               }
             } catch (err) {
               console.error('\n❌ Failed to verify resolved token cryptographically:');
@@ -671,7 +685,7 @@ export function receiveTokenCommand(program: Command): void {
         }
 
         if (scenario === 'ONLINE_COMPLETE' || scenario === 'NEEDS_RESOLUTION') {
-          console.error('\n=== Receiving Online Transfer ===');
+          log('\n=== Receiving Online Transfer ===');
 
           try {
             // Parse token with SDK
@@ -687,27 +701,27 @@ export function receiveTokenCommand(program: Command): void {
             const lastTx = extendedTxf.transactions[extendedTxf.transactions.length - 1];
             const transferDetails = extractTransferDetails(lastTx);
 
-            console.error(`  Recipient: ${transferDetails.recipient}`);
+            log(`  Recipient: ${transferDetails.recipient}`);
             if (transferDetails.message) {
-              console.error(`  Message: "${transferDetails.message}"`);
+              log(`  Message: "${transferDetails.message}"`);
             }
-            console.error();
+            log('');
 
             // STEP 4: Get recipient's secret (skip if already obtained in NEEDS_RESOLUTION)
             if (!signingService) {
-              console.error('Step 3: Getting recipient secret...');
+              log('Step 3: Getting recipient secret...');
               const secret = await getSecret(options.unsafeSecret);
               signingService = await SigningService.createFromSecret(secret);
-              console.error(`  ✓ Signing service created`);
-              console.error(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+              log(`  ✓ Signing service created`);
+              log(`  Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
             } else {
-              console.error('Step 3: Using recipient secret from previous step...');
-              console.error(`  ✓ Signing service already created\n`);
+              log('Step 3: Using recipient secret from previous step...');
+              log(`  ✓ Signing service already created\n`);
             }
 
             // STEP 5: Create recipient predicate using transfer salt (skip if already created)
             if (!recipientPredicate) {
-              console.error('Step 4: Creating recipient predicate...');
+              log('Step 4: Creating recipient predicate...');
 
               if (options.nonce) {
                 // Masked predicate (one-time address)
@@ -719,7 +733,7 @@ export function receiveTokenCommand(program: Command): void {
                   HashAlgorithm.SHA256,
                   nonceBytes
                 );
-                console.error('  Using MASKED predicate (one-time address)');
+                log('  Using MASKED predicate (one-time address)');
               } else {
                 // Unmasked predicate (reusable address)
                 recipientPredicate = await UnmaskedPredicate.create(
@@ -729,22 +743,22 @@ export function receiveTokenCommand(program: Command): void {
                   HashAlgorithm.SHA256,
                   transferDetails.salt
                 );
-                console.error('  Using UNMASKED predicate (reusable address)');
+                log('  Using UNMASKED predicate (reusable address)');
               }
 
-              console.error('  ✓ Predicate created\n');
+              log('  ✓ Predicate created\n');
             } else {
-              console.error('Step 4: Using recipient predicate from previous step...');
-              console.error('  ✓ Predicate already created\n');
+              log('Step 4: Using recipient predicate from previous step...');
+              log('  ✓ Predicate already created\n');
             }
 
             // STEP 6: Verify recipient address matches
-            console.error('Step 5: Verifying recipient address...');
+            log('Step 5: Verifying recipient address...');
             const predicateRef = await recipientPredicate.getReference();
             const actualAddress = await predicateRef.toAddress();
 
-            console.error(`  Expected: ${transferDetails.recipient}`);
-            console.error(`  Actual:   ${actualAddress.address}`);
+            log(`  Expected: ${transferDetails.recipient}`);
+            log(`  Actual:   ${actualAddress.address}`);
 
             if (actualAddress.address !== transferDetails.recipient) {
               console.error('\n❌ Error: Address mismatch!');
@@ -757,10 +771,10 @@ export function receiveTokenCommand(program: Command): void {
               process.exit(1);
             }
 
-            console.error('  ✓ Address matches\n');
+            log('  ✓ Address matches\n');
 
             // STEP 7: Validate state data (if any)
-            console.error('Step 6: Validating state data...');
+            log('Step 6: Validating state data...');
 
             let stateDataBytes: Uint8Array;
 
@@ -788,29 +802,29 @@ export function receiveTokenCommand(program: Command): void {
                 process.exit(1);
               }
 
-              console.error('  ✓ State data validated');
+              log('  ✓ State data validated');
             } else {
               // No data commitment - recipient has full control over state data
               if (options.stateData) {
                 // Recipient provided explicit data
                 stateDataBytes = new TextEncoder().encode(options.stateData);
-                console.error('  ✓ Using recipient-provided state data');
+                log('  ✓ Using recipient-provided state data');
               } else {
                 // No data commitment and no data provided - use empty state data
                 stateDataBytes = new Uint8Array(0);
-                console.error('  No state data (empty)');
+                log('  No state data (empty)');
               }
             }
 
-            console.error();
+            log('');
 
             // STEP 8: Create new token state
-            console.error('Step 7: Creating new token state...');
+            log('Step 7: Creating new token state...');
             const newState = new TokenState(recipientPredicate, stateDataBytes);
-            console.error('  ✓ New state created\n');
+            log('  ✓ New state created\n');
 
             // STEP 9: Build final TXF
-            console.error('Step 8: Building final TXF...');
+            log('Step 8: Building final TXF...');
 
             const finalTxf: IExtendedTxfToken = {
               version: extendedTxf.version || "2.0",
@@ -822,29 +836,32 @@ export function receiveTokenCommand(program: Command): void {
             };
 
             const tokenJson = JSON.stringify(finalTxf, null, 2);
-            console.error('  ✓ Final TXF structure created\n');
+            log('  ✓ Final TXF structure created\n');
 
             // STEP 10: Save and output
+            let outputFile: string | undefined;
             if (options.output) {
               try {
                 fs.writeFileSync(options.output, tokenJson, 'utf-8');
-                console.error(`✅ Token saved to ${options.output}`);
-                console.error(`   File size: ${tokenJson.length} bytes\n`);
+                outputFile = options.output;
+                log(`✅ Token saved to ${options.output}`);
+                log(`   File size: ${tokenJson.length} bytes\n`);
               } catch (err) {
                 console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
                 throw err;
               }
             }
 
-            // Output to stdout unless saving only
-            if (!options.output || options.stdout) {
+            // Output based on flags
+            if (jsonOutput) {
+              console.log(tokenJson);
+            } else if (!options.output || options.stdout) {
               console.log(tokenJson);
             }
 
-            console.error('\n=== Online Transfer Received Successfully ===');
-            console.error(`Recipient: ${actualAddress.address}`);
-            console.error(`Token ID: ${token.id.toJSON()}`);
-            console.error(`Status: CONFIRMED`);
+            if (!jsonOutput) {
+              console.log(formatReceiveOutput(finalTxf, outputFile));
+            }
 
             process.exit(0);
 

@@ -21,6 +21,11 @@ export interface TrustBaseConfig {
    * Whether to use the fallback immediately without trying file access
    */
   useFallback?: boolean;
+
+  /**
+   * If true, suppress all console output during loading (for non-verbose CLI mode)
+   */
+  silent?: boolean;
 }
 
 /**
@@ -78,11 +83,15 @@ const DEFAULT_TRUSTBASE_PATHS = [
  * @throws Error if TrustBase cannot be loaded from any source
  */
 export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootTrustBase> {
-  const { filePath, fallbackJson = DEFAULT_LOCAL_TRUSTBASE, useFallback = false } = config;
+  const { filePath, fallbackJson = DEFAULT_LOCAL_TRUSTBASE, useFallback = false, silent = false } = config;
+
+  // Helper for conditional logging
+  const log = (msg: string) => { if (!silent) console.log(msg); };
+  const warn = (msg: string) => { if (!silent) console.warn(msg); };
 
   // If useFallback is explicitly set, skip file loading
   if (useFallback) {
-    console.log('Using hardcoded TrustBase configuration (fallback mode)');
+    log('Using hardcoded TrustBase configuration (fallback mode)');
     return RootTrustBase.fromJSON(fallbackJson);
   }
 
@@ -90,10 +99,10 @@ export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootT
   if (filePath) {
     try {
       const trustBaseJson = await loadTrustBaseFromFile(filePath);
-      console.log(`Loaded TrustBase from: ${filePath}`);
+      log(`Loaded TrustBase from: ${filePath}`);
       return RootTrustBase.fromJSON(trustBaseJson);
     } catch (error) {
-      console.warn(`Failed to load TrustBase from ${filePath}:`, (error as Error).message);
+      warn(`Failed to load TrustBase from ${filePath}: ${(error as Error).message}`);
     }
   }
 
@@ -101,7 +110,7 @@ export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootT
   for (const defaultPath of DEFAULT_TRUSTBASE_PATHS) {
     try {
       const trustBaseJson = await loadTrustBaseFromFile(defaultPath);
-      console.log(`Loaded TrustBase from: ${defaultPath}`);
+      log(`Loaded TrustBase from: ${defaultPath}`);
       return RootTrustBase.fromJSON(trustBaseJson);
     } catch (error) {
       // Silently continue to next path
@@ -109,27 +118,27 @@ export async function loadTrustBase(config: TrustBaseConfig = {}): Promise<RootT
   }
 
   // Try to extract from running Docker aggregator
-  console.log('Attempting to extract TrustBase from Docker aggregator...');
+  log('Attempting to extract TrustBase from Docker aggregator...');
   const containerName = findAggregatorContainer();
 
   if (containerName) {
-    console.log(`Found aggregator container: ${containerName}`);
+    log(`Found aggregator container: ${containerName}`);
     const dockerTrustBase = extractTrustBaseFromDocker(containerName);
 
     if (dockerTrustBase) {
-      console.log(`✓ Loaded TrustBase from Docker container: ${containerName}`);
+      log(`✓ Loaded TrustBase from Docker container: ${containerName}`);
       return RootTrustBase.fromJSON(dockerTrustBase);
     } else {
-      console.warn(`Failed to extract TrustBase from container: ${containerName}`);
+      warn(`Failed to extract TrustBase from container: ${containerName}`);
     }
   } else {
-    console.warn('No running aggregator container found');
+    warn('No running aggregator container found');
   }
 
   // Fall back to hardcoded configuration (should not be used for --local)
-  console.warn('Could not load TrustBase from file or Docker, using hardcoded configuration');
-  console.warn('⚠️  WARNING: Hardcoded TrustBase may not match your aggregator!');
-  console.warn('For local development, ensure Docker aggregator is running');
+  warn('Could not load TrustBase from file or Docker, using hardcoded configuration');
+  warn('⚠️  WARNING: Hardcoded TrustBase may not match your aggregator!');
+  warn('For local development, ensure Docker aggregator is running');
 
   return RootTrustBase.fromJSON(fallbackJson);
 }

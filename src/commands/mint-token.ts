@@ -23,6 +23,7 @@ import { MaskedPredicate } from '@unicitylabs/state-transition-sdk/lib/predicate
 import { validateInclusionProof } from '../utils/proof-validation.js';
 import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateTokenType, validateNonce, validateFilePath, throwValidationError } from '../utils/input-validation.js';
+import { formatMintOutput } from '../utils/output-formatter.js';
 import { createPoWClient } from '../utils/pow-client.js';
 import {
   CoinOriginProof,
@@ -85,7 +86,8 @@ async function processInput(
   options: {
     requireHash?: boolean;  // Force hash to 32 bytes (for TokenId/TokenType)
     allowEmpty?: boolean;   // Allow undefined/empty input
-  } = {}
+  } = {},
+  verbose: boolean = false
 ): Promise<Uint8Array> {
   // Handle undefined/empty input
   if (!input) {
@@ -94,7 +96,7 @@ async function processInput(
     }
     // Generate random 32 bytes
     const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-    console.error(`Generated random ${label}: ${HexConverter.encode(randomBytes)}`);
+    if (verbose) console.error(`Generated random ${label}: ${HexConverter.encode(randomBytes)}`);
     return randomBytes;
   }
 
@@ -105,16 +107,16 @@ async function processInput(
 
     // For TokenId/TokenType, must be exactly 256 bits (64 hex chars)
     if (options.requireHash && hexStr.length !== 64) {
-      console.error(`${label} hex string is ${hexStr.length} chars (expected 64), hashing...`);
+      if (verbose) console.error(`${label} hex string is ${hexStr.length} chars (expected 64), hashing...`);
       const hasher = new DataHasher(HashAlgorithm.SHA256);
       const hash = await hasher.update(HexConverter.decode(hexStr)).digest();
-      console.error(`Hashed ${label}: ${HexConverter.encode(hash.data)}`);
+      if (verbose) console.error(`Hashed ${label}: ${HexConverter.encode(hash.data)}`);
       return hash.data;
     }
 
     // Valid hex string, decode directly
     const bytes = HexConverter.decode(hexStr);
-    console.error(`Using hex ${label}: ${HexConverter.encode(bytes)}`);
+    if (verbose) console.error(`Using hex ${label}: ${HexConverter.encode(bytes)}`);
     return bytes;
   }
 
@@ -132,11 +134,11 @@ async function processInput(
         // Hash JSON for TokenId/TokenType
         const hasher = new DataHasher(HashAlgorithm.SHA256);
         const hash = await hasher.update(jsonBytes).digest();
-        console.error(`Hashed JSON ${label}: ${HexConverter.encode(hash.data)}`);
+        if (verbose) console.error(`Hashed JSON ${label}: ${HexConverter.encode(hash.data)}`);
         return hash.data;
       }
 
-      console.error(`Serialized JSON ${label} (${jsonBytes.length} bytes)`);
+      if (verbose) console.error(`Serialized JSON ${label} (${jsonBytes.length} bytes)`);
       return jsonBytes;
     } catch (e) {
       // Not valid JSON, treat as plain text
@@ -150,18 +152,19 @@ async function processInput(
     // Hash to 32 bytes for TokenId/TokenType
     const hasher = new DataHasher(HashAlgorithm.SHA256);
     const hash = await hasher.update(textBytes).digest();
-    console.error(`Hashed text ${label} "${input}": ${HexConverter.encode(hash.data)}`);
+    if (verbose) console.error(`Hashed text ${label} "${input}": ${HexConverter.encode(hash.data)}`);
     return hash.data;
   }
 
-  console.error(`Serialized text ${label} "${input}" (${textBytes.length} bytes)`);
+  if (verbose) console.error(`Serialized text ${label} "${input}" (${textBytes.length} bytes)`);
   return textBytes;
 }
 
 // Function to process token type with preset or custom input
 async function processTokenType(
   tokenTypeOption: string | undefined,
-  preset: string | undefined
+  preset: string | undefined,
+  verbose: boolean = false
 ): Promise<{ tokenType: TokenType; presetInfo?: any }> {
   // If preset is specified, use it
   if (preset) {
@@ -173,11 +176,13 @@ async function processTokenType(
     }
 
     const tokenTypeBytes = HexConverter.decode(presetType.id);
-    console.error(`Using preset token type "${preset}" (${presetType.name})`);
-    console.error(`  TokenType ID: ${presetType.id}`);
-    console.error(`  Asset kind: ${presetType.assetKind}`);
-    if ('symbol' in presetType) {
-      console.error(`  Symbol: ${presetType.symbol}`);
+    if (verbose) {
+      console.error(`Using preset token type "${preset}" (${presetType.name})`);
+      console.error(`  TokenType ID: ${presetType.id}`);
+      console.error(`  Asset kind: ${presetType.assetKind}`);
+      if ('symbol' in presetType) {
+        console.error(`  Symbol: ${presetType.symbol}`);
+      }
     }
 
     return {
@@ -194,15 +199,17 @@ async function processTokenType(
       throwValidationError(validation);
     }
 
-    const tokenTypeBytes = await processInput(tokenTypeOption, 'tokenType', { requireHash: true });
+    const tokenTypeBytes = await processInput(tokenTypeOption, 'tokenType', { requireHash: true }, verbose);
     return { tokenType: new TokenType(tokenTypeBytes) };
   }
 
   // Default to Unicity UCT type (fungible)
   const defaultPreset = UNICITY_TOKEN_TYPES.uct;
   const tokenTypeBytes = HexConverter.decode(defaultPreset.id);
-  console.error(`Using default UCT token type (${defaultPreset.name})`);
-  console.error(`  TokenType ID: ${defaultPreset.id}`);
+  if (verbose) {
+    console.error(`Using default UCT token type (${defaultPreset.name})`);
+    console.error(`  TokenType ID: ${defaultPreset.id}`);
+  }
 
   return {
     tokenType: new TokenType(tokenTypeBytes),
@@ -216,12 +223,13 @@ async function waitInclusionProof(
   client: StateTransitionClient,
   commitment: MintCommitment<IMintTransactionReason>,
   timeoutMs: number = 60000,
-  intervalMs: number = 1000
+  intervalMs: number = 1000,
+  verbose: boolean = false
 ): Promise<any> {
   const startTime = Date.now();
   let proofReceived = false;
 
-  console.error('Waiting for inclusion proof for commitment...');
+  if (verbose) console.error('Waiting for inclusion proof for commitment...');
 
   while (Date.now() - startTime < timeoutMs) {
     try {
@@ -237,12 +245,12 @@ async function waitInclusionProof(
         const hasTxHash = proof.transactionHash !== null && proof.transactionHash !== undefined;
 
         if (hasAuth && hasTxHash) {
-          console.error('✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
+          if (verbose) console.error('✓ Inclusion proof received from aggregator (complete with authenticator and transactionHash)');
           return proof;
         }
         // If proof exists but is incomplete, continue polling
         if (!proofReceived) {
-          console.error(`⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
+          if (verbose) console.error(`⏳ Proof found but incomplete - authenticator: ${hasAuth}, transactionHash: ${hasTxHash}`);
           proofReceived = true;
         }
       }
@@ -252,7 +260,7 @@ async function waitInclusionProof(
         // Don't log on every iteration to avoid spam
       } else {
         // Log other errors but continue polling
-        console.error('Error getting inclusion proof (will retry):', err instanceof Error ? err.message : String(err));
+        if (verbose) console.error('Error getting inclusion proof (will retry):', err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -325,12 +333,21 @@ export function mintTokenCommand(program: Command): void {
     .option('-o, --output <file>', 'Output TXF file path')
     .option('--save', 'Save output to auto-generated filename')
     .option('--stdout', 'Output to STDOUT only (no file)')
+    .option('-v, --verbose', 'Show detailed step-by-step output')
+    .option('--json', 'Output TXF JSON to stdout (no status messages)')
     .option('--unsafe-secret', 'Skip secret strength validation (for development/testing only)')
     .option('--unct-mine <blockHeight>', 'Mint UNCT coin using proof from specified POW blockchain block height')
     .option('--unct-url <url>', 'POW blockchain RPC endpoint URL (for verification)')
     .option('--local-unct', 'Use local POW node at http://localhost:8332 (for verification)')
     .option('--force-unverified', 'Force minting even if POW verification fails (dangerous - may waste token ID)')
     .action(async (options) => {
+      // Determine output mode
+      const verbose = options.verbose || false;
+      const jsonOutput = options.json || false;
+
+      // Helper for verbose logging
+      const log = (msg: string) => { if (verbose) console.error(msg); };
+
       // Determine endpoint
       let endpoint = options.endpoint;
       if (options.local) {
@@ -370,16 +387,16 @@ export function mintTokenCommand(program: Command): void {
         }
 
         // Auto-configure for UNCT minting
-        console.error('=== UNCT Coin Minting Mode ===');
-        console.error(`  Block Height: ${unctBlockHeight}`);
+        log('=== UNCT Coin Minting Mode ===');
+        log(`  Block Height: ${unctBlockHeight}`);
         if (unctVerificationEnabled) {
           const powEndpoint = options.localUnct ? 'http://localhost:8332 (local)' : options.unctUrl;
-          console.error(`  POW Verification: ENABLED (${powEndpoint})`);
+          log(`  POW Verification: ENABLED (${powEndpoint})`);
         } else {
-          console.error(`  POW Verification: DISABLED (unverified mode)`);
-          console.error(`  ⚠️  WARNING: Token will not be cryptographically verified`);
+          log(`  POW Verification: DISABLED (unverified mode)`);
+          log(`  WARNING: Token will not be cryptographically verified`);
         }
-        console.error();
+        log('');
 
         // Override preset and coins
         options.preset = 'uct';
@@ -387,7 +404,7 @@ export function mintTokenCommand(program: Command): void {
       }
 
       try {
-        console.error('=== Self-Mint Pattern: Minting token to yourself ===\n');
+        log('=== Self-Mint Pattern: Minting token to yourself ===\n');
 
         // Get secret from environment or prompt
         const secret = await getSecret(options.unsafeSecret);
@@ -404,54 +421,55 @@ export function mintTokenCommand(program: Command): void {
           }
 
           // Masked predicate (one-time use)
-          nonce = await processInput(options.nonce, 'nonce', { requireHash: true });
+          nonce = await processInput(options.nonce, 'nonce', { requireHash: true }, verbose);
           signingService = await SigningService.createFromSecret(secret, nonce);
-          console.error('Using MASKED predicate (one-time use address)');
+          log('Using MASKED predicate (one-time use address)');
         } else {
           // Unmasked predicate (reusable)
           signingService = await SigningService.createFromSecret(secret);
-          console.error('Using UNMASKED predicate (reusable address)');
+          log('Using UNMASKED predicate (reusable address)');
         }
 
-        console.error(`Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
+        log(`Public Key: ${HexConverter.encode(signingService.publicKey)}\n`);
 
         // Create AggregatorClient and StateTransitionClient
         const aggregatorClient = new AggregatorClient(endpoint);
         const client = new StateTransitionClient(aggregatorClient);
 
         // Load trust base dynamically from file or fallback to hardcoded
-        console.error('Loading trust base...');
+        log('Loading trust base...');
         const trustBase = await getCachedTrustBase({
           filePath: process.env.TRUSTBASE_PATH,
-          useFallback: false // Try file loading first, fallback if unavailable
+          useFallback: false, // Try file loading first, fallback if unavailable
+          silent: !verbose
         });
-        console.error(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
+        log(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})\n`);
 
         // Process tokenId - must be 256-bit (64 hex chars) or will be hashed
-        const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true });
+        const tokenIdBytes = await processInput(options.tokenId, 'tokenId', { requireHash: true }, verbose);
         const tokenId = new TokenId(tokenIdBytes);
 
         // Process tokenType with preset support
-        const { tokenType, presetInfo } = await processTokenType(options.tokenType, options.preset);
+        const { tokenType, presetInfo } = await processTokenType(options.tokenType, options.preset, verbose);
 
         // Process salt
         const salt = options.salt
-          ? await processInput(options.salt, 'salt', { requireHash: true })
+          ? await processInput(options.salt, 'salt', { requireHash: true }, verbose)
           : crypto.getRandomValues(new Uint8Array(32));
-        console.error(`Salt: ${HexConverter.encode(salt)}\n`);
+        log(`Salt: ${HexConverter.encode(salt)}\n`);
 
         // STEP 1: Create predicate FIRST (critical pattern!)
-        console.error('Step 1: Creating predicate...');
+        log('Step 1: Creating predicate...');
         const predicate = nonce
           ? await MaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, nonce)
           : await UnmaskedPredicate.create(tokenId, tokenType, signingService, HashAlgorithm.SHA256, salt);
-        console.error('  ✓ Predicate created\n');
+        log('  ✓ Predicate created\n');
 
         // STEP 2: Derive address FROM the predicate
-        console.error('Step 2: Deriving address from predicate...');
+        log('Step 2: Deriving address from predicate...');
         const predicateRef = await predicate.getReference();
         const address = await predicateRef.toAddress();
-        console.error(`  ✓ Address: ${address.address}\n`);
+        log(`  ✓ Address: ${address.address}\n`);
 
         // Process token data and UNCT proof
         let tokenDataBytes: Uint8Array;
@@ -465,7 +483,7 @@ export function mintTokenCommand(program: Command): void {
 
           if (unctVerificationEnabled) {
             // PATH A: VERIFIED MODE - Full cryptographic verification
-            console.error('Fetching and verifying UNCT coin origin proof from POW blockchain...');
+            log('Fetching and verifying UNCT coin origin proof from POW blockchain...');
 
             try {
               const powClient = createPoWClient({
@@ -509,18 +527,18 @@ export function mintTokenCommand(program: Command): void {
                 coinOriginProof = createProof(unctBlockHeight);
               } else {
                 // Verification passed - create proof
-                console.error('  ✓ All verification checks passed:');
-                console.error('    ✓ Target matches SHA256(tokenId)');
-                console.error('    ✓ Witness contains target');
-                console.error('    ✓ Merkle root matches block header');
-                console.error('    ✓ Witness composition correct');
-                console.error();
+                log('  ✓ All verification checks passed:');
+                log('    ✓ Target matches SHA256(tokenId)');
+                log('    ✓ Witness contains target');
+                log('    ✓ Merkle root matches block header');
+                log('    ✓ Witness composition correct');
+                log('');
 
                 coinOriginProof = createProof(verification.blockHeight!);
 
-                console.error(`  Block Height: ${verification.blockHeight}`);
-                console.error(`  Proof will be stored in genesis.reason field`);
-                console.error();
+                log(`  Block Height: ${verification.blockHeight}`);
+                log(`  Proof will be stored in genesis.reason field`);
+                log('');
               }
             } catch (error) {
               console.error('\n❌ Error during POW verification:');
@@ -531,19 +549,19 @@ export function mintTokenCommand(program: Command): void {
             }
           } else {
             // PATH B: UNVERIFIED MODE - Create proof without verification
-            console.error('Creating UNCT coin origin proof (unverified mode)...');
-            console.error('  ⚠️  WARNING: No cryptographic verification performed');
-            console.error('  ⚠️  Token may be invalid if block/tokenId are incorrect');
-            console.error();
+            log('Creating UNCT coin origin proof (unverified mode)...');
+            log('  WARNING: No cryptographic verification performed');
+            log('  Token may be invalid if block/tokenId are incorrect');
+            log('');
 
             // Create proof with just blockHeight
             // All other data (merkleRoot, target, witness) can be fetched from POW chain
             coinOriginProof = createProof(unctBlockHeight);
 
-            console.error(`  Block Height: ${unctBlockHeight}`);
-            console.error(`  Proof will be stored in genesis.reason field`);
-            console.error('  ⚠️  Verification data can be fetched from POW blockchain later');
-            console.error();
+            log(`  Block Height: ${unctBlockHeight}`);
+            log(`  Proof will be stored in genesis.reason field`);
+            log('  Verification data can be fetched from POW blockchain later');
+            log('');
           }
 
           // Create mint reason with coin origin proof (both paths)
@@ -554,25 +572,25 @@ export function mintTokenCommand(program: Command): void {
           tokenDataBytes = new Uint8Array(0);
           recipientDataHash = null; // No token data to hash
 
-          console.error(`Created coin origin mint reason with proof`);
-          console.error(`  Block Height: ${coinOriginProof.blockHeight}`);
-          console.error(`  Proof stored in genesis.reason field (justifies coin origin)`);
-          console.error();
+          log(`Created coin origin mint reason with proof`);
+          log(`  Block Height: ${coinOriginProof.blockHeight}`);
+          log(`  Proof stored in genesis.reason field (justifies coin origin)`);
+          log('');
         } else if (options.tokenData) {
           // Regular token data (non-UNCT)
-          tokenDataBytes = await processInput(options.tokenData, 'token data', { allowEmpty: false });
+          tokenDataBytes = await processInput(options.tokenData, 'token data', { allowEmpty: false }, verbose);
 
           // CRITICAL: Compute recipientDataHash to commit to state.data
           // This is required for SDK verification of tokens with data
           const hasher = new DataHasher(HashAlgorithm.SHA256);
           recipientDataHash = await hasher.update(tokenDataBytes).digest();
 
-          console.error(`Serialized JSON token data (${tokenDataBytes.length} bytes)`);
-          console.error(`Computed recipientDataHash: ${HexConverter.encode(recipientDataHash.data)}`);
+          log(`Serialized JSON token data (${tokenDataBytes.length} bytes)`);
+          log(`Computed recipientDataHash: ${HexConverter.encode(recipientDataHash.data)}`);
         } else {
           // Empty token data (no recipientDataHash needed)
           tokenDataBytes = new Uint8Array(0);
-          console.error('Using empty token data');
+          log('Using empty token data');
         }
 
         // Process coins - handle preset fungible tokens
@@ -603,23 +621,23 @@ export function mintTokenCommand(program: Command): void {
             return [new CoinId(coinIdBytes), amount];
           });
           coinData = TokenCoinData.create(coinsWithIds);
-          console.error(`Creating token with ${coinAmounts.length} coin(s)`);
+          log(`Creating token with ${coinAmounts.length} coin(s)`);
         } else if (presetInfo && presetInfo.assetKind === 'fungible') {
           // Preset fungible token - create single coin with amount 0
           const defaultCoinId = new CoinId(crypto.getRandomValues(new Uint8Array(32)));
           coinData = TokenCoinData.create([[defaultCoinId, BigInt(0)]]);
           const symbol = 'symbol' in presetInfo ? presetInfo.symbol : presetInfo.name;
-          console.error(`Creating fungible ${symbol} token with default coin (amount: 0)`);
-          console.error(`  Note: Use -c to specify amounts (e.g., -c "1000000000000000000" for 1 ${symbol})`);
+          log(`Creating fungible ${symbol} token with default coin (amount: 0)`);
+          log(`  Note: Use -c to specify amounts (e.g., -c "1000000000000000000" for 1 ${symbol})`);
         } else {
           // Non-fungible token (NFT)
           coinData = TokenCoinData.create([]);
-          console.error('Creating non-fungible token (NFT)');
+          log('Creating non-fungible token (NFT)');
         }
-        console.error();
+        log('');
 
         // STEP 3: Create MintTransactionData using the address
-        console.error('Step 3: Creating MintTransactionData...');
+        log('Step 3: Creating MintTransactionData...');
         const mintTransactionData = await MintTransactionData.create(
           tokenId,           // Token identifier
           tokenType,         // Token type identifier
@@ -630,25 +648,25 @@ export function mintTokenCommand(program: Command): void {
           recipientDataHash, // Commit to state.data via hash (CRITICAL FIX)
           mintReason         // Reason (CoinOriginMintReason for UNCT, null otherwise)
         );
-        console.error('  ✓ MintTransactionData created\n');
+        log('  ✓ MintTransactionData created\n');
 
         // STEP 4: Create and submit commitment
-        console.error('Step 4: Creating mint commitment...');
+        log('Step 4: Creating mint commitment...');
         const mintCommitment = await MintCommitment.create(mintTransactionData);
-        console.error('  ✓ Commitment created\n');
+        log('  ✓ Commitment created\n');
 
-        console.error('Step 5: Submitting to network...');
+        log('Step 5: Submitting to network...');
         const submitResponse = await client.submitMintCommitment(mintCommitment);
-        console.error(`  ✓ Transaction submitted`);
-        console.error(`  Request ID: ${mintCommitment.requestId.toJSON()}\n`);
+        log(`  ✓ Transaction submitted`);
+        log(`  Request ID: ${mintCommitment.requestId.toJSON()}\n`);
 
         // STEP 6: Wait for inclusion proof
-        console.error('Step 6: Waiting for inclusion proof...');
-        const inclusionProof = await waitInclusionProof(client, mintCommitment);
-        console.error('  ✓ Inclusion proof received\n');
+        log('Step 6: Waiting for inclusion proof...');
+        const inclusionProof = await waitInclusionProof(client, mintCommitment, 60000, 1000, verbose);
+        log('  ✓ Inclusion proof received\n');
 
         // Validate the inclusion proof
-        console.error('Step 6.5: Validating inclusion proof...');
+        log('Step 6.5: Validating inclusion proof...');
         const proofValidation = await validateInclusionProof(
           inclusionProof,
           mintCommitment.requestId,
@@ -662,29 +680,29 @@ export function mintTokenCommand(program: Command): void {
           process.exit(1);
         }
 
-        console.error('  ✓ Proof structure validated (authenticator, transaction hash, merkle path)');
-        console.error('  ✓ Authenticator signature verified');
+        log('  ✓ Proof structure validated (authenticator, transaction hash, merkle path)');
+        log('  ✓ Authenticator signature verified');
 
         if (proofValidation.warnings.length > 0) {
-          console.error('  ⚠ Warnings:');
-          proofValidation.warnings.forEach(warn => console.error(`    - ${warn}`));
+          log('  Warnings:');
+          proofValidation.warnings.forEach(warn => log(`    - ${warn}`));
         }
-        console.error();
+        log('');
 
         // STEP 7: Create TokenState with predicate
-        console.error('Step 7: Creating TokenState with predicate...');
+        log('Step 7: Creating TokenState with predicate...');
         const tokenState = new TokenState(predicate, tokenDataBytes);
-        console.error('  ✓ TokenState created (uses SAME predicate)\n');
+        log('  ✓ TokenState created (uses SAME predicate)\n');
 
         // STEP 8: Create mint transaction
-        console.error('Step 8: Creating mint transaction...');
+        log('Step 8: Creating mint transaction...');
         const mintTransaction = mintCommitment.toTransaction(inclusionProof);
-        console.error('  ✓ Mint transaction created\n');
+        log('  ✓ Mint transaction created\n');
 
         // STEP 9: Create SDK-compliant TXF structure using SDK methods
         // Use tokenState.toJSON() to ensure proper predicate encoding
         // The predicate must be a CBOR array: [engine_id, template, params]
-        console.error('Step 9: Creating SDK-compliant TXF structure...');
+        log('Step 9: Creating SDK-compliant TXF structure...');
 
         const genesisDataJson = mintTransaction.data.toJSON();
         const genesisDataJsonStr = JSON.stringify(genesisDataJson);
@@ -713,7 +731,7 @@ export function mintTokenCommand(program: Command): void {
         };
 
         const tokenJson = JSON.stringify(txfToken, null, 2);
-        console.error('  ✓ TXF structure created with SDK method\n');
+        log('  ✓ TXF structure created with SDK method\n');
 
         // Output handling
         let outputFile: string | null = null;
@@ -741,22 +759,27 @@ export function mintTokenCommand(program: Command): void {
         if (outputFile && !options.stdout) {
           try {
             fs.writeFileSync(outputFile, tokenJson, 'utf-8');
-            console.error(`✅ Token saved to ${outputFile}`);
-            console.error(`   File size: ${tokenJson.length} bytes`);
+            log(`Token saved to ${outputFile}`);
+            log(`   File size: ${tokenJson.length} bytes`);
           } catch (err) {
-            console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
+            console.error(`Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
             throw err;
           }
         }
 
-        // Always output to stdout unless explicitly saving only
-        if (!options.save || options.stdout) {
+        // Final output
+        if (jsonOutput) {
+          // JSON mode: output TXF to stdout, no status messages
+          console.log(tokenJson);
+        } else if ((!options.save && !options.output) || options.stdout) {
+          // Output JSON to stdout if no file output OR if --stdout explicitly requested
           console.log(tokenJson);
         }
 
-        console.error('\n=== Minting Complete ===');
-        console.error(`Token ID: ${tokenId.toJSON()}`);
-        console.error(`Address: ${address.address}`);
+        // Print summary unless in JSON mode
+        if (!jsonOutput) {
+          console.log(formatMintOutput(txfToken, outputFile || undefined));
+        }
       } catch (error) {
         console.error('\n❌ Error minting token:');
         const errorMessage = getNetworkErrorMessage(error);
