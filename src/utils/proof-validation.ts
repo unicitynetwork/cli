@@ -397,7 +397,8 @@ export async function validateTokenProofs(
   if (trustBase && errors.length === 0) {
     if (!shouldVerify) {
       // Token has no data commitment - SDK verification not applicable
-      warnings.push(`SDK comprehensive verification skipped (${verificationReason})`);
+      // This is the normal case for most tokens (recipientDataHash is optional)
+      // No warning needed - nothing is wrong
     } else {
       // Token has data commitment - perform full SDK verification
       try {

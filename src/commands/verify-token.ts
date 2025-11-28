@@ -9,7 +9,15 @@ import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { checkOwnershipStatus } from '../utils/ownership-verification.js';
 import { deserializeTxf } from '../utils/txf-serialization.js';
 import { createPoWClient } from '../utils/pow-client.js';
-import { CoinOriginMintReason } from '../types/CoinOriginMintReason.js';
+import {
+  VerificationResult,
+  formatVerifyOutput,
+  formatVerifyJson,
+  getTokenTypeName,
+  decodePredicate,
+  decodeTokenData,
+  truncate
+} from '../utils/output-formatter.js';
 import * as fs from 'fs';
 
 /**
@@ -314,7 +322,53 @@ Exit codes:
     .option('--diagnostic', 'Display verification info without failing (always exit 0)')
     .option('--unct-url <url>', 'POW blockchain RPC endpoint URL for UNCT verification')
     .option('--local-unct', 'Use local POW blockchain (http://localhost:8332) for UNCT verification')
+    .option('-v, --verbose', 'Show detailed verification output')
+    .option('--json', 'Output structured JSON report')
     .action(async (options) => {
+      // Determine output mode
+      const verbose = options.verbose || false;
+      const jsonOutput = options.json || false;
+
+      // Helper for verbose logging
+      const log = (msg: string) => { if (verbose) console.log(msg); };
+
+      // Initialize verification result
+      const result: VerificationResult = {
+        tokenId: '',
+        tokenType: '',
+        tokenTypeName: '',
+        version: '',
+        data: '',
+        state: {
+          data: '',
+          predicateType: 'unknown',
+          algorithm: 'unknown',
+          publicKey: ''
+        },
+        proofs: {
+          genesis: { valid: false, hasAuthenticator: false },
+          transactions: [],
+          verified: 0,
+          total: 0,
+          uncommitted: 0
+        },
+        verification: {
+          jsonStructure: false,
+          sdkCompatible: false,
+          cryptographic: false,
+          dataIntegrity: false,
+          ownershipStatus: 'unknown'
+        },
+        history: {
+          transferCount: 0,
+          transfers: []
+        },
+        status: 'INVALID',
+        canTransfer: false,
+        warnings: [],
+        errors: []
+      };
+
       // Track exit code throughout execution
       let exitCode = 0;
       try {
@@ -325,8 +379,8 @@ Exit codes:
           process.exit(2); // File error
         }
 
-        console.log('=== Token Verification ===');
-        console.log(`File: ${options.file}\n`);
+        log('=== Token Verification ===');
+        log(`File: ${options.file}\n`);
 
         // Read token from file
         let tokenFileContent: string;
@@ -343,36 +397,104 @@ Exit codes:
           const rawJson = JSON.parse(tokenFileContent);
           tokenJson = deserializeTxf(rawJson);
           if (rawJson.state === null && tokenJson.state !== null) {
-            console.log('Note: State reconstructed from sourceState (in-transit token)');
+            log('Note: State reconstructed from sourceState (in-transit token)');
           }
         } catch (err) {
           console.error(`Error: Invalid JSON in file: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(2); // File error
         }
 
+        // Extract basic info for result
+        result.tokenId = tokenJson.genesis?.data?.tokenId || '';
+        result.tokenType = tokenJson.genesis?.data?.tokenType || '';
+        result.tokenTypeName = getTokenTypeName(result.tokenType);
+        result.version = tokenJson.version || '';
+        result.data = decodeTokenData(tokenJson.genesis?.data?.tokenData);
+
+        // Extract state info
+        if (tokenJson.state) {
+          result.state.data = decodeTokenData(tokenJson.state.data);
+          const predicate = decodePredicate(tokenJson.state.predicate);
+          if (predicate) {
+            result.state.predicateType = predicate.type;
+            result.state.algorithm = predicate.algorithm;
+            result.state.publicKey = predicate.publicKey;
+          }
+        }
+
         // Display basic info
-        console.log('=== Basic Information ===');
-        console.log(`Version: ${tokenJson.version || 'N/A'}`);
+        log('=== Basic Information ===');
+        log(`Version: ${tokenJson.version || 'N/A'}`);
 
         // Validate token proofs before attempting to load
-        console.log('\n=== Proof Validation (JSON) ===');
+        log('\n=== Proof Validation (JSON) ===');
         const jsonProofValidation = validateTokenProofsJson(tokenJson);
+        result.verification.jsonStructure = jsonProofValidation.valid;
+
+        // Update genesis proof status
+        result.proofs.genesis.hasAuthenticator = !!(tokenJson.genesis?.inclusionProof?.authenticator);
+        result.proofs.genesis.valid = result.proofs.genesis.hasAuthenticator;
+
+        // Extract transaction proof info
+        const transactions = tokenJson.transactions || [];
+        result.history.transferCount = transactions.length;
+        result.proofs.total = 1 + transactions.length; // genesis + transactions
+
+        for (let i = 0; i < transactions.length; i++) {
+          const tx = transactions[i];
+          const hasAuth = !!(tx.inclusionProof?.authenticator);
+          const hasProof = hasAuth && !!(tx.inclusionProof?.transactionHash);
+          result.proofs.transactions.push({
+            index: i,
+            valid: hasProof,
+            hasAuthenticator: hasAuth
+          });
+          result.history.transfers.push({
+            recipient: tx.data?.recipient || '',
+            hasProof
+          });
+          if (!hasProof && tx.commitment) {
+            result.proofs.uncommitted++;
+          }
+        }
+
+        // Count verified proofs
+        result.proofs.verified = (result.proofs.genesis.valid ? 1 : 0) +
+          result.proofs.transactions.filter(t => t.valid).length;
+
+        // Check if this is an in-transit token (has uncommitted transactions)
+        const hasUncommittedTransactions = result.proofs.uncommitted > 0;
 
         if (jsonProofValidation.valid) {
-          console.log('✅ All proofs structurally valid');
-          console.log('  ✓ Genesis proof has authenticator');
+          log('✅ All proofs structurally valid');
+          log('  ✓ Genesis proof has authenticator');
           if (tokenJson.transactions && tokenJson.transactions.length > 0) {
-            console.log(`  ✓ All transaction proofs have authenticators (${tokenJson.transactions.length} transaction${tokenJson.transactions.length !== 1 ? 's' : ''})`);
+            log(`  ✓ All transaction proofs have authenticators (${tokenJson.transactions.length} transaction${tokenJson.transactions.length !== 1 ? 's' : ''})`);
           }
         } else {
-          console.log('❌ Proof validation failed:');
-          jsonProofValidation.errors.forEach(err => console.log(`  - ${err}`));
-          exitCode = 1; // Critical validation failure
+          // For in-transit tokens, missing inclusion proofs are expected, not errors
+          if (hasUncommittedTransactions) {
+            log('ℹ️ Token is in-transit (has uncommitted transactions):');
+            jsonProofValidation.errors.forEach(err => {
+              log(`  - ${err}`);
+              // Don't push "missing inclusion proof" as error for in-transit tokens
+            });
+          } else {
+            log('❌ Proof validation failed:');
+            jsonProofValidation.errors.forEach(err => {
+              log(`  - ${err}`);
+              result.errors.push(err);
+            });
+            exitCode = 1; // Critical validation failure
+          }
         }
 
         if (jsonProofValidation.warnings.length > 0) {
-          console.log('⚠ Warnings:');
-          jsonProofValidation.warnings.forEach(warn => console.log(`  - ${warn}`));
+          log('⚠ Warnings:');
+          jsonProofValidation.warnings.forEach(warn => {
+            log(`  - ${warn}`);
+            result.warnings.push(warn);
+          });
         }
 
         // Try to load with SDK
@@ -381,44 +503,53 @@ Exit codes:
 
         try {
           token = await Token.fromJSON(tokenJson);
-          console.log('\n✅ Token loaded successfully with SDK');
-          console.log(`Token ID: ${token.id.toJSON()}`);
-          console.log(`Token Type: ${token.type.toJSON()}`);
+          result.verification.sdkCompatible = true;
+          log('\n✅ Token loaded successfully with SDK');
+          log(`Token ID: ${token.id.toJSON()}`);
+          log(`Token Type: ${token.type.toJSON()}`);
 
           // Perform cryptographic proof validation if loaded successfully
-          console.log('\n=== Cryptographic Proof Verification ===');
-          console.log('Loading trust base...');
+          log('\n=== Cryptographic Proof Verification ===');
+          log('Loading trust base...');
 
           const trustBase = await getCachedTrustBase({
             filePath: process.env.TRUSTBASE_PATH,
-            useFallback: false
+            useFallback: false,
+            silent: !verbose
           });
-          console.log(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})`);
-          console.log('Verifying proofs with SDK...');
+          log(`  ✓ Trust base ready (Network ID: ${trustBase.networkId}, Epoch: ${trustBase.epoch})`);
+          log('Verifying proofs with SDK...');
 
           sdkProofValidation = await validateTokenProofs(token, trustBase);
+          result.verification.cryptographic = sdkProofValidation.valid;
 
           if (sdkProofValidation.valid) {
-            console.log('✅ All proofs cryptographically verified');
-            console.log('  ✓ Genesis proof signature valid');
-            console.log('  ✓ Genesis merkle path valid');
+            log('✅ All proofs cryptographically verified');
+            log('  ✓ Genesis proof signature valid');
+            log('  ✓ Genesis merkle path valid');
             if (token.transactions && token.transactions.length > 0) {
-              console.log(`  ✓ All transaction proofs verified (${token.transactions.length} transaction${token.transactions.length !== 1 ? 's' : ''})`);
+              log(`  ✓ All transaction proofs verified (${token.transactions.length} transaction${token.transactions.length !== 1 ? 's' : ''})`);
             }
           } else {
-            console.log('❌ Cryptographic verification failed:');
-            sdkProofValidation.errors.forEach((err: string) => console.log(`  - ${err}`));
+            log('❌ Cryptographic verification failed:');
+            sdkProofValidation.errors.forEach((err: string) => {
+              log(`  - ${err}`);
+              result.errors.push(err);
+            });
             exitCode = 1; // Critical validation failure
           }
 
           if (sdkProofValidation.warnings.length > 0) {
-            console.log('⚠ Warnings:');
-            sdkProofValidation.warnings.forEach((warn: string) => console.log(`  - ${warn}`));
+            log('⚠ Warnings:');
+            sdkProofValidation.warnings.forEach((warn: string) => {
+              log(`  - ${warn}`);
+              result.warnings.push(warn);
+            });
           }
 
           // Verify proof correspondence (diagnostic check)
-          console.log('\n=== Proof Correspondence Verification ===');
-          console.log('Verifying proofs correspond to token states...');
+          log('\n=== Proof Correspondence Verification ===');
+          log('Verifying proofs correspond to token states...');
 
           let correspondenceValid = true;
 
@@ -427,11 +558,11 @@ Exit codes:
           // We cannot verify this without reconstructing the state, which requires the recipient's predicate
           // The cryptographic verification above already confirms the proof is valid and signed
           // Transaction proofs below verify source state correspondence for all transfers
-          console.log('  ℹ Genesis proof verified cryptographically (see above)');
-          console.log('    Note: Genesis creates initial state, no source state to verify');
+          log('  ℹ Genesis proof verified cryptographically (see above)');
+          log('    Note: Genesis creates initial state, no source state to verify');
 
           // SECURITY CHECK (SEC-ACCESS-003): Verify data integrity
-          console.log('\n=== Data Integrity Verification ===');
+          log('\n=== Data Integrity Verification ===');
 
           // PART 1: Check custom integrity field if present (for tokens minted by this CLI)
           // The integrity field contains a hash of the genesis.data JSON from mint time
@@ -449,38 +580,41 @@ Exit codes:
               const currentHash = HexConverter.encode(currentJsonHash.imprint);
 
               if (savedHash === currentHash) {
-                console.log('  ✓ Genesis data integrity verified (not tampered)');
-                console.log('    Genesis transaction data matches original JSON');
+                result.verification.dataIntegrity = true;
+                log('  ✓ Genesis data integrity verified (not tampered)');
+                log('    Genesis transaction data matches original JSON');
               } else {
-                console.log('  ❌ CRITICAL: Genesis data has been TAMPERED!');
-                console.log('    Genesis transaction data was modified after minting');
-                console.log(`    Saved hash:   ${savedHash}`);
-                console.log(`    Current hash: ${currentHash}`);
-                console.log('    REJECT this token!');
+                log('  ❌ CRITICAL: Genesis data has been TAMPERED!');
+                log('    Genesis transaction data was modified after minting');
+                log(`    Saved hash:   ${savedHash}`);
+                log(`    Current hash: ${currentHash}`);
+                log('    REJECT this token!');
+                result.errors.push('Genesis data has been tampered');
                 correspondenceValid = false;
                 exitCode = 1;
               }
             } catch (err) {
-              console.log(`  ⚠ Error checking integrity field: ${err instanceof Error ? err.message : String(err)}`);
+              log(`  ⚠ Error checking integrity field: ${err instanceof Error ? err.message : String(err)}`);
             }
           } else {
             // No custom integrity field - use SDK verification only
             if (sdkProofValidation && sdkProofValidation.valid) {
-              console.log('  ✓ SDK data integrity checks passed');
-              console.log('    - Authenticator signatures valid');
-              console.log('    - Transaction data cryptographically verified');
-              console.log('    - State data matches transaction data');
-              console.log('    Note: Genesis data tampering detection requires tokens minted with this CLI');
+              result.verification.dataIntegrity = true;
+              log('  ✓ SDK data integrity checks passed');
+              log('    - Authenticator signatures valid');
+              log('    - Transaction data cryptographically verified');
+              log('    - State data matches transaction data');
+              log('    Note: Genesis data tampering detection requires tokens minted with this CLI');
             } else if (sdkProofValidation) {
-              console.log('  ❌ CRITICAL: Token data integrity check FAILED!');
-              console.log('    Token data may have been tampered with');
+              log('  ❌ CRITICAL: Token data integrity check FAILED!');
+              log('    Token data may have been tampered with');
               sdkProofValidation.errors.forEach((err: string) => {
-                console.log(`    - ${err}`);
+                log(`    - ${err}`);
               });
               correspondenceValid = false;
               exitCode = 1;
             } else {
-              console.log('  ⚠ Could not verify data integrity (no trust base available)');
+              log('  ⚠ Could not verify data integrity (no trust base available)');
             }
           }
 
@@ -489,7 +623,7 @@ Exit codes:
             // SECURITY CHECK (SEC-INTEGRITY-002): Verify current state data integrity
             // Calculate hash of current state and verify it matches what's committed
             const currentStateHash = await token.state.calculateHash();
-            console.log(`  Current state hash: ${HexConverter.encode(currentStateHash.imprint)}`);
+            log(`  Current state hash: ${HexConverter.encode(currentStateHash.imprint)}`);
 
             // For tokens with transaction history, verify the last transaction created the current state
             if (token.transactions && token.transactions.length > 0) {
@@ -508,10 +642,11 @@ Exit codes:
                 if (lastTxProof.authenticator) {
                   const isTxAuthValid = await lastTxProof.authenticator.verify(txDataHash);
                   if (isTxAuthValid) {
-                    console.log('  ✓ Last transaction data integrity verified');
+                    log('  ✓ Last transaction data integrity verified');
                   } else {
-                    console.log('  ❌ CRITICAL: Last transaction data has been TAMPERED!');
-                    console.log('    Authenticator signature is INVALID for current transaction data');
+                    log('  ❌ CRITICAL: Last transaction data has been TAMPERED!');
+                    log('    Authenticator signature is INVALID for current transaction data');
+                    result.errors.push('Last transaction data has been tampered');
                     correspondenceValid = false;
                     exitCode = 1;
                   }
@@ -520,21 +655,21 @@ Exit codes:
 
               // Verify state data is consistent with token structure
               // The current state should match the predicate and data stored in the token
-              console.log('  ✓ Current state structure is consistent');
+              log('  ✓ Current state structure is consistent');
             } else {
               // No transfers yet - state should be the genesis state
-              console.log('  ✓ Current state is genesis state (no transfers)');
+              log('  ✓ Current state is genesis state (no transfers)');
             }
           } catch (integrityError) {
-            console.log(`  ⚠ Data integrity check error: ${integrityError instanceof Error ? integrityError.message : String(integrityError)}`);
+            log(`  ⚠ Data integrity check error: ${integrityError instanceof Error ? integrityError.message : String(integrityError)}`);
             correspondenceValid = false;
             exitCode = 1;
           }
 
           // Check ALL transaction proofs correspondence and integrity
-          console.log('\n=== Transaction Proof Verification ===');
+          log('\n=== Transaction Proof Verification ===');
           if (token.transactions && token.transactions.length > 0) {
-            console.log(`Checking ${token.transactions.length} transfer proof${token.transactions.length !== 1 ? 's' : ''}...`);
+            log(`Checking ${token.transactions.length} transfer proof${token.transactions.length !== 1 ? 's' : ''}...`);
 
             for (let i = 0; i < token.transactions.length; i++) {
               const tx = token.transactions[i];
@@ -545,16 +680,18 @@ Exit codes:
                 const txSourceHash = await tx.data.sourceState.calculateHash();
 
                 if (proofSourceHash.equals(txSourceHash)) {
-                  console.log(`  ✓ Transfer ${txNum} proof corresponds to source state`);
+                  log(`  ✓ Transfer ${txNum} proof corresponds to source state`);
                 } else {
-                  console.log(`  ⚠ WARNING: Transfer ${txNum} proof MISMATCH!`);
-                  console.log(`    Expected: ${HexConverter.encode(txSourceHash.imprint)}`);
-                  console.log(`    Got: ${HexConverter.encode(proofSourceHash.imprint)}`);
+                  log(`  ⚠ WARNING: Transfer ${txNum} proof MISMATCH!`);
+                  log(`    Expected: ${HexConverter.encode(txSourceHash.imprint)}`);
+                  log(`    Got: ${HexConverter.encode(proofSourceHash.imprint)}`);
+                  result.warnings.push(`Transfer ${txNum} proof mismatch`);
                   correspondenceValid = false;
                   exitCode = 1;
                 }
               } else {
-                console.log(`  ⚠ WARNING: Transfer ${txNum} proof missing authenticator`);
+                log(`  ⚠ WARNING: Transfer ${txNum} proof missing authenticator`);
+                result.warnings.push(`Transfer ${txNum} missing authenticator`);
                 correspondenceValid = false;
                 exitCode = 1;
               }
@@ -565,11 +702,12 @@ Exit codes:
                 const actualTxHash = await tx.data.calculateHash();
 
                 if (HexConverter.encode(proofTxHash.imprint) === HexConverter.encode(actualTxHash.imprint)) {
-                  console.log(`  ✓ Transfer ${txNum} transaction hash matches proof`);
+                  log(`  ✓ Transfer ${txNum} transaction hash matches proof`);
                 } else {
-                  console.log(`  ⚠ WARNING: Transfer ${txNum} transaction hash mismatch!`);
-                  console.log(`    Expected: ${HexConverter.encode(actualTxHash.imprint)}`);
-                  console.log(`    Got: ${HexConverter.encode(proofTxHash.imprint)}`);
+                  log(`  ⚠ WARNING: Transfer ${txNum} transaction hash mismatch!`);
+                  log(`    Expected: ${HexConverter.encode(actualTxHash.imprint)}`);
+                  log(`    Got: ${HexConverter.encode(proofTxHash.imprint)}`);
+                  result.warnings.push(`Transfer ${txNum} hash mismatch`);
                   correspondenceValid = false;
                   exitCode = 1;
                 }
@@ -578,9 +716,9 @@ Exit codes:
           }
 
           if (correspondenceValid) {
-            console.log('  ✓ All proofs correspond to their states');
+            log('  ✓ All proofs correspond to their states');
           } else {
-            console.log('  ❌ Some proofs do NOT correspond to states - token may be corrupted');
+            log('  ❌ Some proofs do NOT correspond to states - token may be corrupted');
           }
 
           // NOTE: We do NOT need to separately compare genesis.data.tokenData with state.data because:
@@ -595,35 +733,45 @@ Exit codes:
           // 3. Comparing them would create false positives on valid tokens where state.data
           //    legitimately differs (encrypted state, recipient-specific data, etc.)
         } catch (err) {
-          console.log('\n⚠ Could not load token with SDK:', err instanceof Error ? err.message : String(err));
-          console.log('Displaying raw JSON data...\n');
-          exitCode = 1; // Critical failure - SDK cannot parse token
+          log(`\n⚠ Could not load token with SDK: ${err instanceof Error ? err.message : String(err)}`);
+          log('Displaying raw JSON data...\n');
+          // For in-transit tokens, SDK failure is expected (uncommitted transactions have different format)
+          if (!hasUncommittedTransactions) {
+            result.errors.push(`SDK load failed: ${err instanceof Error ? err.message : String(err)}`);
+            exitCode = 1; // Critical failure - SDK cannot parse token
+          }
         }
 
-        // Display genesis transaction
-        displayGenesis(tokenJson.genesis);
+        // Display genesis transaction (verbose only)
+        if (verbose) {
+          displayGenesis(tokenJson.genesis);
+        }
 
-        // Display UNCT liquidity if present
-        await displayUNCTLiquidity(tokenJson.genesis, options);
+        // Display UNCT liquidity if present (verbose only)
+        if (verbose) {
+          await displayUNCTLiquidity(tokenJson.genesis, options);
+        }
 
-        // Display current state
-        console.log('\n=== Current State ===');
-        if (tokenJson.state) {
-          // Display state data
-          if (tokenJson.state.data) {
-            console.log(`\nState Data (hex): ${tokenJson.state.data.substring(0, 50)}${tokenJson.state.data.length > 50 ? '...' : ''}`);
-            const decoded = tryDecodeAsText(tokenJson.state.data);
-            console.log(`State Data (decoded):`);
-            console.log(decoded);
-          } else {
-            console.log('\nState Data: (empty)');
-          }
+        // Display current state (verbose only)
+        if (verbose) {
+          log('\n=== Current State ===');
+          if (tokenJson.state) {
+            // Display state data
+            if (tokenJson.state.data) {
+              log(`\nState Data (hex): ${tokenJson.state.data.substring(0, 50)}${tokenJson.state.data.length > 50 ? '...' : ''}`);
+              const decoded = tryDecodeAsText(tokenJson.state.data);
+              log(`State Data (decoded):`);
+              log(decoded);
+            } else {
+              log('\nState Data: (empty)');
+            }
 
-          // Display predicate
-          if (tokenJson.state.predicate) {
-            displayPredicateInfo(tokenJson.state.predicate);
-          } else {
-            console.log('\nPredicate: (none)');
+            // Display predicate
+            if (tokenJson.state.predicate) {
+              displayPredicateInfo(tokenJson.state.predicate);
+            } else {
+              log('\nPredicate: (none)');
+            }
           }
         }
 
@@ -634,7 +782,7 @@ Exit codes:
         // - OK = spent state (aggregator returns inclusion proof) - NORMAL
         // - Only technical errors (network down, aggregator unavailable) are caught below
         if (!options.skipNetwork && token && tokenJson.state) {
-          console.log('\n=== Ownership Status ===');
+          log('\n=== Ownership Status ===');
 
           // Determine endpoint
           let endpoint = options.endpoint;
@@ -643,7 +791,7 @@ Exit codes:
           }
 
           try {
-            console.log('Querying aggregator for current state...');
+            log('Querying aggregator for current state...');
             const aggregatorClient = new AggregatorClient(endpoint);
             const client = new StateTransitionClient(aggregatorClient);
 
@@ -652,11 +800,12 @@ Exit codes:
             try {
               trustBase = await getCachedTrustBase({
                 filePath: process.env.TRUSTBASE_PATH,
-                useFallback: false
+                useFallback: false,
+                silent: !verbose
               });
             } catch (err) {
-              console.log('  ⚠ Could not load trust base for ownership verification');
-              console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
+              log('  ⚠ Could not load trust base for ownership verification');
+              log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
             }
 
             if (trustBase) {
@@ -664,15 +813,17 @@ Exit codes:
               // It only returns 'error' scenario for technical failures (network down, etc.)
               // Normal spent/unspent states are returned as 'current', 'pending', 'confirmed', 'outdated'
               const ownershipStatus = await checkOwnershipStatus(token, tokenJson, client, trustBase);
+              result.verification.ownershipStatus = ownershipStatus.scenario;
 
-              console.log(`\n${ownershipStatus.message}`);
+              log(`\n${ownershipStatus.message}`);
               ownershipStatus.details.forEach(detail => {
-                console.log(`  ${detail}`);
+                log(`  ${detail}`);
               });
 
               // Token is spent/outdated = cannot be used
               // This is the ONLY case where exitCode = 1 (token state is obsolete)
               if (ownershipStatus.scenario === 'outdated') {
+                result.status = 'SPENT';
                 exitCode = 1;
               }
             }
@@ -680,68 +831,94 @@ Exit codes:
             // TECHNICAL ERROR: This catch block only executes for unexpected failures
             // - Not for normal spent/unspent states (those are handled above)
             // - Typically: network errors, malformed responses, SDK exceptions
-            console.log('  ⚠ Cannot verify ownership status');
-            console.log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
+            log('  ⚠ Cannot verify ownership status');
+            log(`  Error: ${err instanceof Error ? err.message : String(err)}`);
           }
         } else if (options.skipNetwork) {
-          console.log('\n=== Ownership Status ===');
-          console.log('Network verification skipped (--skip-network flag)');
+          log('\n=== Ownership Status ===');
+          log('Network verification skipped (--skip-network flag)');
         }
 
-        // Display transaction history
-        console.log('\n=== Transaction History ===');
-        if (tokenJson.transactions && Array.isArray(tokenJson.transactions)) {
-          console.log(`Number of transfers: ${tokenJson.transactions.length}`);
+        // Display transaction history (verbose only)
+        if (verbose) {
+          log('\n=== Transaction History ===');
+          if (tokenJson.transactions && Array.isArray(tokenJson.transactions)) {
+            log(`Number of transfers: ${tokenJson.transactions.length}`);
 
-          if (tokenJson.transactions.length === 0) {
-            console.log('(No transfer transactions - newly minted token)');
-          } else {
-            tokenJson.transactions.forEach((tx: any, idx: number) => {
-              console.log(`\nTransfer ${idx + 1}:`);
-              if (tx.data) {
-                console.log(`  New Owner: ${tx.data.recipient || 'N/A'}`);
-                if (tx.data.salt) {
-                  console.log(`  Salt: ${tx.data.salt}`);
+            if (tokenJson.transactions.length === 0) {
+              log('(No transfer transactions - newly minted token)');
+            } else {
+              tokenJson.transactions.forEach((tx: any, idx: number) => {
+                log(`\nTransfer ${idx + 1}:`);
+                if (tx.data) {
+                  log(`  New Owner: ${tx.data.recipient || 'N/A'}`);
+                  if (tx.data.salt) {
+                    log(`  Salt: ${tx.data.salt}`);
+                  }
                 }
-              }
+              });
+            }
+          } else {
+            log('No transaction history');
+          }
+
+          // Display nametags
+          if (tokenJson.nametags && Array.isArray(tokenJson.nametags) && tokenJson.nametags.length > 0) {
+            log('\n=== Nametags ===');
+            log(`Number of nametags: ${tokenJson.nametags.length}`);
+            tokenJson.nametags.forEach((nametag: any, idx: number) => {
+              log(`  ${idx + 1}. ${JSON.stringify(nametag)}`);
             });
           }
-        } else {
-          console.log('No transaction history');
         }
 
-        // Display nametags
-        if (tokenJson.nametags && Array.isArray(tokenJson.nametags) && tokenJson.nametags.length > 0) {
-          console.log('\n=== Nametags ===');
-          console.log(`Number of nametags: ${tokenJson.nametags.length}`);
-          tokenJson.nametags.forEach((nametag: any, idx: number) => {
-            console.log(`  ${idx + 1}. ${JSON.stringify(nametag)}`);
-          });
+        // Determine final status
+        const cryptoValid = sdkProofValidation ? sdkProofValidation.valid : false;
+
+        // Verbose summary
+        if (verbose) {
+          log('\n=== Verification Summary ===');
+          log(`${!!tokenJson.genesis ? '✓' : '✗'} File format: TXF v${tokenJson.version || '?'}`);
+          log(`${!!tokenJson.genesis ? '✓' : '✗'} Has genesis: ${!!tokenJson.genesis}`);
+          log(`${!!tokenJson.state ? '✓' : '✗'} Has state: ${!!tokenJson.state}`);
+          log(`${!!tokenJson.state?.predicate ? '✓' : '✗'} Has predicate: ${!!tokenJson.state?.predicate}`);
+          log(`${jsonProofValidation.valid ? '✓' : '✗'} Proof structure valid: ${jsonProofValidation.valid ? 'Yes' : 'No'}`);
+          log(`${token !== null ? '✓' : '✗'} SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
+
+          // Check cryptographic verification if it was performed
+          if (sdkProofValidation) {
+            log(`${cryptoValid ? '✓' : '✗'} Cryptographic proofs valid: ${cryptoValid ? 'Yes' : 'No'}`);
+          }
+
+          if (token && jsonProofValidation.valid && cryptoValid) {
+            log('\n✅ This token is valid and can be transferred using the send-token command');
+          } else if (token && !cryptoValid) {
+            log('\n❌ Token has cryptographic verification failures - cannot be used for transfers');
+          } else if (token && !jsonProofValidation.valid) {
+            log('\n⚠️  Token loaded but has proof validation issues - transfer may fail');
+          } else {
+            log('\n❌ Token has issues and cannot be used for transfers');
+          }
         }
 
-        // Summary
-        console.log('\n=== Verification Summary ===');
-        console.log(`${!!tokenJson.genesis ? '✓' : '✗'} File format: TXF v${tokenJson.version || '?'}`);
-        console.log(`${!!tokenJson.genesis ? '✓' : '✗'} Has genesis: ${!!tokenJson.genesis}`);
-        console.log(`${!!tokenJson.state ? '✓' : '✗'} Has state: ${!!tokenJson.state}`);
-        console.log(`${!!tokenJson.state?.predicate ? '✓' : '✗'} Has predicate: ${!!tokenJson.state?.predicate}`);
-        console.log(`${jsonProofValidation.valid ? '✓' : '✗'} Proof structure valid: ${jsonProofValidation.valid ? 'Yes' : 'No'}`);
-        console.log(`${token !== null ? '✓' : '✗'} SDK compatible: ${token !== null ? 'Yes' : 'No'}`);
-
-        // Check cryptographic verification if it was performed
-        const cryptoValid = sdkProofValidation ? sdkProofValidation.valid : true;
-        if (sdkProofValidation) {
-          console.log(`${cryptoValid ? '✓' : '✗'} Cryptographic proofs valid: ${cryptoValid ? 'Yes' : 'No'}`);
+        // Set final status
+        if (result.status !== 'SPENT') {
+          if (result.proofs.uncommitted > 0) {
+            result.status = 'PENDING';
+          } else if (token && jsonProofValidation.valid && cryptoValid && exitCode === 0) {
+            result.status = 'VALID';
+          } else {
+            result.status = 'INVALID';
+          }
         }
+        result.canTransfer = result.status === 'VALID';
 
-        if (token && jsonProofValidation.valid && cryptoValid) {
-          console.log('\n✅ This token is valid and can be transferred using the send-token command');
-        } else if (token && !cryptoValid) {
-          console.log('\n❌ Token has cryptographic verification failures - cannot be used for transfers');
-        } else if (token && !jsonProofValidation.valid) {
-          console.log('\n⚠️  Token loaded but has proof validation issues - transfer may fail');
-        } else {
-          console.log('\n❌ Token has issues and cannot be used for transfers');
+        // Output based on mode
+        if (jsonOutput) {
+          console.log(formatVerifyJson(result));
+        } else if (!verbose) {
+          // Default concise output
+          console.log(formatVerifyOutput(result));
         }
 
         // Exit with appropriate code

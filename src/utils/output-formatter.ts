@@ -272,3 +272,127 @@ export function formatReceiveOutput(tokenJson: any, outputFile?: string): string
 
   return lines.join('\n');
 }
+
+/**
+ * Verification result structure for verify-token command
+ */
+export interface VerificationResult {
+  tokenId: string;
+  tokenType: string;
+  tokenTypeName: string;
+  version: string;
+  data: string;
+  state: {
+    data: string;
+    predicateType: string;
+    algorithm: string;
+    publicKey: string;
+  };
+  proofs: {
+    genesis: { valid: boolean; hasAuthenticator: boolean };
+    transactions: Array<{ index: number; valid: boolean; hasAuthenticator: boolean }>;
+    verified: number;
+    total: number;
+    uncommitted: number;
+  };
+  verification: {
+    jsonStructure: boolean;
+    sdkCompatible: boolean;
+    cryptographic: boolean;
+    dataIntegrity: boolean;
+    ownershipStatus: string;  // 'current' | 'pending' | 'outdated' | 'unknown'
+  };
+  history: {
+    transferCount: number;
+    transfers: Array<{ recipient: string; hasProof: boolean }>;
+  };
+  status: 'VALID' | 'PENDING' | 'INVALID' | 'SPENT';
+  canTransfer: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+/**
+ * Get status label for verify output
+ */
+function getStatusLabel(result: VerificationResult): string {
+  switch (result.status) {
+    case 'VALID':
+      return 'VALID - can be transferred';
+    case 'PENDING':
+      return 'PENDING - needs receive-token to complete';
+    case 'INVALID':
+      return 'INVALID - verification failed';
+    case 'SPENT':
+      return 'INVALID - token has been spent';
+    default:
+      return result.status;
+  }
+}
+
+/**
+ * Get header label based on token status
+ */
+function getHeaderLabel(result: VerificationResult): string {
+  if (result.status === 'PENDING') return ' [IN-TRANSIT]';
+  if (result.status === 'SPENT') return ' [SPENT]';
+  if (result.status === 'INVALID') return ' [INVALID]';
+  return '';
+}
+
+/**
+ * Format proof summary line
+ */
+function formatProofSummary(result: VerificationResult): string {
+  const { verified, total, uncommitted } = result.proofs;
+
+  if (uncommitted > 0) {
+    return `${verified}/${total} verified (${uncommitted} uncommitted)`;
+  }
+
+  const parts: string[] = [];
+  if (result.proofs.genesis.valid) parts.push('genesis');
+  if (result.history.transferCount > 0) {
+    parts.push(`${result.history.transferCount} transfer${result.history.transferCount !== 1 ? 's' : ''}`);
+  }
+
+  return `${verified}/${total} verified (${parts.join(' + ')})`;
+}
+
+/**
+ * Format verify-token concise output
+ */
+export function formatVerifyOutput(result: VerificationResult): string {
+  const lines = [
+    `Token Summary${getHeaderLabel(result)}`,
+    `  Token ID:  ${truncate(result.tokenId, 48)}`,
+    `  Type:      ${result.tokenTypeName} (${truncate(result.tokenType, 8)})`,
+    `  Data:      ${truncate(result.data, 50)}`,
+    `  Owner:     ${result.state.algorithm} ${result.state.predicateType} (pubkey: ${result.state.publicKey})`,
+    `  State:     ${truncate(result.state.data || '(empty)', 50)}`,
+    `  Proofs:    ${formatProofSummary(result)}`,
+    `  Status:    ${getStatusLabel(result)}`,
+    `  History:   ${result.history.transferCount} transfer${result.history.transferCount !== 1 ? 's' : ''}`
+  ];
+
+  if (result.warnings.length > 0) {
+    lines.push('');
+    lines.push('Warnings:');
+    result.warnings.forEach(w => lines.push(`  - ${w}`));
+  }
+
+  if (result.errors.length > 0) {
+    lines.push('');
+    lines.push('Errors:');
+    result.errors.forEach(e => lines.push(`  - ${e}`));
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format verify-token JSON output
+ */
+export function formatVerifyJson(result: VerificationResult): string {
+  return JSON.stringify(result, null, 2);
+}
