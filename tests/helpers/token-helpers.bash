@@ -914,9 +914,10 @@ get_txf_token_id() {
 get_token_data() {
   local token_file="${1:?Token file required}"
 
-  # Try state.data first (current state), then genesis.data.tokenData (original data)
+  # Try state.data first (if not empty), then genesis.data.tokenData (original data)
+  # Use conditional to properly handle empty strings (jq's // doesn't treat "" as falsy)
   local data_hex
-  data_hex=$(jq -r '.state.data // .genesis.data.tokenData // empty' "$token_file" 2>/dev/null)
+  data_hex=$(jq -r 'if (.state.data | length) > 0 then .state.data elif (.genesis.data.tokenData | length) > 0 then .genesis.data.tokenData else empty end' "$token_file" 2>/dev/null)
 
   if [[ -z "$data_hex" ]] || [[ "$data_hex" == "null" ]]; then
     echo ""

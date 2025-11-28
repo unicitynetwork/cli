@@ -324,14 +324,24 @@ teardown() {
     assert_success
     assert_token_fully_valid "sent-token.txf"
 
-    # Try to send again from same state: Alice -> Carol
-    send_token_offline "${ALICE_SECRET}" "sent-token.txf" "${carol_addr}" "transfer2.txf"
+    # Try to send again from same state: Alice -> Carol (should fail)
+    # Use run_cli_with_secret directly to allow expected failure
+    local send_exit=0
+    run_cli_with_secret "${ALICE_SECRET}" \
+        "send-token -f sent-token.txf -r ${carol_addr} -o transfer2.txf --offline" || send_exit=$?
 
-    # Should fail or warn (token already transferred)
-    # Status is TRANSFERRED, so this should be prevented
+    # Should fail - token already transferred
+    if [[ $send_exit -eq 0 ]] && [[ -f "transfer2.txf" ]]; then
+        fail "Should not be able to send an already-transferred token"
+    fi
+
+    # Verify: Original token still has TRANSFERRED status
     local status
     status=$(get_token_status "sent-token.txf")
     assert_equals "TRANSFERRED" "${status}"
+
+    # Verify: No transfer2 file was created
+    assert_file_not_exists "transfer2.txf"
 }
 
 # SEND_TOKEN-014: Transfer with Recipient Data Hash

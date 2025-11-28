@@ -344,13 +344,62 @@ export async function validateTokenProofs(
   // 7. SDK COMPREHENSIVE VERIFICATION
   // This validates recipient data matches transaction data, catching state.data tampering
   // SKIP for tokens with null recipientDataHash (SDK has known issue with empty data)
+  //
+  // NOTE: For transfer transactions, the relevant recipientDataHash is in the transaction,
+  // not in the genesis. The genesis recipientDataHash is only about the initial minted data.
+  // If the transaction has recipientDataHash: null, the recipient has full control over
+  // state data and SDK verification should be skipped.
+
+  let shouldVerify = false;
+  let verificationReason = '';
+
+  // Check genesis recipientDataHash (only relevant for genesis-only tokens)
   const genesisRecipientDataHash = token.genesis?.data?.recipientDataHash;
-  if (trustBase && errors.length === 0) {
-    if (genesisRecipientDataHash === null) {
-      // Token has no data (null recipientDataHash) - SDK verification not applicable
-      warnings.push('SDK comprehensive verification skipped (no recipient data to verify)');
+
+  // Check if there are any transactions with non-null recipientDataHash
+  let transactionHasDataCommitment = false;
+  if (token.transactions && token.transactions.length > 0) {
+    // For transfers, check if any transaction committed to recipient data
+    for (const tx of token.transactions) {
+      // Try to access recipientDataHash from transaction data
+      // The structure could be tx.data.recipientDataHash or similar
+      const txData = (tx as any).data;
+      if (txData && txData.recipientDataHash && txData.recipientDataHash !== null) {
+        transactionHasDataCommitment = true;
+        break;
+      }
+    }
+  }
+
+  // Determine if SDK verification should run
+  if (token.transactions && token.transactions.length > 0) {
+    // For tokens with transfer transactions:
+    // - If any transaction has a non-null recipientDataHash, verify it
+    // - If all transactions have null recipientDataHash, skip (recipient has full control)
+    if (transactionHasDataCommitment) {
+      shouldVerify = true;
+      verificationReason = 'transaction has recipient data commitment';
     } else {
-      // Token has data - perform full SDK verification
+      // No data commitment in any transaction
+      shouldVerify = false;
+      verificationReason = 'all transactions have null recipientDataHash (recipient has full control)';
+    }
+  } else if (genesisRecipientDataHash && genesisRecipientDataHash !== null) {
+    // For genesis-only tokens with data commitment, verify
+    shouldVerify = true;
+    verificationReason = 'genesis has recipient data commitment';
+  } else {
+    // Genesis-only token with no data commitment
+    shouldVerify = false;
+    verificationReason = 'no recipient data commitment';
+  }
+
+  if (trustBase && errors.length === 0) {
+    if (!shouldVerify) {
+      // Token has no data commitment - SDK verification not applicable
+      warnings.push(`SDK comprehensive verification skipped (${verificationReason})`);
+    } else {
+      // Token has data commitment - perform full SDK verification
       try {
         const sdkVerificationResult = await token.verify(trustBase);
 

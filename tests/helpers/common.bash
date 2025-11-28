@@ -515,7 +515,9 @@ output_matches() {
 # Skip test with message
 # Args:
 #   $1: Skip message
-skip() {
+# Note: Don't override BATS's native 'skip' function
+# Use BATS's built-in: skip "reason"
+skip_with_message() {
   printf "SKIP: %s\n" "${1:-Test skipped}" >&2
   exit 77  # Special exit code for skipped tests
 }

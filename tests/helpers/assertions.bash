@@ -1751,9 +1751,10 @@ get_token_data() {
   local file="${1:?File path required}"
 
   # Extract hex-encoded data
-  # Try state.data first (current state), then genesis.data.tokenData (original data)
+  # Try state.data first (if not empty), then genesis.data.tokenData (original data)
+  # Note: jq's // doesn't treat "" as falsy, so we use conditional with length check
   local hex_data
-  hex_data=$(~/.local/bin/jq -r '.state.data // .genesis.data.tokenData // empty' "$file" 2>/dev/null)
+  hex_data=$(~/.local/bin/jq -r 'if (.state.data | length) > 0 then .state.data elif (.genesis.data.tokenData | length) > 0 then .genesis.data.tokenData else empty end' "$file" 2>/dev/null)
 
   if [[ -z "$hex_data" ]] || [[ "$hex_data" == "null" ]]; then
     return 0

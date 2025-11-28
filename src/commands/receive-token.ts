@@ -399,16 +399,16 @@ export function receiveTokenCommand(program: Command): void {
 
               console.error('  ✓ State data validated');
             } else {
-              // No data commitment - reject any provided data
+              // No data commitment - recipient has full control over state data
               if (options.stateData) {
-                console.error('\n❌ Error: Transaction has no data commitment');
-                console.error('Cannot provide --state-data for transfer without data.');
-                console.error('Remove the --state-data option.');
-                process.exit(1);
+                // Recipient provided explicit data
+                stateDataBytes = new TextEncoder().encode(options.stateData);
+                console.error('  ✓ Using recipient-provided state data');
+              } else {
+                // No data commitment and no data provided - use empty state data
+                stateDataBytes = new Uint8Array(0);
+                console.error('  No state data (empty)');
               }
-
-              stateDataBytes = new Uint8Array(0);
-              console.error('  No state data (empty)');
             }
 
             console.error();
@@ -790,16 +790,16 @@ export function receiveTokenCommand(program: Command): void {
 
               console.error('  ✓ State data validated');
             } else {
-              // No data commitment - reject any provided data
+              // No data commitment - recipient has full control over state data
               if (options.stateData) {
-                console.error('\n❌ Error: Transaction has no data commitment');
-                console.error('Cannot provide --state-data for transfer without data.');
-                console.error('Remove the --state-data option.');
-                process.exit(1);
+                // Recipient provided explicit data
+                stateDataBytes = new TextEncoder().encode(options.stateData);
+                console.error('  ✓ Using recipient-provided state data');
+              } else {
+                // No data commitment and no data provided - use empty state data
+                stateDataBytes = new Uint8Array(0);
+                console.error('  No state data (empty)');
               }
-
-              stateDataBytes = new Uint8Array(0);
-              console.error('  No state data (empty)');
             }
 
             console.error();
