@@ -301,8 +301,10 @@ teardown() {
     assert_offline_transfer_valid "transfer.txf"
 
     # Verify: No recipient data hash in transfer (using new transactions[] structure)
+    local transactions_array
+    transactions_array=$(mtxf_jq transfer.txf '.transactions')
     local commit_data
-    commit_data=$(jq -r '.transactions[-1].commitment' transfer.txf)
+    commit_data=$(echo "$transactions_array" | jq -r '.[-1].commitment')
     local recipient_hash
     recipient_hash=$(echo "$commit_data" | jq -r '.transactionData.recipientDataHash')
     assert_equals "null" "$recipient_hash" "Should have no recipient data hash"
@@ -317,7 +319,7 @@ teardown() {
 
     # Verify: Token has empty state data (recipient controls state)
     local state_data
-    state_data=$(jq -r '.state.data' bob-token.txf)
+    state_data=$(mtxf_jq bob-token.txf '.state.data' -r)
     [[ -z "$state_data" ]] || fail "State data should be empty string, got: $state_data"
 }
 

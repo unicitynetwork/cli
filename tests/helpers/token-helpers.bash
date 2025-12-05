@@ -163,7 +163,7 @@ mint_token() {
   fi
 
   # Verify output file contains valid JSON
-  if ! jq empty "$output_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$output_file" 2>/dev/null; then
     error "Mint output file contains invalid JSON: $output_file"
     return 1
   fi
@@ -204,6 +204,9 @@ mint_token_to_address() {
   output_dir=$(dirname "$output_file")
   mkdir -p "$output_dir"
 
+  # Remove existing file to ensure clean state (multi-token format appends)
+  rm -f "$output_file"
+
   # Build command
   local -a cmd=(mint-token --preset "$preset" --output "$output_file" --unsafe-secret)
 
@@ -236,7 +239,7 @@ mint_token_to_address() {
   fi
 
   # Verify output file contains valid JSON
-  if ! jq empty "$output_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$output_file" 2>/dev/null; then
     error "Mint output file contains invalid JSON: $output_file"
     return 1
   fi
@@ -274,6 +277,9 @@ send_token_offline() {
   # Create output file if not provided
   if [[ -z "$output_file" ]]; then
     output_file=$(create_temp_file ".txf")
+  else
+    # Remove existing output file to prevent multi-token accumulation
+    rm -f "$output_file"
   fi
 
   # Build command - use --offline flag to create uncommitted transaction
@@ -482,12 +488,12 @@ verify_token() {
   fi
 
   # Verify valid JSON
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Token file contains invalid JSON: $token_file"
     return 1
   fi
 
-  # Verify required fields exist
+  # Verify required fields exist (use mtxf_jq for multi-token format)
   local required_fields=(
     ".version"
     ".genesis"
@@ -496,7 +502,9 @@ verify_token() {
   )
 
   for field in "${required_fields[@]}"; do
-    if ! jq -e "$field" "$token_file" >/dev/null 2>&1; then
+    local value
+    value=$(mtxf_jq "$token_file" "$field" 2>/dev/null)
+    if [[ -z "$value" ]] || [[ "$value" == "null" ]]; then
       error "Token file missing required field: $field"
       return 1
     fi
@@ -504,7 +512,7 @@ verify_token() {
 
   # Verify version
   local version
-  version=$(jq -r '.version' "$token_file")
+  version=$(mtxf_jq "$token_file" '.version' -r)
   if [[ "$version" != "2.0" ]]; then
     error "Invalid token version: $version (expected 2.0)"
     return 1
@@ -560,15 +568,15 @@ get_token_type() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
   local token_type
-  token_type=$(jq -r '.genesis.data.tokenType // empty' "$token_file" 2>&1)
+  token_type=$(mtxf_jq "$token_file" '.genesis.data.tokenType' -r 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
+  if [[ -z "$token_type" ]] || [[ "$token_type" == "null" ]]; then
     error "Failed to extract token type from token file"
     return 1
   fi
@@ -589,15 +597,15 @@ get_token_id() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
   local token_id
-  token_id=$(jq -r '.genesis.data.tokenId // empty' "$token_file" 2>&1)
+  token_id=$(mtxf_jq "$token_file" '.genesis.data.tokenId' -r 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
+  if [[ -z "$token_id" ]] || [[ "$token_id" == "null" ]]; then
     error "Failed to extract token ID from token file"
     return 1
   fi
@@ -618,15 +626,15 @@ get_token_recipient() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
   local recipient
-  recipient=$(jq -r '.genesis.data.recipient // empty' "$token_file" 2>&1)
+  recipient=$(mtxf_jq "$token_file" '.genesis.data.recipient' -r 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
+  if [[ -z "$recipient" ]] || [[ "$recipient" == "null" ]]; then
     error "Failed to extract recipient from token file"
     return 1
   fi
@@ -647,17 +655,21 @@ get_transaction_count() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
-  local tx_count
-  tx_count=$(jq '.transactions | length // 0' "$token_file" 2>&1)
+  # Use mtxf_jq with simple query, then pipe to jq for length
+  local tx_array
+  tx_array=$(mtxf_jq "$token_file" '.transactions' 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
-    error "Failed to extract transaction count from token file"
-    return 1
+  local tx_count
+  if [[ -z "$tx_array" ]] || [[ "$tx_array" == "null" ]]; then
+    tx_count=0
+  else
+    tx_count=$(echo "$tx_array" | ~/.local/bin/jq 'length // 0' 2>/dev/null)
+    tx_count="${tx_count:-0}"
   fi
 
   echo "$tx_count"
@@ -669,8 +681,14 @@ get_transaction_count() {
 # Returns: 0 if has uncommitted transaction, 1 if not
 has_offline_transfer() {
   local token_file="${1:?Token file required}"
-  local has_uncommitted
-  has_uncommitted=$(jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$token_file" 2>/dev/null)
+  # Get transactions array using mtxf_jq (simple query)
+  local transactions_json
+  transactions_json=$(mtxf_jq "$token_file" '.transactions' 2>/dev/null)
+  # Check for uncommitted transactions (pipe through jq for complex filtering)
+  local has_uncommitted="false"
+  if [[ -n "$transactions_json" ]] && [[ "$transactions_json" != "null" ]]; then
+    has_uncommitted=$(echo "$transactions_json" | ~/.local/bin/jq '[.[] | select(.inclusionProof.authenticator == null)] | length > 0' 2>/dev/null)
+  fi
   [[ "$has_uncommitted" == "true" ]]
 }
 
@@ -687,17 +705,21 @@ is_nft_token() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
-  local coin_data_length
-  coin_data_length=$(jq '.genesis.data.coinData | length // 0' "$token_file" 2>&1)
+  # Use mtxf_jq with simple query, then pipe to jq for length
+  local coin_data
+  coin_data=$(mtxf_jq "$token_file" '.genesis.data.coinData' 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
-    error "Failed to determine if token is NFT"
-    return 1
+  local coin_data_length
+  if [[ -z "$coin_data" ]] || [[ "$coin_data" == "null" ]]; then
+    coin_data_length=0
+  else
+    coin_data_length=$(echo "$coin_data" | ~/.local/bin/jq 'length // 0' 2>/dev/null)
+    coin_data_length="${coin_data_length:-0}"
   fi
 
   [[ "$coin_data_length" -eq 0 ]]
@@ -737,17 +759,21 @@ get_coin_count() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
-  local coin_count
-  coin_count=$(jq '.genesis.data.coinData | length // 0' "$token_file" 2>&1)
+  # Use mtxf_jq with simple query, then pipe to jq for length
+  local coin_data
+  coin_data=$(mtxf_jq "$token_file" '.genesis.data.coinData' 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
-    error "Failed to extract coin count from token file"
-    return 1
+  local coin_count
+  if [[ -z "$coin_data" ]] || [[ "$coin_data" == "null" ]]; then
+    coin_count=0
+  else
+    coin_count=$(echo "$coin_data" | ~/.local/bin/jq 'length // 0' 2>/dev/null)
+    coin_count="${coin_count:-0}"
   fi
 
   echo "$coin_count"
@@ -758,6 +784,7 @@ get_coin_count() {
 # Args:
 #   $1: Token file path
 # Returns: Total amount or error code 1
+# Note: coinData structure is [["coinId", "amount"], ...] - 2D array format
 get_total_coin_amount() {
   local token_file="${1:?Token file required}"
 
@@ -766,17 +793,22 @@ get_total_coin_amount() {
     return 1
   fi
 
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
-  local total_amount
-  total_amount=$(jq '[.genesis.data.coinData[].amount | tonumber] | add // 0' "$token_file" 2>&1)
+  # Use mtxf_jq with simple query, then pipe to jq for complex operation
+  local coin_data
+  coin_data=$(mtxf_jq "$token_file" '.genesis.data.coinData' 2>/dev/null)
 
-  if [[ $? -ne 0 ]]; then
-    error "Failed to calculate total coin amount from token file"
-    return 1
+  local total_amount
+  if [[ -z "$coin_data" ]] || [[ "$coin_data" == "null" ]] || [[ "$coin_data" == "[]" ]]; then
+    total_amount=0
+  else
+    # coinData is [[coinId, amount], ...] format - extract amount (index 1) from each entry
+    total_amount=$(echo "$coin_data" | ~/.local/bin/jq '[.[][1] | tonumber] | add // 0' 2>/dev/null)
+    total_amount="${total_amount:-0}"
   fi
 
   echo "$total_amount"
@@ -803,19 +835,14 @@ get_token_status() {
   fi
 
   # Validate JSON
-  if ! jq empty "$token_file" 2>/dev/null; then
+  if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     error "Invalid JSON in token file: $token_file"
     return 1
   fi
 
-  # Extract RequestId from token
+  # Extract RequestId from token (using multi-token format helper)
   local request_id
-  request_id=$(jq -r '.genesis.inclusionProof.requestId // empty' "$token_file" 2>&1)
-
-  if [[ $? -ne 0 ]]; then
-    error "Failed to extract RequestId from token file"
-    return 1
-  fi
+  request_id=$(mtxf_jq "$token_file" '.genesis.inclusionProof.requestId' -r 2>/dev/null)
 
   if [[ -z "$request_id" ]] || [[ "$request_id" == "null" ]]; then
     # No RequestId yet - check if has offline transfer
@@ -825,8 +852,13 @@ get_token_status() {
     fi
 
     # Check local transaction count as fallback for newly created tokens
-    local tx_count
-    tx_count=$(jq -r '.transactions | length // 0' "$token_file" 2>/dev/null)
+    local tx_array
+    tx_array=$(mtxf_jq "$token_file" '.transactions' 2>/dev/null)
+    local tx_count=0
+    if [[ -n "$tx_array" ]] && [[ "$tx_array" != "null" ]]; then
+      tx_count=$(echo "$tx_array" | ~/.local/bin/jq 'length // 0' 2>/dev/null)
+      tx_count="${tx_count:-0}"
+    fi
 
     if [[ "$tx_count" -gt 0 ]]; then
       echo "TRANSFERRED"
@@ -859,7 +891,7 @@ get_token_status() {
   case "$http_code" in
     200)
       # Found in aggregator - token is confirmed/spent
-      if echo "$response" | jq -e '.proof' >/dev/null 2>&1; then
+      if echo "$response" | ~/.local/bin/jq -e '.proof' >/dev/null 2>&1; then
         echo "CONFIRMED"
       else
         # Has response but no proof yet
@@ -872,9 +904,14 @@ get_token_status() {
       if has_offline_transfer "$token_file"; then
         echo "PENDING"
       else
-        # Check transactions array
-        local tx_count
-        tx_count=$(jq -r '.transactions | length // 0' "$token_file" 2>/dev/null)
+        # Check transactions array (use mtxf_jq for multi-token format)
+        local tx_array
+        tx_array=$(mtxf_jq "$token_file" '.transactions' 2>/dev/null)
+        local tx_count=0
+        if [[ -n "$tx_array" ]] && [[ "$tx_array" != "null" ]]; then
+          tx_count=$(echo "$tx_array" | ~/.local/bin/jq 'length // 0' 2>/dev/null)
+          tx_count="${tx_count:-0}"
+        fi
 
         if [[ "$tx_count" -gt 0 ]]; then
           echo "TRANSFERRED"
@@ -907,17 +944,22 @@ get_txf_token_id() {
   get_token_id "$@"
 }
 
-# Extract token data (hex-encoded) from token file
+# Extract token data (hex-encoded) from token file (supports multi-token format)
 # Args:
 #   $1: Token file path
 # Returns: Token data as hex string or decoded UTF-8 if possible
 get_token_data() {
   local token_file="${1:?Token file required}"
 
-  # Try state.data first (if not empty), then genesis.data.tokenData (original data)
-  # Use conditional to properly handle empty strings (jq's // doesn't treat "" as falsy)
+  # Try state.data first, then genesis.data.tokenData
+  # Use separate simple queries (mtxf_jq doesn't support complex expressions)
   local data_hex
-  data_hex=$(jq -r 'if (.state.data | length) > 0 then .state.data elif (.genesis.data.tokenData | length) > 0 then .genesis.data.tokenData else empty end' "$token_file" 2>/dev/null)
+  data_hex=$(mtxf_jq "$token_file" '.state.data' -r 2>/dev/null)
+
+  # If state.data is empty, try genesis.data.tokenData
+  if [[ -z "$data_hex" ]] || [[ "$data_hex" == "null" ]]; then
+    data_hex=$(mtxf_jq "$token_file" '.genesis.data.tokenData' -r 2>/dev/null)
+  fi
 
   if [[ -z "$data_hex" ]] || [[ "$data_hex" == "null" ]]; then
     echo ""
@@ -942,7 +984,7 @@ get_token_data() {
   fi
 }
 
-# Extract owner address from token state predicate
+# Extract owner address from token state predicate (supports multi-token format)
 # Args:
 #   $1: Token file path
 # Returns: Address from genesis.data.recipient field
@@ -954,7 +996,7 @@ get_txf_address() {
   # For newly minted tokens, the address is in genesis.data.recipient
   # This is the address the token was minted to
   local address
-  address=$(jq -r '.genesis.data.recipient // empty' "$token_file" 2>/dev/null)
+  address=$(mtxf_jq "$token_file" '.genesis.data.recipient // empty' -r)
 
   if [[ -n "$address" ]] && [[ "$address" != "null" ]]; then
     printf "%s" "$address"

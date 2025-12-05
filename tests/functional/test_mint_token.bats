@@ -131,7 +131,7 @@ teardown() {
 
     # Check coin amount
     local actual_amount
-    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -150,7 +150,7 @@ teardown() {
 
     # Verify amount
     local actual_amount
-    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -169,7 +169,7 @@ teardown() {
 
     # Verify amount
     local actual_amount
-    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -359,22 +359,22 @@ teardown() {
 
     # Verify individual amounts
     local amount1
-    amount1=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    amount1=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "1000000000000000000" "${amount1}"
 
     local amount2
-    amount2=$(~/.local/bin/jq -r '.genesis.data.coinData[1][1]' token.txf)
+    amount2=$(mtxf_jq token.txf '.genesis.data.coinData[1][1]' -r)
     assert_equals "2000000000000000000" "${amount2}"
 
     local amount3
-    amount3=$(~/.local/bin/jq -r '.genesis.data.coinData[2][1]' token.txf)
+    amount3=$(mtxf_jq token.txf '.genesis.data.coinData[2][1]' -r)
     assert_equals "3000000000000000000" "${amount3}"
 
     # Verify each coin has unique CoinId
     local coin_id1
-    coin_id1=$(~/.local/bin/jq -r '.genesis.data.coinData[0][0]' token.txf)
+    coin_id1=$(mtxf_jq token.txf '.genesis.data.coinData[0][0]' -r)
     local coin_id2
-    coin_id2=$(~/.local/bin/jq -r '.genesis.data.coinData[1][0]' token.txf)
+    coin_id2=$(mtxf_jq token.txf '.genesis.data.coinData[1][0]' -r)
     assert_not_equals "${coin_id1}" "${coin_id2}"
 }
 
@@ -412,7 +412,7 @@ teardown() {
     # ALPHA shares the same tokenType hash as UCT
     # Both use: 455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89
     local token_type_hash
-    token_type_hash=$(~/.local/bin/jq -r '.genesis.data.tokenType' token.txf)
+    token_type_hash=$(mtxf_jq token.txf '.genesis.data.tokenType' -r)
     assert_equals "455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89" "${token_type_hash}"
 
     # Verify it's fungible with coin data
@@ -420,7 +420,7 @@ teardown() {
 
     # Verify amount
     local actual_amount
-    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "${amount}" "${actual_amount}"
 }
 
@@ -506,7 +506,7 @@ teardown() {
         assert_token_fully_valid "token.txf"
         # Verify negative amount is stored correctly
         local actual_amount
-        actual_amount=$(jq -r '.genesis.data.coinData[0].amount // .genesis.data.coinData[0][1]' token.txf)
+        actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
         info "Negative amount stored: $actual_amount"
     else
         # Command rejected negative amount (also acceptable behavior)
@@ -524,7 +524,7 @@ teardown() {
 
     # Verify amount is 0
     local actual_amount
-    actual_amount=$(~/.local/bin/jq -r '.genesis.data.coinData[0][1]' token.txf)
+    actual_amount=$(mtxf_jq token.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "0" "${actual_amount}"
 }
 
@@ -540,11 +540,11 @@ teardown() {
 
     # Extract all coin IDs
     local coin_id1
-    coin_id1=$(~/.local/bin/jq -r '.genesis.data.coinData[0][0]' token.txf)
+    coin_id1=$(mtxf_jq token.txf '.genesis.data.coinData[0][0]' -r)
     local coin_id2
-    coin_id2=$(~/.local/bin/jq -r '.genesis.data.coinData[1][0]' token.txf)
+    coin_id2=$(mtxf_jq token.txf '.genesis.data.coinData[1][0]' -r)
     local coin_id3
-    coin_id3=$(~/.local/bin/jq -r '.genesis.data.coinData[2][0]' token.txf)
+    coin_id3=$(mtxf_jq token.txf '.genesis.data.coinData[2][0]' -r)
 
     # All must be different
     assert_not_equals "${coin_id1}" "${coin_id2}"
@@ -567,12 +567,14 @@ teardown() {
 
     # Verify Merkle root is 64-char hex
     local merkle_root
-    merkle_root=$(~/.local/bin/jq -r '.genesis.inclusionProof.merkleTreePath.root' token.txf)
+    merkle_root=$(mtxf_jq token.txf '.genesis.inclusionProof.merkleTreePath.root' -r)
     is_valid_hex "${merkle_root}" "64,68"  # Accept both 64 and 68 char hashes (with algorithm prefix)
 
     # Verify path steps exist
     local steps_count
-    steps_count=$(jq '.genesis.inclusionProof.merkleTreePath.steps | length' token.txf)
+    local steps_array
+    steps_array=$(mtxf_jq token.txf '.genesis.inclusionProof.merkleTreePath.steps')
+    steps_count=$(echo "$steps_array" | jq 'length')
     [[ "${steps_count}" -ge 0 ]] || {
         printf "Invalid steps count: %s\n" "${steps_count}" >&2
         return 1

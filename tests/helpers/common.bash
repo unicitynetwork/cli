@@ -44,6 +44,75 @@ get_cli_path() {
 }
 
 # -----------------------------------------------------------------------------
+# Multi-Token TXF Format Helpers
+# -----------------------------------------------------------------------------
+# TXF files use multi-token format where tokens are keyed by _<tokenId>
+# Example: { "_abc123...": { "version": "2.0", "genesis": {...}, ... } }
+
+# Get the first token key from a multi-token TXF file
+# Returns the key like "_abc123..." or empty if no tokens found
+# Args:
+#   $1: Token file path
+get_first_token_key() {
+  local file="${1:?Token file required}"
+  # Select keys starting with "_" but exclude "_integrity" (metadata field)
+  # Token keys are like "_abc123..." (token IDs prefixed with underscore)
+  ~/.local/bin/jq -r 'keys | map(select(startswith("_") and . != "_integrity"))[0] // empty' "$file" 2>/dev/null
+}
+
+# Get the jq path prefix for the first token in a multi-token TXF
+# Returns path like ".\"_abc123...\"" or empty if no tokens found
+# Args:
+#   $1: Token file path
+get_first_token_path() {
+  local file="${1:?Token file required}"
+  local key
+  key=$(get_first_token_key "$file")
+  if [[ -n "$key" ]]; then
+    echo ".[\"${key}\"]"
+  fi
+}
+
+# Transform a JSON path to access the first token in multi-token format
+# Example: ".genesis.data" becomes ".[\"_abc...\"].genesis.data"
+# Args:
+#   $1: Token file path
+#   $2: Original jq path (e.g., ".genesis.data")
+# Returns: Transformed path with token key prefix
+mtxf_path() {
+  local file="${1:?Token file required}"
+  local path="${2:-.}"
+  local prefix
+  prefix=$(get_first_token_path "$file")
+  if [[ -n "$prefix" ]]; then
+    # Append path after prefix (path already starts with ".")
+    echo "${prefix}${path}"
+  else
+    # Fallback: return original path (might be old format or no tokens)
+    echo "$path"
+  fi
+}
+
+# Execute a jq query on the first token in a multi-token TXF file
+# Args:
+#   $1: Token file path
+#   $2: jq query (relative to token root, e.g., ".genesis.data.tokenType")
+#   $3+: Additional jq options (e.g., -r for raw output)
+mtxf_jq() {
+  local file="${1:?Token file required}"
+  local query="${2:-.}"
+  shift 2
+  local transformed_query
+  transformed_query=$(mtxf_path "$file" "$query")
+  ~/.local/bin/jq "$@" "$transformed_query" "$file" 2>/dev/null
+}
+
+export -f get_first_token_key
+export -f get_first_token_path
+export -f mtxf_path
+export -f mtxf_jq
+
+# -----------------------------------------------------------------------------
 # Test Environment Setup
 # -----------------------------------------------------------------------------
 
@@ -92,6 +161,10 @@ setup_test() {
     printf "Temp Dir: %s\n" "$TEST_TEMP_DIR" >&2
     printf "Artifacts Dir: %s\n" "$TEST_ARTIFACTS_DIR" >&2
   fi
+
+  # Change to test temp directory so all relative paths are isolated
+  # This prevents token files from accumulating across tests (multi-token format appends)
+  cd "$TEST_TEMP_DIR" || return 1
 }
 
 # Global teardown for all tests
@@ -456,7 +529,15 @@ extract_json_field() {
       path=".$path"
     fi
     if command -v jq >/dev/null 2>&1; then
-      jq -r "$path" "$file"
+      # Use mtxf_jq for multi-token TXF files (checks for _<tokenId> keys)
+      # Falls back to direct jq if not multi-token format
+      local token_key
+      token_key=$(get_first_token_key "$file" 2>/dev/null)
+      if [[ -n "$token_key" ]]; then
+        mtxf_jq "$file" "$path" -r
+      else
+        ~/.local/bin/jq -r "$path" "$file"
+      fi
     else
       printf "ERROR: jq not found, cannot extract JSON field\n" >&2
       return 1

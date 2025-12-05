@@ -17,6 +17,7 @@ import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { extractOwnerInfo } from '../utils/ownership-verification.js';
 import { validateAddress, validateSecret, validateFilePath, validateDataHash, throwValidationError } from '../utils/input-validation.js';
 import { formatSendOutput } from '../utils/output-formatter.js';
+import { readTokenFromTxf, writeTokenToTxf } from '../utils/multi-token-txf.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -177,6 +178,7 @@ export function sendTokenCommand(program: Command): void {
     .command('send-token')
     .description('Send a token to a recipient address (submit to network or create offline transaction)')
     .option('-f, --file <file>', 'Token file (TXF) to send (required)')
+    .option('--select <tokenId>', 'Select specific token from multi-token TXF file')
     .option('-r, --recipient <address>', 'Recipient address (required)')
     .option('-m, --message <message>', 'Optional transfer message')
     .option('--recipient-data-hash <hash>', 'SHA256 hash (64-char hex) of recipient state data (optional)')
@@ -252,11 +254,10 @@ export function sendTokenCommand(program: Command): void {
 
         log(`=== Send Token - ${patternName} ===\n`);
 
-        // STEP 1: Load token from file
+        // STEP 1: Load token from file (multi-token format)
         log('Step 1: Loading token from file...');
-        const tokenFileContent = fs.readFileSync(options.file, 'utf8');
-        const tokenJson = JSON.parse(tokenFileContent);
-        log(`  ✓ Token file loaded\n`);
+        const { token: tokenJson, tokenId: loadedTokenId } = readTokenFromTxf(options.file, options.select);
+        log(`  ✓ Token loaded: ${loadedTokenId.substring(0, 16)}...\n`);
 
         // STEP 1.5: Validate token structure BEFORE parsing with SDK
         log('Step 1.5: Validating token structure...');
@@ -560,7 +561,6 @@ export function sendTokenCommand(program: Command): void {
         log('Final Step: Sanitizing and preparing output...');
         const sanitizedTxf = sanitizeForExport(extendedTxf);
         const serializedTxf = serializeTxf(sanitizedTxf);
-        const outputJson = JSON.stringify(serializedTxf, null, 2);
         log(`  ✓ Output sanitized (private keys removed)`);
         if (serializedTxf.state === null) {
           log(`  ✓ State field optimized (reconstructable from sourceState)\n`);
@@ -585,25 +585,25 @@ export function sendTokenCommand(program: Command): void {
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${pattern}_${recipientPrefix}.txf`;
         }
 
-        // Write to file if specified
+        // Write to file if specified (multi-token format)
         if (outputFile && !options.stdout) {
           try {
-            fs.writeFileSync(outputFile, outputJson, 'utf-8');
-            log(`Token saved to ${outputFile}`);
-            log(`   File size: ${outputJson.length} bytes`);
+            writeTokenToTxf(outputFile, serializedTxf, loadedTokenId);
+            log(`Token saved to ${outputFile} (multi-token format)`);
           } catch (err) {
             console.error(`Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
             throw err;
           }
         }
 
-        // Final output
+        // Final output (multi-token format for stdout)
+        const multiTokenJson = JSON.stringify({ [`_${loadedTokenId}`]: serializedTxf }, null, 2);
         if (jsonOutput) {
           // JSON mode: output TXF to stdout, no status messages
-          console.log(outputJson);
+          console.log(multiTokenJson);
         } else if ((!options.save && !options.output) || options.stdout) {
           // Output JSON to stdout if no file output OR if --stdout explicitly requested
-          console.log(outputJson);
+          console.log(multiTokenJson);
         }
 
         // Print summary unless in JSON mode

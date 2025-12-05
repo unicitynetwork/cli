@@ -25,6 +25,7 @@ import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateTokenType, validateNonce, validateFilePath, throwValidationError } from '../utils/input-validation.js';
 import { formatMintOutput } from '../utils/output-formatter.js';
 import { createPoWClient } from '../utils/pow-client.js';
+import { writeTokenToTxf } from '../utils/multi-token-txf.js';
 import {
   CoinOriginProof,
   createProof
@@ -730,8 +731,10 @@ export function mintTokenCommand(program: Command): void {
           }
         };
 
-        const tokenJson = JSON.stringify(txfToken, null, 2);
         log('  ✓ TXF structure created with SDK method\n');
+
+        // Get tokenId as hex string for multi-token format key
+        const tokenIdHex = tokenId.toJSON();
 
         // Output handling
         let outputFile: string | null = null;
@@ -755,25 +758,25 @@ export function mintTokenCommand(program: Command): void {
           outputFile = `${dateStr}_${timeStr}_${timestamp}_${addressPrefix}.txf`;
         }
 
-        // Write to file if specified
+        // Write to file if specified (multi-token format)
         if (outputFile && !options.stdout) {
           try {
-            fs.writeFileSync(outputFile, tokenJson, 'utf-8');
-            log(`Token saved to ${outputFile}`);
-            log(`   File size: ${tokenJson.length} bytes`);
+            writeTokenToTxf(outputFile, txfToken, tokenIdHex);
+            log(`Token saved to ${outputFile} (multi-token format)`);
           } catch (err) {
             console.error(`Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
             throw err;
           }
         }
 
-        // Final output
+        // Final output (multi-token format for stdout)
+        const multiTokenJson = JSON.stringify({ [`_${tokenIdHex}`]: txfToken }, null, 2);
         if (jsonOutput) {
           // JSON mode: output TXF to stdout, no status messages
-          console.log(tokenJson);
+          console.log(multiTokenJson);
         } else if ((!options.save && !options.output) || options.stdout) {
           // Output JSON to stdout if no file output OR if --stdout explicitly requested
-          console.log(tokenJson);
+          console.log(multiTokenJson);
         }
 
         // Print summary unless in JSON mode

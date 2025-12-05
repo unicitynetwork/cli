@@ -162,7 +162,7 @@ teardown() {
 
     # Verify: Coin amount correct
     local amount
-    amount=$(jq -r '.genesis.data.coinData[0][1]' transfer.txf)
+    amount=$(mtxf_jq transfer.txf '.genesis.data.coinData[0][1]' -r)
     assert_equals "5000000000000000000" "${amount}"
 }
 

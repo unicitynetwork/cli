@@ -21,6 +21,7 @@ import { getCachedTrustBase } from '../utils/trustbase-loader.js';
 import { validateSecret, validateFilePath, throwValidationError } from '../utils/input-validation.js';
 import { detectScenario, extractTransferDetails, resolveTokenProofs } from '../utils/state-resolution.js';
 import { formatReceiveOutput } from '../utils/output-formatter.js';
+import { readTokenFromTxf, writeTokenToTxf } from '../utils/multi-token-txf.js';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -120,6 +121,7 @@ export function receiveTokenCommand(program: Command): void {
     .command('receive-token')
     .description('Receive a token transfer (verify cryptographically and update state)')
     .option('-f, --file <file>', 'Extended TXF file with transfer transaction (required)')
+    .option('--select <tokenId>', 'Select specific token from multi-token TXF file')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('-n, --nonce <nonce>', 'Nonce for masked address (required if receiving at masked address)')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
@@ -177,13 +179,12 @@ export function receiveTokenCommand(program: Command): void {
 
         log(`=== Receive Token${isOfflineMode ? ' (Offline Mode)' : ''} ===\n`);
 
-        // STEP 1: Load and validate extended TXF file
+        // STEP 1: Load and validate extended TXF file (multi-token format)
         log('Step 1: Loading extended TXF file...');
-        const fileContent = fs.readFileSync(options.file, 'utf8');
-        const rawJson = JSON.parse(fileContent);
+        const { token: rawJson, tokenId: loadedTokenId } = readTokenFromTxf(options.file, options.select);
         const hadNullState = rawJson.state === null;
         const extendedTxf: IExtendedTxfToken = deserializeTxf(rawJson);
-        log(`  ✓ File loaded: ${options.file}`);
+        log(`  ✓ Token loaded: ${loadedTokenId.substring(0, 16)}...`);
         if (hadNullState && extendedTxf.state !== null) {
           log(`  ✓ State reconstructed from sourceState (in-transit token)\n`);
         } else {
@@ -439,29 +440,28 @@ export function receiveTokenCommand(program: Command): void {
               status: TokenStatus.PENDING // PENDING because not submitted to aggregator
             };
 
-            const tokenJson = JSON.stringify(finalTxf, null, 2);
             log('  ✓ Final TXF structure created (status: PENDING)\n');
             log('  ℹ️  Transaction not submitted - proof resolution needed later\n');
 
-            // STEP 10: Save and output
+            // STEP 10: Save and output (multi-token format)
             let outputFile: string | undefined;
             if (options.output) {
               try {
-                fs.writeFileSync(options.output, tokenJson, 'utf-8');
+                writeTokenToTxf(options.output, finalTxf, loadedTokenId);
                 outputFile = options.output;
-                log(`✅ Token saved to ${options.output}`);
-                log(`   File size: ${tokenJson.length} bytes\n`);
+                log(`✅ Token saved to ${options.output} (multi-token format)`);
               } catch (err) {
                 console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
                 throw err;
               }
             }
 
-            // Output based on flags
+            // Output based on flags (multi-token format)
+            const multiTokenJson = JSON.stringify({ [`_${loadedTokenId}`]: finalTxf }, null, 2);
             if (jsonOutput) {
-              console.log(tokenJson);
+              console.log(multiTokenJson);
             } else if (!options.output || options.stdout) {
-              console.log(tokenJson);
+              console.log(multiTokenJson);
             }
 
             if (!jsonOutput) {
@@ -835,28 +835,27 @@ export function receiveTokenCommand(program: Command): void {
               status: TokenStatus.CONFIRMED
             };
 
-            const tokenJson = JSON.stringify(finalTxf, null, 2);
             log('  ✓ Final TXF structure created\n');
 
-            // STEP 10: Save and output
+            // STEP 10: Save and output (multi-token format)
             let outputFile: string | undefined;
             if (options.output) {
               try {
-                fs.writeFileSync(options.output, tokenJson, 'utf-8');
+                writeTokenToTxf(options.output, finalTxf, loadedTokenId);
                 outputFile = options.output;
-                log(`✅ Token saved to ${options.output}`);
-                log(`   File size: ${tokenJson.length} bytes\n`);
+                log(`✅ Token saved to ${options.output} (multi-token format)`);
               } catch (err) {
                 console.error(`❌ Error writing output file: ${err instanceof Error ? err.message : String(err)}`);
                 throw err;
               }
             }
 
-            // Output based on flags
+            // Output based on flags (multi-token format)
+            const multiTokenJson = JSON.stringify({ [`_${loadedTokenId}`]: finalTxf }, null, 2);
             if (jsonOutput) {
-              console.log(tokenJson);
+              console.log(multiTokenJson);
             } else if (!options.output || options.stdout) {
-              console.log(tokenJson);
+              console.log(multiTokenJson);
             }
 
             if (!jsonOutput) {

@@ -16,6 +16,73 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
+# Multi-Token TXF Format Helpers
+# -----------------------------------------------------------------------------
+# TXF files now use multi-token format where tokens are keyed by _<tokenId>
+# Example: { "_abc123...": { "version": "2.0", "genesis": {...}, ... } }
+
+# Get the first token key from a multi-token TXF file
+# Returns the key like "_abc123..." or empty if no tokens found
+# Args:
+#   $1: Token file path
+get_first_token_key() {
+  local file="${1:?Token file required}"
+  ~/.local/bin/jq -r 'keys | map(select(startswith("_")))[0] // empty' "$file" 2>/dev/null
+}
+
+# Get the jq path prefix for the first token in a multi-token TXF
+# Returns path like ".\"_abc123...\"" or empty if no tokens found
+# Args:
+#   $1: Token file path
+get_first_token_path() {
+  local file="${1:?Token file required}"
+  local key
+  key=$(get_first_token_key "$file")
+  if [[ -n "$key" ]]; then
+    echo ".[\"${key}\"]"
+  fi
+}
+
+# Transform a JSON path to access the first token in multi-token format
+# Example: ".genesis.data" becomes ".[\"_abc...\"].genesis.data"
+# Args:
+#   $1: Token file path
+#   $2: Original jq path (e.g., ".genesis.data")
+# Returns: Transformed path with token key prefix
+mtxf_path() {
+  local file="${1:?Token file required}"
+  local path="${2:-.}"
+  local prefix
+  prefix=$(get_first_token_path "$file")
+  if [[ -n "$prefix" ]]; then
+    # Append path after prefix (path already starts with ".")
+    echo "${prefix}${path}"
+  else
+    # Fallback: return original path (might be old format or no tokens)
+    echo "$path"
+  fi
+}
+
+# Execute a jq query on the first token in a multi-token TXF file
+# Args:
+#   $1: Token file path
+#   $2: jq query (relative to token root, e.g., ".genesis.data.tokenType")
+#   $3+: Additional jq options (e.g., -r for raw output)
+mtxf_jq() {
+  local file="${1:?Token file required}"
+  local query="${2:-.}"
+  shift 2
+  local transformed_query
+  transformed_query=$(mtxf_path "$file" "$query")
+  ~/.local/bin/jq "$@" "$transformed_query" "$file" 2>/dev/null
+}
+
+export -f get_first_token_key
+export -f get_first_token_path
+export -f mtxf_path
+export -f mtxf_jq
+
+# -----------------------------------------------------------------------------
 # Color Configuration
 # -----------------------------------------------------------------------------
 
@@ -453,8 +520,11 @@ assert_json_field_equals() {
 
   # Use jq to convert value to string explicitly
   # This handles JSON numbers (2.0) vs strings ("2.0") consistently
+  # Transform path for multi-token format
+  local transformed_path
+  transformed_path=$(mtxf_path "$file" "$field")
   local actual
-  actual=$(~/.local/bin/jq -r "$field | tostring" "$file" 2>/dev/null)
+  actual=$(~/.local/bin/jq -r "$transformed_path | tostring" "$file" 2>/dev/null)
 
   # Check if field exists and is not null
   if [[ -z "$actual" ]] || [[ "$actual" == "null" ]]; then
@@ -498,7 +568,8 @@ assert_json_field_exists() {
     field=".$field"
   fi
 
-  if ! ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
+  # Use mtxf_jq for multi-token format support
+  if ! mtxf_jq "$file" "$field" -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field does not exist${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  Field: %s\n" "$field" >&2
@@ -530,7 +601,8 @@ assert_json_field_not_exists() {
     field=".$field"
   fi
 
-  if ~/.local/bin/jq -e "$field" "$file" >/dev/null 2>&1; then
+  # Use mtxf_jq for multi-token format support
+  if mtxf_jq "$file" "$field" -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Assertion Failed: JSON field should not exist${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$file" >&2
     printf "  Field: %s\n" "$field" >&2
@@ -716,7 +788,7 @@ assert_in_range() {
 # Token-Specific Assertions
 # -----------------------------------------------------------------------------
 
-# Assert token file is valid
+# Assert token file is valid (supports multi-token TXF format)
 # Args:
 #   $1: Token file path
 assert_valid_token() {
@@ -724,25 +796,63 @@ assert_valid_token() {
 
   assert_file_exists "$file" || return 1
   assert_valid_json "$file" || return 1
-  assert_json_field_equals "$file" ".version" "2.0" || return 1
-  assert_json_field_exists "$file" ".genesis" || return 1
-  assert_json_field_exists "$file" ".genesis.data" || return 1
-  assert_json_field_exists "$file" ".genesis.data.tokenType" || return 1
+
+  # Check for multi-token format (first key starts with "_")
+  local token_key
+  token_key=$(get_first_token_key "$file")
+
+  if [[ -z "$token_key" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: No tokens found in TXF file${COLOR_RESET}\n" >&2
+    printf "  Expected: keys starting with '_'\n" >&2
+    return 1
+  fi
+
+  # Validate token structure using mtxf_jq
+  local version
+  version=$(mtxf_jq "$file" ".version" -r)
+  if [[ "$version" != "2.0" ]]; then
+    printf "${COLOR_RED}✗ Assertion Failed: Invalid token version${COLOR_RESET}\n" >&2
+    printf "  Expected: 2.0\n" >&2
+    printf "  Actual: %s\n" "$version" >&2
+    return 1
+  fi
+
+  if ! mtxf_jq "$file" ".genesis" -e >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Assertion Failed: Missing .genesis field${COLOR_RESET}\n" >&2
+    return 1
+  fi
+
+  if ! mtxf_jq "$file" ".genesis.data" -e >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Assertion Failed: Missing .genesis.data field${COLOR_RESET}\n" >&2
+    return 1
+  fi
+
+  if ! mtxf_jq "$file" ".genesis.data.tokenType" -e >/dev/null 2>&1; then
+    printf "${COLOR_RED}✗ Assertion Failed: Missing .genesis.data.tokenType field${COLOR_RESET}\n" >&2
+    return 1
+  fi
 
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ Valid token file: %s${COLOR_RESET}\n" "$file" >&2
+    printf "${COLOR_GREEN}✓ Valid token file: %s (token: %s)${COLOR_RESET}\n" "$file" "$token_key" >&2
   fi
   return 0
 }
 
-# Assert token has offline transfer
+# Assert token has offline transfer (uncommitted transaction)
 # Args:
 #   $1: Token file path
 assert_has_offline_transfer() {
   local file="${1:?Token file required}"
 
-  # Check for uncommitted transaction in transactions array
-  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+  # Get transactions array using mtxf_jq (simple query)
+  local transactions_json
+  transactions_json=$(mtxf_jq "$file" '.transactions' 2>/dev/null)
+
+  # Check for uncommitted transactions (pipe through jq for complex filtering)
+  local has_uncommitted="false"
+  if [[ -n "$transactions_json" ]] && [[ "$transactions_json" != "null" ]]; then
+    has_uncommitted=$(echo "$transactions_json" | ~/.local/bin/jq '[.[] | select(.inclusionProof.authenticator == null)] | length > 0' 2>/dev/null)
+  fi
 
   if [[ "$has_uncommitted" != "true" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Token does not have uncommitted transaction${COLOR_RESET}\n" >&2
@@ -762,8 +872,15 @@ assert_has_offline_transfer() {
 assert_no_offline_transfer() {
   local file="${1:?Token file required}"
 
-  # Check for uncommitted transactions
-  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$file" 2>/dev/null)
+  # Get transactions array using mtxf_jq (simple query)
+  local transactions_json
+  transactions_json=$(mtxf_jq "$file" '.transactions' 2>/dev/null)
+
+  # Check for uncommitted transactions (pipe through jq for complex filtering)
+  local has_uncommitted="false"
+  if [[ -n "$transactions_json" ]] && [[ "$transactions_json" != "null" ]]; then
+    has_uncommitted=$(echo "$transactions_json" | ~/.local/bin/jq '[.[] | select(.inclusionProof.authenticator == null)] | length > 0' 2>/dev/null)
+  fi
 
   if [[ "$has_uncommitted" == "true" ]]; then
     printf "${COLOR_RED}✗ Assertion Failed: Token should not have uncommitted transaction${COLOR_RESET}\n" >&2
@@ -778,7 +895,7 @@ assert_no_offline_transfer() {
   return 0
 }
 
-# Assert token type matches preset
+# Assert token type matches preset (supports multi-token TXF format)
 # Args:
 #   $1: Token file path
 #   $2: Expected preset (nft, uct, alpha, usdu, euru)
@@ -787,7 +904,7 @@ assert_token_type() {
   local expected_preset="${2:?Expected preset required}"
 
   local actual_type
-  actual_type=$(~/.local/bin/jq -r '.genesis.data.tokenType' "$file" 2>/dev/null)
+  actual_type=$(mtxf_jq "$file" ".genesis.data.tokenType" -r)
 
   local expected_type=""
   case "$expected_preset" in
@@ -874,49 +991,48 @@ export -f assert_token_type
 #   verify_token_cryptographically "$token_file"
 verify_token_cryptographically() {
   local token_file="${1:?Token file required}"
-  
+
   # Check file exists
   if [[ ! -f "$token_file" ]]; then
     printf "${COLOR_RED}✗ Token Validation Failed: File not found${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Run verify-token command with --local flag (offline verification)
-  local verify_status=0
-  local verify_output
-  verify_output=$(run_cli verify-token -f "$token_file" --local 2>&1) || verify_status=$?
-  
-  # Check if command succeeded
-  if [[ $verify_status -ne 0 ]]; then
+  # run_cli sets $output and $status global variables
+  run_cli verify-token -f "$token_file" --local
+
+  # Check if command succeeded (run_cli sets $status to CLI exit code)
+  if [[ $status -ne 0 ]]; then
     printf "${COLOR_RED}✗ Token Cryptographic Validation Failed${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
-    printf "  Exit code: %d\n" "$verify_status" >&2
-    printf "  Output:\n%s\n" "$verify_output" >&2
+    printf "  Exit code: %d\n" "$status" >&2
+    printf "  Output:\n%s\n" "$output" >&2
     return 1
   fi
-  
+
   # Check that output indicates successful validation
   # The verify-token command should output validation results
-  if echo "$verify_output" | grep -qiE "(error|fail|invalid)"; then
+  if echo "$output" | grep -qiE "(error|fail|invalid)"; then
     printf "${COLOR_RED}✗ Token Validation Indicated Errors${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
-    printf "  Output:\n%s\n" "$verify_output" >&2
+    printf "  Output:\n%s\n" "$output" >&2
     return 1
   fi
-  
+
   # Check for positive validation indicators
-  if ! echo "$verify_output" | grep -qiE "(valid|success|verified|✓|✅)"; then
+  if ! echo "$output" | grep -qiE "(valid|success|verified|✓|✅)"; then
     printf "${COLOR_YELLOW}⚠ Token Validation Completed But No Clear Success Indicator${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
-    printf "  Output:\n%s\n" "$verify_output" >&2
+    printf "  Output:\n%s\n" "$output" >&2
     # Don't fail - command succeeded, just no clear success message
   fi
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Token cryptographically valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -932,34 +1048,50 @@ verify_token_cryptographically() {
 #   assert_token_has_valid_structure "$token_file"
 assert_token_has_valid_structure() {
   local token_file="${1:?Token file required}"
-  
+
   # Check file exists and is valid JSON
   assert_file_exists "$token_file" || return 1
-  
+
   # Validate JSON structure
   if ! ~/.local/bin/jq empty "$token_file" 2>/dev/null; then
     printf "${COLOR_RED}✗ Invalid JSON in token file${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
-  # Check version field
-  if ! ~/.local/bin/jq -e '.version' "$token_file" >/dev/null 2>&1; then
+
+  # Check version field (using multi-token format helper)
+  if ! mtxf_jq "$token_file" '.version' -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .version field${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Check genesis object
-  if ! ~/.local/bin/jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+  if ! mtxf_jq "$token_file" '.genesis' -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .genesis object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Check state object OR transactions with sourceState (for TRANSFERRED tokens)
-  local has_state=$(~/.local/bin/jq -e '.state != null and .state != {}' "$token_file" 2>/dev/null)
-  local has_tx_with_sourcestate=$(~/.local/bin/jq -e '.transactions | length > 0 and .[0].data.sourceState != null' "$token_file" 2>/dev/null)
+  # Use simple queries since mtxf_jq doesn't support complex expressions
+  local has_state="false"
+  local state_val
+  state_val=$(mtxf_jq "$token_file" '.state' -r 2>/dev/null)
+  if [[ -n "$state_val" ]] && [[ "$state_val" != "null" ]] && [[ "$state_val" != "{}" ]]; then
+    has_state="true"
+  fi
+
+  local has_tx_with_sourcestate="false"
+  local tx_count
+  tx_count=$(mtxf_jq "$token_file" '.transactions | length' -r 2>/dev/null || echo "0")
+  if [[ "$tx_count" -gt 0 ]]; then
+    local source_state
+    source_state=$(mtxf_jq "$token_file" '.transactions[0].data.sourceState' -r 2>/dev/null)
+    if [[ -n "$source_state" ]] && [[ "$source_state" != "null" ]]; then
+      has_tx_with_sourcestate="true"
+    fi
+  fi
 
   if [[ "$has_state" != "true" ]] && [[ "$has_tx_with_sourcestate" != "true" ]]; then
     printf "${COLOR_RED}✗ Missing .state object and no transactions with sourceState${COLOR_RESET}\n" >&2
@@ -971,14 +1103,18 @@ assert_token_has_valid_structure() {
   if [[ "$has_state" == "true" ]]; then
     # Check required state fields
     # Note: .state.data can be null for received tokens, so we check existence only
-    if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
-      printf "${COLOR_RED}✗ Missing required field: .state.data${COLOR_RESET}\n" >&2
-      printf "  File: %s\n" "$token_file" >&2
-      return 1
+    local token_key
+    token_key=$(get_first_token_key "$token_file")
+    if [[ -n "$token_key" ]]; then
+      if ! ~/.local/bin/jq -e ".[\"${token_key}\"].state | has(\"data\")" "$token_file" >/dev/null 2>&1; then
+        printf "${COLOR_RED}✗ Missing required field: .state.data${COLOR_RESET}\n" >&2
+        printf "  File: %s\n" "$token_file" >&2
+        return 1
+      fi
     fi
 
     # .state.predicate must exist and be non-null
-    if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+    if ! mtxf_jq "$token_file" '.state.predicate' -e >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing required field: .state.predicate${COLOR_RESET}\n" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
@@ -986,23 +1122,23 @@ assert_token_has_valid_structure() {
   fi
 
   # Check genesis has data (including tokenType)
-  if ! ~/.local/bin/jq -e '.genesis.data.tokenType' "$token_file" >/dev/null 2>&1; then
+  if ! mtxf_jq "$token_file" '.genesis.data.tokenType' -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .genesis.data.tokenType${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Check inclusion proof exists (in genesis for minted tokens)
-  if ! ~/.local/bin/jq -e '.genesis.inclusionProof' "$token_file" >/dev/null 2>&1; then
+  if ! mtxf_jq "$token_file" '.genesis.inclusionProof' -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing .genesis.inclusionProof object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Token structure valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1014,35 +1150,35 @@ assert_token_has_valid_structure() {
 #   assert_token_has_valid_genesis "$token_file"
 assert_token_has_valid_genesis() {
   local token_file="${1:?Token file required}"
-  
-  # Check genesis object exists
-  if ! ~/.local/bin/jq -e '.genesis' "$token_file" >/dev/null 2>&1; then
+
+  # Check genesis object exists (using multi-token format)
+  if ! mtxf_jq "$token_file" '.genesis' -e >/dev/null 2>&1; then
     printf "${COLOR_RED}✗ Missing genesis object${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Check genesis has required fields
   local required_fields=(
     ".genesis.data"
     ".genesis.data.tokenType"
   )
-  
+
   for field in "${required_fields[@]}"; do
-    if ! ~/.local/bin/jq -e "$field" "$token_file" >/dev/null 2>&1; then
+    if ! mtxf_jq "$token_file" "$field" -e >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing genesis field: %s${COLOR_RESET}\n" "$field" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
     fi
   done
-  
+
   # Validate genesis transaction has proof (if applicable)
   # Genesis may have inclusionProof at genesis level or rely on overall proof
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Genesis transaction valid${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1055,9 +1191,25 @@ assert_token_has_valid_genesis() {
 assert_token_has_valid_state() {
   local token_file="${1:?Token file required}"
 
-  # Check state object exists OR transactions with sourceState
-  local has_state=$(~/.local/bin/jq -e '.state != null' "$token_file" 2>/dev/null)
-  local has_tx_with_sourcestate=$(~/.local/bin/jq -e '.transactions | length > 0 and .[0].data.sourceState != null' "$token_file" 2>/dev/null)
+  # Check state object exists (using multi-token format helper)
+  local has_state="false"
+  local state_val
+  state_val=$(mtxf_jq "$token_file" '.state' -r 2>/dev/null)
+  if [[ -n "$state_val" ]] && [[ "$state_val" != "null" ]]; then
+    has_state="true"
+  fi
+
+  # Check transactions with sourceState
+  local has_tx_with_sourcestate="false"
+  local tx_count
+  tx_count=$(mtxf_jq "$token_file" '.transactions | length' -r 2>/dev/null)
+  if [[ -n "$tx_count" ]] && [[ "$tx_count" != "0" ]] && [[ "$tx_count" != "null" ]]; then
+    local source_state
+    source_state=$(mtxf_jq "$token_file" '.transactions[0].data.sourceState' -r 2>/dev/null)
+    if [[ -n "$source_state" ]] && [[ "$source_state" != "null" ]]; then
+      has_tx_with_sourcestate="true"
+    fi
+  fi
 
   if [[ "$has_state" != "true" ]] && [[ "$has_tx_with_sourcestate" != "true" ]]; then
     printf "${COLOR_RED}✗ Missing state object and no transactions with sourceState${COLOR_RESET}\n" >&2
@@ -1068,14 +1220,16 @@ assert_token_has_valid_state() {
   # If state is null but we have transactions with sourceState, that's valid
   if [[ "$has_state" == "true" ]]; then
     # Check state data exists (can be null for received tokens)
-    if ! ~/.local/bin/jq -e '.state | has("data")' "$token_file" >/dev/null 2>&1; then
+    if ! mtxf_jq "$token_file" '.state | has("data")' -e >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ Missing state data${COLOR_RESET}\n" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
     fi
 
     # Check predicate exists and is non-null
-    if ! ~/.local/bin/jq -e '.state.predicate' "$token_file" >/dev/null 2>&1; then
+    local predicate
+    predicate=$(mtxf_jq "$token_file" '.state.predicate' -r 2>/dev/null)
+    if [[ -z "$predicate" ]] || [[ "$predicate" == "null" ]]; then
       printf "${COLOR_RED}✗ Missing state predicate${COLOR_RESET}\n" >&2
       printf "  File: %s\n" "$token_file" >&2
       return 1
@@ -1101,38 +1255,58 @@ assert_token_has_valid_state() {
 #   assert_inclusion_proof_valid "$token_file"
 assert_inclusion_proof_valid() {
   local token_file="${1:?Token file required}"
-  
-  # Check inclusion proof object exists
-  if ! ~/.local/bin/jq -e '.inclusionProof' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ Missing inclusion proof${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
+
+  # Check inclusion proof object exists (in genesis for multi-token format)
+  local proof_val
+  proof_val=$(mtxf_jq "$token_file" '.genesis.inclusionProof' -r 2>/dev/null)
+  if [[ -z "$proof_val" ]] || [[ "$proof_val" == "null" ]]; then
+    # Also try legacy .inclusionProof location
+    proof_val=$(mtxf_jq "$token_file" '.inclusionProof' -r 2>/dev/null)
+    if [[ -z "$proof_val" ]] || [[ "$proof_val" == "null" ]]; then
+      printf "${COLOR_RED}✗ Missing inclusion proof${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
   fi
-  
+
   # Check required proof fields (structure may vary based on proof type)
   # Common fields: merklePath, blockHeight, rootHash, timestamp
-  
+
   # Note: The verify-token command is the authoritative validator for proofs
   # This function only checks basic structure existence
-  
-  # Get proof type if available
-  local has_merkle_path
-  has_merkle_path=$(~/.local/bin/jq -e '.inclusionProof.merklePath' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
-  
-  local has_block_height
-  has_block_height=$(~/.local/bin/jq -e '.inclusionProof.blockHeight' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
-  
-  if [[ "$has_merkle_path" == "false" ]] && [[ "$has_block_height" == "false" ]]; then
+
+  # Get proof type if available - check genesis.inclusionProof first
+  local has_merkle_path="false"
+  local merkle_val
+  merkle_val=$(mtxf_jq "$token_file" '.genesis.inclusionProof.merkleTreePath' -r 2>/dev/null)
+  if [[ -n "$merkle_val" ]] && [[ "$merkle_val" != "null" ]]; then
+    has_merkle_path="true"
+  else
+    # Try legacy location
+    merkle_val=$(mtxf_jq "$token_file" '.inclusionProof.merklePath' -r 2>/dev/null)
+    if [[ -n "$merkle_val" ]] && [[ "$merkle_val" != "null" ]]; then
+      has_merkle_path="true"
+    fi
+  fi
+
+  local has_authenticator="false"
+  local auth_val
+  auth_val=$(mtxf_jq "$token_file" '.genesis.inclusionProof.authenticator' -r 2>/dev/null)
+  if [[ -n "$auth_val" ]] && [[ "$auth_val" != "null" ]]; then
+    has_authenticator="true"
+  fi
+
+  if [[ "$has_merkle_path" == "false" ]] && [[ "$has_authenticator" == "false" ]]; then
     printf "${COLOR_YELLOW}⚠ Inclusion proof has non-standard structure${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     printf "  Note: Structure validation will be performed by verify-token command\n" >&2
     # Don't fail - let verify-token handle it
   fi
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Inclusion proof structure present${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1201,8 +1375,14 @@ assert_token_predicate_valid() {
   local token_file="${1:?Token file required}"
 
   # Extract predicate from token - first try .state, then transactions[-1].data.sourceState
+  # Use simple queries with mtxf_jq (no complex fallback operators)
   local predicate_hex
-  predicate_hex=$(~/.local/bin/jq -r '.state.predicate // .transactions[-1].data.sourceState.predicate // null' "$token_file" 2>/dev/null)
+  predicate_hex=$(mtxf_jq "$token_file" '.state.predicate' -r 2>/dev/null)
+
+  if [[ -z "$predicate_hex" ]] || [[ "$predicate_hex" == "null" ]]; then
+    # Try last transaction's sourceState predicate
+    predicate_hex=$(mtxf_jq "$token_file" '.transactions[-1].data.sourceState.predicate' -r 2>/dev/null)
+  fi
 
   if [[ -z "$predicate_hex" ]] || [[ "$predicate_hex" == "null" ]]; then
     printf "${COLOR_RED}✗ Missing predicate in token state or sourceState${COLOR_RESET}\n" >&2
@@ -1234,11 +1414,17 @@ assert_token_predicate_valid() {
 #   assert_state_hash_correct "$token_file"
 assert_state_hash_correct() {
   local token_file="${1:?Token file required}"
-  
-  # Extract state hash
+
+  # Extract state hash - check multiple locations (multi-token format)
   local state_hash
-  state_hash=$(~/.local/bin/jq -r '.state.stateHash' "$token_file" 2>/dev/null)
-  
+  # Try genesis authenticator location first (multi-token format)
+  state_hash=$(mtxf_jq "$token_file" '.genesis.inclusionProof.authenticator.stateHash' -r 2>/dev/null)
+
+  if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
+    # Try legacy .state.stateHash location
+    state_hash=$(mtxf_jq "$token_file" '.state.stateHash' -r 2>/dev/null)
+  fi
+
   if [[ -z "$state_hash" ]] || [[ "$state_hash" == "null" ]]; then
     printf "${COLOR_RED}✗ Missing state hash${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
@@ -1287,11 +1473,15 @@ assert_state_hash_correct() {
 #   assert_token_chain_valid "$token_file"
 assert_token_chain_valid() {
   local token_file="${1:?Token file required}"
-  
-  # Check if token has transaction history
-  local has_history
-  has_history=$(~/.local/bin/jq -e '.transactionHistory' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
-  
+
+  # Check if token has transaction history (using multi-token format)
+  local has_history="false"
+  local history_val
+  history_val=$(mtxf_jq "$token_file" '.transactionHistory' -r 2>/dev/null)
+  if [[ -n "$history_val" ]] && [[ "$history_val" != "null" ]]; then
+    has_history="true"
+  fi
+
   if [[ "$has_history" == "false" ]]; then
     # No transaction history - single state token
     if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
@@ -1299,23 +1489,23 @@ assert_token_chain_valid() {
     fi
     return 0
   fi
-  
+
   # Validate transaction history array
   local tx_count
-  tx_count=$(~/.local/bin/jq -r '.transactionHistory | length' "$token_file" 2>/dev/null)
-  
+  tx_count=$(mtxf_jq "$token_file" '.transactionHistory | length' -r 2>/dev/null)
+
   if [[ -z "$tx_count" ]] || [[ "$tx_count" == "null" ]] || [[ $tx_count -lt 1 ]]; then
     printf "${COLOR_RED}✗ Invalid transaction history${COLOR_RESET}\n" >&2
     printf "  File: %s\n" "$token_file" >&2
     return 1
   fi
-  
+
   # Note: Full chain validation (hash links, proofs) is done by verify-token
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
     printf "${COLOR_GREEN}✓ Token chain structure valid (%d transactions)${COLOR_RESET}\n" "$tx_count" >&2
   fi
-  
+
   return 0
 }
 
@@ -1332,8 +1522,17 @@ assert_token_chain_valid() {
 assert_offline_transfer_valid() {
   local token_file="${1:?Token file required}"
 
-  # Check if token has uncommitted transaction
-  local has_uncommitted=$(~/.local/bin/jq '[.transactions[] | select(.inclusionProof.authenticator == null)] | length > 0' "$token_file" 2>/dev/null)
+  # Get transactions array using multi-token format helper
+  local transactions_json
+  transactions_json=$(mtxf_jq "$token_file" '.transactions' 2>/dev/null)
+
+  # Check if token has uncommitted transaction (pipe through jq for complex filtering)
+  local has_uncommitted
+  if [[ -n "$transactions_json" ]] && [[ "$transactions_json" != "null" ]]; then
+    has_uncommitted=$(echo "$transactions_json" | ~/.local/bin/jq '[.[] | select(.inclusionProof.authenticator == null)] | length > 0' 2>/dev/null)
+  else
+    has_uncommitted="false"
+  fi
 
   if [[ "$has_uncommitted" != "true" ]]; then
     printf "${COLOR_RED}✗ Token does not have uncommitted transaction (offline transfer)${COLOR_RESET}\n" >&2
@@ -1343,7 +1542,8 @@ assert_offline_transfer_valid() {
   fi
 
   # Get the last transaction (should be uncommitted)
-  local tx_data=$(~/.local/bin/jq '.transactions[-1]' "$token_file" 2>/dev/null)
+  local tx_data
+  tx_data=$(mtxf_jq "$token_file" '.transactions[-1]' 2>/dev/null)
 
   # Check required transaction fields
   local recipient=$(echo "$tx_data" | ~/.local/bin/jq -r '.data.recipient' 2>/dev/null)
@@ -1470,11 +1670,22 @@ assert_token_valid_quick() {
 #   assert_bft_signatures_valid "$token_file"
 assert_bft_signatures_valid() {
   local token_file="${1:?Token file required}"
-  
-  # Check if proof has BFT authenticator fields
-  local has_bft
-  has_bft=$(~/.local/bin/jq -e '.inclusionProof.bftAuthenticator' "$token_file" >/dev/null 2>&1 && echo "true" || echo "false")
-  
+
+  # Check if proof has authenticator fields (multi-token format)
+  # Try genesis.inclusionProof.authenticator first (new format)
+  local has_bft="false"
+  local auth_val
+  auth_val=$(mtxf_jq "$token_file" '.genesis.inclusionProof.authenticator' -r 2>/dev/null)
+  if [[ -n "$auth_val" ]] && [[ "$auth_val" != "null" ]]; then
+    has_bft="true"
+  else
+    # Try legacy location
+    auth_val=$(mtxf_jq "$token_file" '.inclusionProof.bftAuthenticator' -r 2>/dev/null)
+    if [[ -n "$auth_val" ]] && [[ "$auth_val" != "null" ]]; then
+      has_bft="true"
+    fi
+  fi
+
   if [[ "$has_bft" == "false" ]]; then
     # No BFT authenticator in proof - may be normal for certain proof types
     if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
@@ -1484,20 +1695,26 @@ assert_bft_signatures_valid() {
     # Don't fail - not all proofs have BFT authenticator
     return 0
   fi
-  
-  # Check BFT authenticator structure
-  if ! ~/.local/bin/jq -e '.inclusionProof.bftAuthenticator.signatures' "$token_file" >/dev/null 2>&1; then
-    printf "${COLOR_RED}✗ BFT authenticator missing signatures${COLOR_RESET}\n" >&2
-    printf "  File: %s\n" "$token_file" >&2
-    return 1
+
+  # Check authenticator has required fields (signature or signatures)
+  local sig_val
+  sig_val=$(mtxf_jq "$token_file" '.genesis.inclusionProof.authenticator.signature' -r 2>/dev/null)
+  if [[ -z "$sig_val" ]] || [[ "$sig_val" == "null" ]]; then
+    # Try legacy signatures array
+    sig_val=$(mtxf_jq "$token_file" '.inclusionProof.bftAuthenticator.signatures' -r 2>/dev/null)
+    if [[ -z "$sig_val" ]] || [[ "$sig_val" == "null" ]]; then
+      printf "${COLOR_RED}✗ Authenticator missing signature(s)${COLOR_RESET}\n" >&2
+      printf "  File: %s\n" "$token_file" >&2
+      return 1
+    fi
   fi
-  
+
   # Note: Actual signature validation is performed by verify-token
-  
+
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ BFT authenticator structure present${COLOR_RESET}\n" >&2
+    printf "${COLOR_GREEN}✓ Authenticator structure present${COLOR_RESET}\n" >&2
   fi
-  
+
   return 0
 }
 
@@ -1649,7 +1866,7 @@ assert_address_type() {
   return 0
 }
 
-# Check if file is valid TXF (Token Exchange Format)
+# Check if file is valid TXF (Token Exchange Format) - supports multi-token format
 # Args: $1 = file path
 # Returns: 0 if valid TXF, 1 if invalid
 is_valid_txf() {
@@ -1667,10 +1884,20 @@ is_valid_txf() {
     return 1
   fi
 
-  # Check required TXF fields (using has() for fields that can be null)
+  # Check for multi-token format (first key starts with "_")
+  local token_key
+  token_key=$(get_first_token_key "$file")
+
+  if [[ -z "$token_key" ]]; then
+    printf "${COLOR_RED}✗ No tokens found in TXF file (expected keys starting with '_')${COLOR_RESET}\n" >&2
+    return 1
+  fi
+
+  # Check required TXF fields within the token
+  # Use direct jq query with token key since has() can't be used with mtxf_path
   local required_fields=("version" "genesis" "state")
   for field in "${required_fields[@]}"; do
-    if ! ~/.local/bin/jq -e "has(\"$field\")" "$file" >/dev/null 2>&1; then
+    if ! ~/.local/bin/jq -e ".[\"${token_key}\"] | has(\"$field\")" "$file" >/dev/null 2>&1; then
       printf "${COLOR_RED}✗ TXF file missing required field: .%s${COLOR_RESET}\n" "$field" >&2
       return 1
     fi
@@ -1678,29 +1905,37 @@ is_valid_txf() {
 
   # Check version is 2.0
   local version
-  version=$(~/.local/bin/jq -r '.version' "$file" 2>/dev/null)
+  version=$(mtxf_jq "$file" ".version" -r)
   if [[ "$version" != "2.0" ]]; then
     printf "${COLOR_RED}✗ Invalid TXF version: %s (expected 2.0)${COLOR_RESET}\n" "$version" >&2
     return 1
   fi
 
   if [[ "${UNICITY_TEST_VERBOSE_ASSERTIONS:-0}" == "1" ]]; then
-    printf "${COLOR_GREEN}✓ Valid TXF file${COLOR_RESET}\n" >&2
+    printf "${COLOR_GREEN}✓ Valid TXF file (token: %s)${COLOR_RESET}\n" "$token_key" >&2
   fi
 
   return 0
 }
 
-# Extract token ID from TXF file
+# Extract token ID from TXF file (supports multi-token format)
 # Args: $1 = file path
 # Returns: Token ID (64-char hex string) or empty
 get_txf_token_id() {
   local file="${1:?File path required}"
 
-  # Try multiple possible locations for token ID
-  local token_id
-  token_id=$(~/.local/bin/jq -r '.genesis.data.tokenId // .token.tokenId // empty' "$file" 2>/dev/null)
+  # For multi-token format, can get from the key itself (strips leading '_')
+  local token_key
+  token_key=$(get_first_token_key "$file")
+  if [[ -n "$token_key" ]]; then
+    # Token ID is the key without the leading '_'
+    echo "${token_key:1}"
+    return 0
+  fi
 
+  # Fallback: try genesis.data.tokenId
+  local token_id
+  token_id=$(mtxf_jq "$file" '.genesis.data.tokenId // empty' -r)
   echo "$token_id"
 }
 
@@ -1744,17 +1979,21 @@ get_predicate_type() {
   fi
 }
 
-# Extract and decode token data from TXF file
+# Extract and decode token data from TXF file (supports multi-token format)
 # Args: $1 = file path
 # Returns: Decoded data (text) or hex string
 get_token_data() {
   local file="${1:?File path required}"
 
-  # Extract hex-encoded data
-  # Try state.data first (if not empty), then genesis.data.tokenData (original data)
-  # Note: jq's // doesn't treat "" as falsy, so we use conditional with length check
+  # Try state.data first, then genesis.data.tokenData
+  # Use separate simple queries (mtxf_jq doesn't support complex expressions)
   local hex_data
-  hex_data=$(~/.local/bin/jq -r 'if (.state.data | length) > 0 then .state.data elif (.genesis.data.tokenData | length) > 0 then .genesis.data.tokenData else empty end' "$file" 2>/dev/null)
+  hex_data=$(mtxf_jq "$file" '.state.data' -r 2>/dev/null)
+
+  # If state.data is empty, try genesis.data.tokenData
+  if [[ -z "$hex_data" ]] || [[ "$hex_data" == "null" ]]; then
+    hex_data=$(mtxf_jq "$file" '.genesis.data.tokenData' -r 2>/dev/null)
+  fi
 
   if [[ -z "$hex_data" ]] || [[ "$hex_data" == "null" ]]; then
     return 0

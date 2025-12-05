@@ -18,6 +18,7 @@ import {
   decodeTokenData,
   truncate
 } from '../utils/output-formatter.js';
+import { readTokenFromTxf, readAllTokens, listTokenIds } from '../utils/multi-token-txf.js';
 import * as fs from 'fs';
 
 /**
@@ -316,6 +317,7 @@ Exit codes:
   1 - Verification failed (tampered token, invalid proofs, token spent)
   2 - File error (file not found, invalid JSON)`)
     .option('-f, --file <file>', 'Token file to verify (required)')
+    .option('--select <tokenId>', 'Select specific token from multi-token TXF file (if omitted, verify all tokens)')
     .option('-e, --endpoint <url>', 'Aggregator endpoint URL', 'https://gateway.unicity.network')
     .option('--local', 'Use local aggregator (http://localhost:3000)')
     .option('--skip-network', 'Skip network ownership verification')
@@ -382,25 +384,124 @@ Exit codes:
         log('=== Token Verification ===');
         log(`File: ${options.file}\n`);
 
-        // Read token from file
-        let tokenFileContent: string;
+        // Read token from file (multi-token format)
         let tokenJson: any;
+        let loadedTokenId: string;
 
         try {
-          tokenFileContent = fs.readFileSync(options.file, 'utf8');
-        } catch (err) {
-          console.error(`Error: Cannot read file: ${err instanceof Error ? err.message : String(err)}`);
-          process.exit(2); // File error
-        }
+          // Check if we need to verify all tokens (no --select and multiple tokens)
+          const tokenIds = listTokenIds(options.file);
 
-        try {
-          const rawJson = JSON.parse(tokenFileContent);
+          if (tokenIds.length === 0) {
+            console.error('Error: TXF file contains no tokens');
+            process.exit(2); // File error
+          }
+
+          if (!options.select && tokenIds.length > 1) {
+            // MULTI-TOKEN MODE: Verify all tokens
+            log(`Found ${tokenIds.length} tokens in file, verifying all...\n`);
+
+            const allResults: VerificationResult[] = [];
+            let anyFailed = false;
+
+            for (const tokenId of tokenIds) {
+              const { token: rawJson } = readTokenFromTxf(options.file, tokenId);
+              const deserializedToken = deserializeTxf(rawJson);
+
+              // Create a mini verification result for this token
+              const tokenResult: VerificationResult = {
+                tokenId: deserializedToken.genesis?.data?.tokenId || tokenId,
+                tokenType: deserializedToken.genesis?.data?.tokenType || '',
+                tokenTypeName: getTokenTypeName(deserializedToken.genesis?.data?.tokenType || ''),
+                version: deserializedToken.version || '',
+                data: decodeTokenData(deserializedToken.genesis?.data?.tokenData),
+                state: {
+                  data: decodeTokenData(deserializedToken.state?.data),
+                  predicateType: 'unknown',
+                  algorithm: 'unknown',
+                  publicKey: ''
+                },
+                proofs: {
+                  genesis: { valid: false, hasAuthenticator: false },
+                  transactions: [],
+                  verified: 0,
+                  total: 0,
+                  uncommitted: 0
+                },
+                verification: {
+                  jsonStructure: false,
+                  sdkCompatible: false,
+                  cryptographic: false,
+                  dataIntegrity: false,
+                  ownershipStatus: 'unknown'
+                },
+                history: {
+                  transferCount: 0,
+                  transfers: []
+                },
+                status: 'INVALID',
+                canTransfer: false,
+                warnings: [],
+                errors: []
+              };
+
+              // Quick validation
+              const jsonValidation = validateTokenProofsJson(deserializedToken, { allowUncommitted: true });
+              tokenResult.verification.jsonStructure = jsonValidation.valid;
+
+              if (jsonValidation.valid) {
+                // Check uncommitted transactions
+                const uncommitted = (deserializedToken.transactions || [])
+                  .filter((tx: any) => !tx.inclusionProof).length;
+                tokenResult.proofs.uncommitted = uncommitted;
+
+                // Set status
+                if (uncommitted > 0) {
+                  tokenResult.status = 'PENDING';
+                } else {
+                  tokenResult.status = 'VALID';
+                  tokenResult.canTransfer = true;
+                }
+              } else {
+                tokenResult.errors = jsonValidation.errors;
+                anyFailed = true;
+              }
+
+              allResults.push(tokenResult);
+            }
+
+            // Output all results
+            if (jsonOutput) {
+              console.log(JSON.stringify(allResults, null, 2));
+            } else {
+              console.log(`=== Multi-Token Verification Summary ===`);
+              console.log(`File: ${options.file}`);
+              console.log(`Total tokens: ${allResults.length}\n`);
+
+              for (const r of allResults) {
+                console.log(`--- Token: ${truncate(r.tokenId, 16)} ---`);
+                console.log(formatVerifyOutput(r));
+                console.log('');
+              }
+
+              const valid = allResults.filter(r => r.status === 'VALID' || r.status === 'PENDING').length;
+              const failed = allResults.length - valid;
+              console.log(`=== Summary: ${valid}/${allResults.length} tokens valid${failed > 0 ? `, ${failed} failed` : ''} ===`);
+            }
+
+            process.exit(anyFailed ? 1 : 0);
+          }
+
+          // SINGLE TOKEN MODE: Verify one token
+          const { token: rawJson, tokenId: selectedTokenId } = readTokenFromTxf(options.file, options.select);
+          loadedTokenId = selectedTokenId;
           tokenJson = deserializeTxf(rawJson);
           if (rawJson.state === null && tokenJson.state !== null) {
             log('Note: State reconstructed from sourceState (in-transit token)');
           }
+          log(`Token ID: ${truncate(loadedTokenId, 32)}\n`);
         } catch (err) {
-          console.error(`Error: Invalid JSON in file: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(2); // File error
         }
 

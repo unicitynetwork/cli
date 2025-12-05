@@ -34,3 +34,11 @@ export interface IValidationResult {
   errors?: string[];
   warnings?: string[];
 }
+
+/**
+ * Multi-token TXF file structure
+ * Keys are `_${tokenId}` where tokenId is the full token ID
+ */
+export interface IMultiTokenTxf {
+  [key: `_${string}`]: IExtendedTxfToken;
+}
